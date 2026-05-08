@@ -13,13 +13,13 @@ function MatchCard({ m, completed }: { m: MatchLean; completed?: boolean }) {
   return (
     <Link href={`/matches/${String(m._id)}`}>
       <Card className="hover:scale-[1.01] transition cursor-pointer">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-base md:text-lg font-bold">
-            <TeamLogo name={m.teamA} size={28} />
-            <span>{m.teamA}</span>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center flex-wrap gap-2 text-base md:text-lg font-bold min-w-0">
+            <TeamLogo name={m.teamA} size={24} />
+            <span className="truncate">{m.teamA}</span>
             <span className="text-muted-foreground text-sm">vs</span>
-            <TeamLogo name={m.teamB} size={28} />
-            <span>{m.teamB}</span>
+            <TeamLogo name={m.teamB} size={24} />
+            <span className="truncate">{m.teamB}</span>
           </div>
           <Badge tone={m.status === "live" ? "danger" : m.status === "completed" ? "success" : "accent"}>
             {m.status}

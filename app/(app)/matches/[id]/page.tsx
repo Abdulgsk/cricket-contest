@@ -34,25 +34,25 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="space-y-6">
       <Card className="glow">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-2xl md:text-3xl font-bold">
-              <TeamLogo name={match.teamA} size={40} />
-              <span>{match.teamA}</span>
-              <span className="text-muted-foreground text-base md:text-lg">vs</span>
-              <TeamLogo name={match.teamB} size={40} />
-              <span>{match.teamB}</span>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center flex-wrap gap-2 text-xl sm:text-2xl md:text-3xl font-bold">
+              <TeamLogo name={match.teamA} size={36} />
+              <span className="truncate">{match.teamA}</span>
+              <span className="text-muted-foreground text-sm sm:text-base md:text-lg">vs</span>
+              <TeamLogo name={match.teamB} size={36} />
+              <span className="truncate">{match.teamB}</span>
             </div>
             <div className="text-sm text-muted-foreground mt-1">{formatDate(match.startTime)}</div>
             {match.venue && <div className="text-xs text-muted-foreground">📍 {match.venue}</div>}
             {match.scoreSummary && (
-              <div className="text-xs text-foreground mt-1 font-mono">{match.scoreSummary}</div>
+              <div className="text-xs text-foreground mt-1 font-mono break-words">{match.scoreSummary}</div>
             )}
             {match.matchWinner && (
               <div className="text-sm text-success mt-1">🏆 {match.matchWinner} won</div>
             )}
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-row sm:flex-col items-start sm:items-end gap-2 flex-wrap">
             <Badge tone={match.status === "live" ? "danger" : match.status === "completed" ? "success" : "accent"}>
               {match.status}
             </Badge>

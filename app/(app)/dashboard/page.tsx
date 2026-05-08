@@ -37,19 +37,19 @@ export default async function Dashboard() {
         </Card>
 
         <Card className="md:col-span-2">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Next match</div>
               {next ? (
                 <>
-                  <div className="flex items-center gap-2 text-2xl font-bold mt-1">
-                    <TeamLogo name={next.teamA} size={32} />
-                    <span>{next.teamA}</span>
+                  <div className="flex items-center flex-wrap gap-2 text-lg sm:text-2xl font-bold mt-1">
+                    <TeamLogo name={next.teamA} size={28} />
+                    <span className="truncate">{next.teamA}</span>
                     <span className="text-muted-foreground text-sm">vs</span>
-                    <TeamLogo name={next.teamB} size={32} />
-                    <span>{next.teamB}</span>
+                    <TeamLogo name={next.teamB} size={28} />
+                    <span className="truncate">{next.teamB}</span>
                   </div>
-                  <div className="text-sm text-muted-foreground">{formatDate(next.startTime)}</div>
+                  <div className="text-sm text-muted-foreground mt-1">{formatDate(next.startTime)}</div>
                 </>
               ) : (
                 <div className="text-muted-foreground mt-2">No upcoming match scheduled.</div>
@@ -58,7 +58,7 @@ export default async function Dashboard() {
             {next && (
               <Link
                 href={`/matches/${String(next._id)}`}
-                className="rounded-xl bg-primary text-primary-foreground px-6 py-3 md:px-4 md:py-2 text-sm font-semibold glow"
+                className="shrink-0 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold glow text-center w-full sm:w-auto"
               >
                 Predict →
               </Link>
@@ -76,14 +76,14 @@ export default async function Dashboard() {
           {lb.slice(0, 5).map((r, i) => (
             <li
               key={String(r.userId)}
-              className="flex items-center justify-between rounded-xl bg-muted/40 px-4 py-2"
+              className="flex items-center justify-between gap-2 rounded-xl bg-muted/40 px-3 sm:px-4 py-2"
             >
-              <span className="flex items-center gap-3">
+              <span className="flex items-center gap-2 sm:gap-3 min-w-0">
                 <Badge tone={i === 0 ? "warning" : "default"}>{i + 1}</Badge>
-                <span className="font-medium">{r.username}</span>
+                <span className="font-medium truncate">{r.username}</span>
                 {String(r.userId) === String(me._id) && <Badge tone="accent">You</Badge>}
               </span>
-              <span className="text-sm font-semibold">{r.totalPoints} pts</span>
+              <span className="text-sm font-semibold shrink-0">{r.totalPoints} pts</span>
             </li>
           ))}
         </ol>
