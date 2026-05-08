@@ -16,7 +16,7 @@ export function SyncPlayoffsPanel() {
       </p>
       <Button
         variant="outline"
-        disabled={pending}
+        loading={pending}
         onClick={() =>
           start(async () => {
             const r = await syncPlayoffsAction();

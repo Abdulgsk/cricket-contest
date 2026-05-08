@@ -44,7 +44,7 @@ export function CreateMatchForm() {
           <label className="flex items-center gap-2"><input type="checkbox" name="predictionMadness" /> Prediction Madness</label>
         </div>
         <div className="md:col-span-2">
-          <Button variant="glow" disabled={pending}>{pending ? "Creating…" : "Create match"}</Button>
+          <Button variant="glow" loading={pending}>{pending ? "Creating…" : "Create match"}</Button>
         </div>
       </form>
     </Card>

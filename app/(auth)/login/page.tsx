@@ -34,7 +34,7 @@ export default function LoginPage() {
         <Input id="password" name="password" type="password" required autoComplete="current-password" />
       </div>
       {err && <p className="text-xs text-danger">{err}</p>}
-      <Button variant="glow" className="w-full" disabled={pending}>
+      <Button variant="glow" className="w-full" loading={pending}>
         {pending ? "Signing in…" : "Sign in"}
       </Button>
       <div className="flex justify-between text-xs text-muted-foreground">

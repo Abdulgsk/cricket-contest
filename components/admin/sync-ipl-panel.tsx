@@ -16,7 +16,7 @@ export function SyncIplPanel() {
       </p>
       <Button
         variant="glow"
-        disabled={pending}
+        loading={pending}
         onClick={() =>
           start(async () => {
             const r = await syncIplMatchesAction();

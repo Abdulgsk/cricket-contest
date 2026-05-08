@@ -24,7 +24,7 @@ export function SettingsForms({
         <Label>Announcement</Label>
         <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} />
         <Button
-          disabled={pending}
+          loading={pending}
           onClick={() =>
             start(async () => {
               await setAnnouncementAction(text);
@@ -39,7 +39,7 @@ export function SettingsForms({
       <div className="space-y-2">
         <Label>Bounty holder (next player to beat them gets +3)</Label>
         <select
-          className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm"
+          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
           value={bounty}
           onChange={(e) => setBounty(e.target.value)}
         >
@@ -49,7 +49,7 @@ export function SettingsForms({
           ))}
         </select>
         <Button
-          disabled={pending}
+          loading={pending}
           onClick={() =>
             start(async () => {
               await setBountyAction(bounty || null);

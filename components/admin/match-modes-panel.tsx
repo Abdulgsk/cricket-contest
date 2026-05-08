@@ -65,7 +65,7 @@ export function MatchModesPanel({
         {Row("predictionMadness", "Prediction Madness", "Prediction points apply with extra weight.")}
       </div>
       <div className="mt-3">
-        <Button variant="glow" onClick={save} disabled={pending || disabled}>
+        <Button variant="glow" onClick={save} loading={pending} disabled={disabled}>
           {pending ? "Saving…" : "Save modes"}
         </Button>
       </div>

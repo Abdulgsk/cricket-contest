@@ -48,7 +48,7 @@ export function ProfileForms({ initial }: { initial: { username: string; whatsap
               />
             </div>
           </div>
-          <Button disabled={pending} variant="glow">{pending ? "Saving…" : "Save changes"}</Button>
+          <Button loading={pending} variant="glow">{pending ? "Saving…" : "Save changes"}</Button>
         </form>
       </Card>
 
@@ -78,7 +78,7 @@ export function ProfileForms({ initial }: { initial: { username: string; whatsap
             <Input id="next" name="next" type="password" required minLength={4} />
           </div>
           {pwMsg && <p className="text-xs text-muted-foreground">{pwMsg}</p>}
-          <Button disabled={pwPending}>Update password</Button>
+          <Button loading={pwPending}>{pwPending ? "Updating…" : "Update password"}</Button>
         </form>
 
         <form action={logoutAction} className="mt-6">

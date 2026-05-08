@@ -10,7 +10,7 @@ export function RefreshSquadsButton({ matchId }: { matchId: string }) {
     <Button
       size="sm"
       variant="outline"
-      disabled={pending}
+      loading={pending}
       onClick={() =>
         start(async () => {
           const r = await refreshSquadsAction(matchId);

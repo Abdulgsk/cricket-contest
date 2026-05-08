@@ -25,10 +25,28 @@ export function UserRoleControls({
     });
   if (self) return <span className="text-xs text-muted-foreground">(you)</span>;
   return (
-    <div className="flex gap-1">
-      {role !== "user" && <Button size="sm" variant="outline" disabled={pending} onClick={() => promote("user")}>→ user</Button>}
-      {role !== "admin" && <Button size="sm" variant="outline" disabled={pending} onClick={() => promote("admin")}>→ admin</Button>}
-      {role !== "superadmin" && <Button size="sm" variant="outline" disabled={pending} onClick={() => promote("superadmin")}>→ super</Button>}
+    <div className="flex flex-wrap gap-1">
+      {role !== "user" && (
+        <Button
+          size="sm"
+          variant="destructive"
+          loading={pending}
+          onClick={() => promote("user")}
+          title="Revoke admin access"
+        >
+          Revoke
+        </Button>
+      )}
+      {role !== "admin" && (
+        <Button size="sm" variant="outline" loading={pending} onClick={() => promote("admin")}>
+          Make admin
+        </Button>
+      )}
+      {role !== "superadmin" && (
+        <Button size="sm" variant="outline" loading={pending} onClick={() => promote("superadmin")}>
+          Make super
+        </Button>
+      )}
     </div>
   );
 }

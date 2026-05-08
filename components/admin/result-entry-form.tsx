@@ -69,23 +69,32 @@ export function ResultEntryForm({
   const [rows, setRows] = useState(
     users.map((u) => ({
       ...u,
-      rank: u.existing?.rank ?? 0,
       fp: u.existing?.fp ?? 0,
     }))
   );
 
-  const update = (id: string, key: "rank" | "fp", value: number) =>
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, [key]: value } : r)));
+  const update = (id: string, value: number) =>
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, fp: value } : r)));
+
+  // Compute ranks from FP: descending. Equal FP → same rank. FP=0 → missed (rank 0).
+  // Standard competition ranking (1, 2, 2, 4) so RANK_POINTS keep aligning.
+  const rankByUser = (() => {
+    const sorted = [...rows].filter((r) => r.fp > 0).sort((a, b) => b.fp - a.fp);
+    const map = new Map<string, number>();
+    let lastFp: number | null = null;
+    let lastRank = 0;
+    sorted.forEach((r, i) => {
+      const rank = lastFp !== null && r.fp === lastFp ? lastRank : i + 1;
+      map.set(r.id, rank);
+      lastFp = r.fp;
+      lastRank = rank;
+    });
+    return map;
+  })();
 
   const submit = () => {
     if (!predWinner || !predBatter || !predBowler) {
       toast.error("Fill match prediction results first");
-      return;
-    }
-    const ranks = rows.map((r) => r.rank).filter((r) => r > 0);
-    const dupes = new Set(ranks).size !== ranks.length;
-    if (dupes) {
-      toast.error("Duplicate ranks detected");
       return;
     }
     const customPoolResults = pools
@@ -101,7 +110,7 @@ export function ResultEntryForm({
         customPoolResults,
         entries: rows.map((row) => ({
           userId: row.id,
-          rank: Number(row.rank) || 0,
+          rank: rankByUser.get(row.id) ?? 0,
           fantasyPoints: Number(row.fp) || 0,
         })),
       });
@@ -220,45 +229,49 @@ export function ResultEntryForm({
       <Card className="overflow-x-auto">
         <h2 className="font-semibold mb-3">Per-player Dream11 entry</h2>
         <p className="text-xs text-muted-foreground mb-2">
-          Set rank to 0 to mark as missed. Edit anytime — submitting re-runs the scoring engine.
+          Enter Dream11 fantasy points — ranks are auto-calculated (highest FP = rank 1; tied FP share rank). Leave at 0 to mark as missed.
         </p>
         <table className="w-full text-sm">
           <thead className="text-xs uppercase text-muted-foreground">
             <tr className="text-left">
+              <th className="p-2 w-16">Rank</th>
               <th className="p-2">Player</th>
-              <th className="p-2 w-24">Rank</th>
               <th className="p-2 w-32">Fantasy Pts</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t border-border/40">
-                <td className="p-2">
-                  <div className="font-medium">{r.username}</div>
-                  <div className="text-xs text-muted-foreground">@{r.handle}</div>
-                </td>
-                <td className="p-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={13}
-                    value={r.rank}
-                    onChange={(e) => update(r.id, "rank", Number(e.target.value))}
-                  />
-                </td>
-                <td className="p-2">
-                  <Input
-                    type="number"
-                    value={r.fp}
-                    onChange={(e) => update(r.id, "fp", Number(e.target.value))}
-                  />
-                </td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const rank = rankByUser.get(r.id);
+              return (
+                <tr key={r.id} className="border-t border-border/40">
+                  <td className="p-2">
+                    {rank ? (
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary/15 text-primary font-bold text-sm">
+                        {rank}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="p-2">
+                    <div className="font-medium">{r.username}</div>
+                    <div className="text-xs text-muted-foreground">@{r.handle}</div>
+                  </td>
+                  <td className="p-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={r.fp}
+                      onChange={(e) => update(r.id, Number(e.target.value))}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <div className="mt-4">
-          <Button variant="glow" onClick={submit} disabled={pending}>
+          <Button variant="glow" onClick={submit} loading={pending}>
             {pending ? "Processing…" : "Process & publish results"}
           </Button>
         </div>

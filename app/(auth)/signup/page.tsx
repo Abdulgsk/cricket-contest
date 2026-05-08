@@ -56,7 +56,7 @@ export default function SignupPage() {
         </div>
       </div>
       {err && <p className="text-xs text-danger">{err}</p>}
-      <Button variant="glow" className="w-full" disabled={pending}>
+      <Button variant="glow" className="w-full" loading={pending}>
         {pending ? "Creating…" : "Create account"}
       </Button>
       <p className="text-xs text-muted-foreground text-center">

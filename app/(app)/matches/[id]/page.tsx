@@ -152,35 +152,37 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       {results.length > 0 && (
         <Card>
           <h2 className="font-semibold mb-3">Match Results</h2>
-          <table className="w-full text-sm">
-            <thead className="text-xs uppercase tracking-wider text-muted-foreground text-left">
-              <tr>
-                <th className="p-2">Rank</th>
-                <th className="p-2">Player</th>
-                <th className="p-2 text-right">FP</th>
-                <th className="p-2 text-right">Base</th>
-                <th className="p-2 text-right">Bonus</th>
-                <th className="p-2 text-right">Penalty</th>
-                <th className="p-2 text-right">Final</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r) => {
-                const u = r.userId as unknown as { username: string; userId: string };
-                return (
-                  <tr key={String(r._id)} className="border-t border-border/50">
-                    <td className="p-2 font-bold">{r.missed ? "—" : r.rank}</td>
-                    <td className="p-2">{u.username}</td>
-                    <td className="p-2 text-right">{r.fantasyPoints}</td>
-                    <td className="p-2 text-right">{r.basePoints}</td>
-                    <td className="p-2 text-right text-success">+{r.bonusPoints}</td>
-                    <td className="p-2 text-right text-danger">{r.penaltyPoints}</td>
-                    <td className="p-2 text-right font-bold text-primary">{r.finalPoints}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto -mx-4 sm:-mx-5 px-4 sm:px-5">
+            <table className="w-full text-sm min-w-[520px]">
+              <thead className="text-xs uppercase tracking-wider text-muted-foreground text-left">
+                <tr>
+                  <th className="p-2">Rank</th>
+                  <th className="p-2">Player</th>
+                  <th className="p-2 text-right">FP</th>
+                  <th className="p-2 text-right">Base</th>
+                  <th className="p-2 text-right">Bonus</th>
+                  <th className="p-2 text-right">Penalty</th>
+                  <th className="p-2 text-right">Final</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((r) => {
+                  const u = r.userId as unknown as { username: string; userId: string };
+                  return (
+                    <tr key={String(r._id)} className="border-t border-border/50">
+                      <td className="p-2 font-bold">{r.missed ? "—" : r.rank}</td>
+                      <td className="p-2">{u.username}</td>
+                      <td className="p-2 text-right">{r.fantasyPoints}</td>
+                      <td className="p-2 text-right">{r.basePoints}</td>
+                      <td className="p-2 text-right text-success">+{r.bonusPoints}</td>
+                      <td className="p-2 text-right text-danger">{r.penaltyPoints}</td>
+                      <td className="p-2 text-right font-bold text-primary">{r.finalPoints}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
           <div className="mt-4 space-y-2">
             <h3 className="text-xs uppercase tracking-wider text-muted-foreground">Bonus & penalty breakdown</h3>
