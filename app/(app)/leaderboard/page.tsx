@@ -10,7 +10,7 @@ export default async function LeaderboardPage() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-3xl font-bold">League Leaderboard</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">League Leaderboard</h1>
         <p className="text-muted-foreground text-sm">Updated live after every match.</p>
       </header>
       <Card className="overflow-x-auto p-0">

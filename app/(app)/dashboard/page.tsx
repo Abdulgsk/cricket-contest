@@ -21,7 +21,7 @@ export default async function Dashboard() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold">Hey, {me.username} 👋</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Hey, {me.username} 👋</h1>
         <p className="text-muted-foreground text-sm">Your fantasy command centre.</p>
       </header>
 
@@ -58,7 +58,7 @@ export default async function Dashboard() {
             {next && (
               <Link
                 href={`/matches/${String(next._id)}`}
-                className="rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold glow"
+                className="rounded-xl bg-primary text-primary-foreground px-6 py-3 md:px-4 md:py-2 text-sm font-semibold glow"
               >
                 Predict →
               </Link>

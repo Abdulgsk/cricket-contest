@@ -14,7 +14,7 @@ function MatchCard({ m, completed }: { m: MatchLean; completed?: boolean }) {
     <Link href={`/matches/${String(m._id)}`}>
       <Card className="hover:scale-[1.01] transition cursor-pointer">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-lg font-bold">
+          <div className="flex items-center gap-2 text-base md:text-lg font-bold">
             <TeamLogo name={m.teamA} size={28} />
             <span>{m.teamA}</span>
             <span className="text-muted-foreground text-sm">vs</span>
@@ -62,7 +62,7 @@ export default async function MatchesPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold">Matches</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Matches</h1>
         <p className="text-muted-foreground text-sm">All scheduled, live and completed games.</p>
       </header>
 

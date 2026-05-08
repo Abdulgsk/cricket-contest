@@ -39,13 +39,13 @@ export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
       </aside>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 glass border-t border-border flex justify-around py-2 px-2">
-        {items.slice(0, 5).map((it) => (
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 glass border-t border-border flex justify-around py-2 px-2 overflow-x-auto">
+        {items.map((it) => (
           <Link
             key={it.href}
             href={it.href}
             className={cn(
-              "flex-1 text-center text-[10px] font-medium py-1.5 rounded-lg",
+              "flex-shrink-0 text-center text-[10px] font-medium py-2 px-2 rounded-lg min-w-0",
               path === it.href ? "text-primary" : "text-muted-foreground"
             )}
           >

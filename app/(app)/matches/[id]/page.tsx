@@ -36,10 +36,10 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       <Card className="glow">
         <div className="flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-2 text-3xl font-bold">
+            <div className="flex items-center gap-2 text-2xl md:text-3xl font-bold">
               <TeamLogo name={match.teamA} size={40} />
               <span>{match.teamA}</span>
-              <span className="text-muted-foreground text-base">vs</span>
+              <span className="text-muted-foreground text-base md:text-lg">vs</span>
               <TeamLogo name={match.teamB} size={40} />
               <span>{match.teamB}</span>
             </div>

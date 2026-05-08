@@ -111,7 +111,7 @@ export function PredictionForm({
         <PlayerSelect name="topBowler" players={players} />
       </div>
 
-      <Button variant="glow" className="w-full" disabled={pending}>
+      <Button variant="glow" className="w-full h-12 md:h-10" disabled={pending}>
         {pending ? "Locking…" : "🔒 Lock my prediction"}
       </Button>
     </form>
@@ -124,7 +124,7 @@ function PlayerSelect({ name, players }: { name: string; players: string[] }) {
     <>
       <input type="hidden" name={name} value={v} required />
       <select
-        className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm"
+        className="h-12 md:h-10 w-full rounded-xl border border-border bg-card px-3 text-sm"
         value={v}
         onChange={(e) => setV(e.target.value)}
         required
