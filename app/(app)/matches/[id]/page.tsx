@@ -109,6 +109,24 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
               }
             />
           )}
+
+          {/* Contest link (admin-managed) */}
+          <div className="mt-4 pt-4 border-t border-border">
+            {match.contestUrl ? (
+              <a
+                href={match.contestUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full rounded-xl bg-gradient-to-r from-pink-500 to-sky-500 px-4 py-3 text-sm font-semibold text-white glow hover:opacity-90 transition"
+              >
+                🏏 Click here to join the contest →
+              </a>
+            ) : (
+              <p className="text-xs text-center text-muted-foreground rounded-xl bg-muted/30 px-3 py-2">
+                ⚠️ No contest link yet — please ask the admin to add one.
+              </p>
+            )}
+          </div>
         </Card>
 
         <Card>

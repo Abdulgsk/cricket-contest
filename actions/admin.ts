@@ -65,6 +65,32 @@ export async function lockMatchAction(matchId: string) {
   revalidatePath(`/matches/${matchId}`);
 }
 
+const ContestUrlSchema = z.object({
+  matchId: z.string().min(1),
+  contestUrl: z.string().url().or(z.literal("")),
+});
+
+export async function updateContestUrlAction(payload: unknown) {
+  const me = await requireRole("admin", "superadmin");
+  const parsed = ContestUrlSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Please enter a valid URL" };
+  await connectDB();
+  const { matchId, contestUrl } = parsed.data;
+  await Match.updateOne(
+    { _id: matchId },
+    contestUrl ? { contestUrl } : { $unset: { contestUrl: 1 } }
+  );
+  await AuditLog.create({
+    actorId: me._id,
+    action: "match.contestUrl",
+    meta: { matchId, contestUrl },
+  });
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath(`/admin/matches/${matchId}/result`);
+  revalidatePath("/predictions");
+  return { ok: true as const };
+}
+
 const MatchModesSchema = z.object({
   matchId: z.string().min(1),
   doublePoints: z.boolean(),

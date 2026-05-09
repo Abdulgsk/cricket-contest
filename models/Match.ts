@@ -36,6 +36,7 @@ export interface IMatch {
   predictionMadness?: boolean;
   predictionsLocked: boolean;
   resultsEntered: boolean;
+  contestUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -84,6 +85,7 @@ const MatchSchema = new Schema<IMatch>(
     predictionMadness: { type: Boolean, default: false },
     predictionsLocked: { type: Boolean, default: false },
     resultsEntered: { type: Boolean, default: false },
+    contestUrl: { type: String },
   },
   { timestamps: true }
 );

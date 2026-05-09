@@ -37,7 +37,7 @@ export default async function Dashboard() {
             {myRow ? ordinal(myIdx + 1) : "—"}
           </div>
           <div className="mt-2 text-sm text-muted-foreground">
-            {myRow?.totalPoints ?? 0} points · {myRow?.wins ?? 0} wins · {myRow?.top3 ?? 0} top-3
+            {myRow?.totalPoints ?? 0} points · <span className="text-base">🥇</span> {myRow?.wins ?? 0} · <span className="text-base">🥈</span> {myRow?.silver ?? 0} · <span className="text-base">🥉</span> {myRow?.bronze ?? 0}
           </div>
         </Card>
 

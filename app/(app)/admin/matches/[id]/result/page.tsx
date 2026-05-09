@@ -11,6 +11,7 @@ import { CustomPoolEditor } from "@/components/admin/custom-pool-editor";
 import { RefreshSquadsButton } from "@/components/admin/refresh-squads-button";
 import { MatchModesPanel } from "@/components/admin/match-modes-panel";
 import { PredictionResetPanel } from "@/components/admin/prediction-reset-panel";
+import { ContestUrlForm } from "@/components/admin/contest-url-form";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
 
@@ -64,6 +65,8 @@ export default async function AdminMatchResultPage({
           predictionMadness: match.predictionMadness,
         }}
       />
+
+      <ContestUrlForm matchId={id} initial={match.contestUrl} />
 
       {!matchStarted && (
         <PredictionResetPanel

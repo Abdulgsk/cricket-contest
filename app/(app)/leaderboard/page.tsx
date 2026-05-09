@@ -24,8 +24,9 @@ export default async function LeaderboardPage() {
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">Predictions</th>
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">Bonus</th>
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">Penalty</th>
-              <th className="p-2 sm:p-3 text-right hidden sm:table-cell">W</th>
-              <th className="p-2 sm:p-3 text-right hidden sm:table-cell">T3</th>
+              <th className="p-2 sm:p-3 text-center hidden sm:table-cell text-base" title="Gold (1st place finishes)">🥇</th>
+              <th className="p-2 sm:p-3 text-center hidden sm:table-cell text-base" title="Silver (2nd place finishes)">🥈</th>
+              <th className="p-2 sm:p-3 text-center hidden sm:table-cell text-base" title="Bronze (3rd place finishes)">🥉</th>
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">Avg</th>
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">Missed</th>
             </tr>
@@ -58,8 +59,15 @@ export default async function LeaderboardPage() {
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell">{r.predictionPoints}</td>
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell text-success">+{r.bonusPoints}</td>
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell text-danger">{r.penaltyPoints}</td>
-                  <td className="p-2 sm:p-3 text-right hidden sm:table-cell">{r.wins}</td>
-                  <td className="p-2 sm:p-3 text-right hidden sm:table-cell">{r.top3}</td>
+                  <td className="p-2 sm:p-3 text-center hidden sm:table-cell">
+                    {r.wins > 0 ? <span className="font-semibold text-yellow-400 text-base sm:text-lg">🥇 {r.wins}</span> : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="p-2 sm:p-3 text-center hidden sm:table-cell">
+                    {r.silver > 0 ? <span className="font-semibold text-zinc-300 text-base sm:text-lg">🥈 {r.silver}</span> : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="p-2 sm:p-3 text-center hidden sm:table-cell">
+                    {r.bronze > 0 ? <span className="font-semibold text-amber-600 text-base sm:text-lg">🥉 {r.bronze}</span> : <span className="text-muted-foreground">—</span>}
+                  </td>
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell">
                     {r.averageFinish ? r.averageFinish.toFixed(1) : "—"}
                   </td>
