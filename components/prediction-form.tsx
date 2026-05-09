@@ -10,17 +10,20 @@ export function PredictionForm({
   teamA,
   teamB,
   players: initialPlayers,
+  initial,
 }: {
   matchId: string;
   teamA: string;
   teamB: string;
   players?: string[];
+  initial?: { winner: string; topBatter: string; topBowler: string };
 }) {
   const [pending, start] = useTransition();
-  const [winner, setWinner] = useState<string>(teamA);
+  const [winner, setWinner] = useState<string>(initial?.winner ?? teamA);
   const [players, setPlayers] = useState<string[]>(initialPlayers ?? []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isEditing = !!initial;
 
   const fetchPlayers = useCallback(async () => {
     setLoading(true);
@@ -37,6 +40,7 @@ export function PredictionForm({
 
   // Auto-load on first mount if not already provided.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!players.length) void fetchPlayers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -71,15 +75,15 @@ export function PredictionForm({
         fd.set("winner", winner);
         start(async () => {
           const r = await submitPredictionAction(fd);
-          if (r.ok) toast.success("Prediction locked in 🔒");
+          if (r.ok) toast.success(isEditing ? "Prediction updated 📝" : "Prediction submitted 🎯");
           else toast.error(r.error);
         });
       }}
       className="space-y-3"
     >
       <input type="hidden" name="matchId" value={matchId} />
-      <p className="text-xs text-warning">
-        ⚠️ Once submitted, your prediction cannot be edited (admin can reset before match starts).
+      <p className="text-xs text-muted-foreground">
+        ✏️ You can update your prediction anytime until the match starts.
       </p>
 
       <div>
@@ -104,22 +108,24 @@ export function PredictionForm({
 
       <div className="space-y-1.5">
         <Label htmlFor="topBatter">Top Batter</Label>
-        <PlayerSelect name="topBatter" players={players} />
+        <PlayerSelect name="topBatter" players={players} initial={initial?.topBatter} />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="topBowler">Top Bowler</Label>
-        <PlayerSelect name="topBowler" players={players} />
+        <PlayerSelect name="topBowler" players={players} initial={initial?.topBowler} />
       </div>
 
       <Button variant="glow" className="w-full h-12 md:h-11" loading={pending}>
-        {pending ? "Locking…" : "🔒 Lock my prediction"}
+        {pending
+          ? isEditing ? "Updating…" : "Locking…"
+          : isEditing ? "📝 Update prediction" : "🎯 Submit prediction"}
       </Button>
     </form>
   );
 }
 
-function PlayerSelect({ name, players }: { name: string; players: string[] }) {
-  const [v, setV] = useState("");
+function PlayerSelect({ name, players, initial }: { name: string; players: string[]; initial?: string }) {
+  const [v, setV] = useState(initial ?? "");
   return (
     <>
       <input type="hidden" name={name} value={v} required />

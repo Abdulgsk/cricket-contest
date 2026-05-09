@@ -17,17 +17,17 @@ export default async function LeaderboardPage() {
         <table className="w-full text-sm">
           <thead className="text-xs uppercase tracking-wider text-muted-foreground">
             <tr className="text-left">
-              <th className="p-3">#</th>
-              <th className="p-3">Player</th>
-              <th className="p-3 text-right">Total</th>
-              <th className="p-3 text-right hidden md:table-cell">League</th>
-              <th className="p-3 text-right hidden md:table-cell">Predictions</th>
-              <th className="p-3 text-right hidden md:table-cell">Bonus</th>
-              <th className="p-3 text-right hidden md:table-cell">Penalty</th>
-              <th className="p-3 text-right">W</th>
-              <th className="p-3 text-right">T3</th>
-              <th className="p-3 text-right hidden md:table-cell">Avg</th>
-              <th className="p-3 text-right hidden md:table-cell">Missed</th>
+              <th className="p-2 sm:p-3">#</th>
+              <th className="p-2 sm:p-3">Player</th>
+              <th className="p-2 sm:p-3 text-right">Total</th>
+              <th className="p-2 sm:p-3 text-right hidden md:table-cell">League</th>
+              <th className="p-2 sm:p-3 text-right hidden md:table-cell">Predictions</th>
+              <th className="p-2 sm:p-3 text-right hidden md:table-cell">Bonus</th>
+              <th className="p-2 sm:p-3 text-right hidden md:table-cell">Penalty</th>
+              <th className="p-2 sm:p-3 text-right hidden sm:table-cell">W</th>
+              <th className="p-2 sm:p-3 text-right hidden sm:table-cell">T3</th>
+              <th className="p-2 sm:p-3 text-right hidden md:table-cell">Avg</th>
+              <th className="p-2 sm:p-3 text-right hidden md:table-cell">Missed</th>
             </tr>
           </thead>
           <tbody>
@@ -38,32 +38,32 @@ export default async function LeaderboardPage() {
                   key={String(r.userId)}
                   className={mine ? "bg-primary/10" : i % 2 ? "bg-muted/20" : ""}
                 >
-                  <td className="p-3 font-bold">
+                  <td className="p-2 sm:p-3 font-bold">
                     {i === 0 ? "🏆" : i + 1}
                   </td>
-                  <td className="p-3">
+                  <td className="p-2 sm:p-3">
                     <Link
                       href={`/players/${String(r.userId)}`}
                       className="hover:underline"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{r.username}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium truncate">{r.username}</span>
                         {mine && <Badge tone="accent">You</Badge>}
                       </div>
-                      <div className="text-xs text-muted-foreground">@{r.handle}</div>
+                      <div className="text-xs text-muted-foreground truncate">@{r.handle}</div>
                     </Link>
                   </td>
-                  <td className="p-3 text-right font-bold text-primary">{r.totalPoints}</td>
-                  <td className="p-3 text-right hidden md:table-cell">{r.leaguePoints}</td>
-                  <td className="p-3 text-right hidden md:table-cell">{r.predictionPoints}</td>
-                  <td className="p-3 text-right hidden md:table-cell text-success">+{r.bonusPoints}</td>
-                  <td className="p-3 text-right hidden md:table-cell text-danger">{r.penaltyPoints}</td>
-                  <td className="p-3 text-right">{r.wins}</td>
-                  <td className="p-3 text-right">{r.top3}</td>
-                  <td className="p-3 text-right hidden md:table-cell">
+                  <td className="p-2 sm:p-3 text-right font-bold text-primary">{r.totalPoints}</td>
+                  <td className="p-2 sm:p-3 text-right hidden md:table-cell">{r.leaguePoints}</td>
+                  <td className="p-2 sm:p-3 text-right hidden md:table-cell">{r.predictionPoints}</td>
+                  <td className="p-2 sm:p-3 text-right hidden md:table-cell text-success">+{r.bonusPoints}</td>
+                  <td className="p-2 sm:p-3 text-right hidden md:table-cell text-danger">{r.penaltyPoints}</td>
+                  <td className="p-2 sm:p-3 text-right hidden sm:table-cell">{r.wins}</td>
+                  <td className="p-2 sm:p-3 text-right hidden sm:table-cell">{r.top3}</td>
+                  <td className="p-2 sm:p-3 text-right hidden md:table-cell">
                     {r.averageFinish ? r.averageFinish.toFixed(1) : "—"}
                   </td>
-                  <td className="p-3 text-right hidden md:table-cell">{r.missed}</td>
+                  <td className="p-2 sm:p-3 text-right hidden md:table-cell">{r.missed}</td>
                 </tr>
               );
             })}

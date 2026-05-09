@@ -4,7 +4,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 
 const PROTECTED = ["/dashboard", "/leaderboard", "/matches", "/predictions", "/profile", "/analytics", "/admin"];
-const ADMIN_ONLY = ["/admin"];
 const AUTH_PAGES = ["/login", "/signup", "/forgot-password"];
 
 export function proxy(req: NextRequest) {
@@ -24,11 +23,11 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (ADMIN_ONLY.some((p) => pathname.startsWith(p))) {
-    if (!session || (session.role !== "admin" && session.role !== "superadmin")) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-  }
+  // Note: role-based access for /admin is enforced by the admin layout via
+  // `requireRole`, which reads the current role from the database. We don't
+  // check role here because the JWT in the cookie can be stale (e.g. right
+  // after a user is promoted to admin) and would otherwise lock them out
+  // until they log out and back in.
 
   return NextResponse.next();
 }

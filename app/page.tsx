@@ -8,7 +8,7 @@ export default async function Landing() {
     <main className="flex flex-1 flex-col">
       <header className="flex items-center justify-between p-6 max-w-6xl mx-auto w-full">
         <Link href="/" className="font-bold text-xl tracking-tight">
-          🏏 <span className="bg-gradient-to-r from-pink-400 to-sky-400 bg-clip-text text-transparent">Fantasy 13</span>
+          🏏 <span className="bg-gradient-to-r from-pink-400 to-sky-400 bg-clip-text text-transparent">GullyXI</span>
         </Link>
         <div className="flex items-center gap-3">
           {s ? (
@@ -22,16 +22,16 @@ export default async function Landing() {
         </div>
       </header>
 
-      <section className="flex-1 flex flex-col items-center text-center px-6 py-20 max-w-4xl mx-auto">
+      <section className="flex-1 flex flex-col items-center text-center px-6 py-12 sm:py-20 max-w-4xl mx-auto">
         <span className="text-xs font-bold tracking-[0.2em] text-pink-400 uppercase">Private League · 13 Players</span>
-        <h1 className="mt-4 text-5xl md:text-7xl font-extrabold tracking-tight bg-gradient-to-br from-white via-pink-200 to-sky-300 bg-clip-text text-transparent">
+        <h1 className="mt-4 text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight bg-gradient-to-br from-white via-pink-200 to-sky-300 bg-clip-text text-transparent">
           The unofficial Dream11 league HQ.
         </h1>
-        <p className="mt-6 text-lg text-muted-foreground max-w-2xl">
+        <p className="mt-6 text-base sm:text-lg text-muted-foreground max-w-2xl">
           Track ranks, bonuses, penalties and drama after every IPL match. Lock predictions in
           suspense. Crown the champion of 13.
         </p>
-        <div className="mt-10 flex gap-4">
+        <div className="mt-8 sm:mt-10 flex flex-wrap justify-center gap-3 sm:gap-4">
           <Link href="/signup"><Button variant="glow" size="lg">Get Started</Button></Link>
           <Link href="/rules"><Button variant="outline" size="lg">View Rules</Button></Link>
         </div>

@@ -9,7 +9,7 @@ export default async function AnalyticsPage() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-3xl font-bold">Analytics</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Analytics</h1>
         <p className="text-muted-foreground text-sm">League-wide insights & charts.</p>
       </header>
       <Card>

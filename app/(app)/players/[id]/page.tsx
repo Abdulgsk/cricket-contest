@@ -8,6 +8,7 @@ import { Prediction } from "@/models/Prediction";
 import { User } from "@/models/User";
 import { Card, Badge } from "@/components/ui/card";
 import { TeamLogo } from "@/components/team-logo";
+import { PlayerCharts, type PlayerChartRow } from "@/components/player-charts";
 import { formatDate } from "@/lib/utils";
 import { PREDICTION_POINTS } from "@/lib/constants";
 
@@ -159,14 +160,42 @@ export default async function PlayerDetailPage({
     { league: 0, bonus: 0, penalty: 0, pred: 0 }
   );
 
+  // Chart data — oldest → newest with running cumulative league points
+  const chronological = [...rows].reverse();
+  const teamShort = (s: string) =>
+    s
+      .split(/\s+/)
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 4)
+      .toUpperCase();
+  const chartData: PlayerChartRow[] = [];
+  let cumulative = 0;
+  for (const r of chronological) {
+    cumulative += r.leaguePoints;
+    const label = r.match
+      ? `${teamShort(r.match.teamA)} v ${teamShort(r.match.teamB)}`
+      : "—";
+    chartData.push({
+      label,
+      date: r.match?.startTime ? new Date(r.match.startTime).getTime() : 0,
+      league: r.leaguePoints,
+      prediction: r.predPoints,
+      bonus: r.bonus,
+      penalty: r.penalty,
+      rank: r.rank,
+      cumulative,
+    });
+  }
+
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{user.username}</h1>
-          <p className="text-muted-foreground text-sm">@{user.userId}</p>
+      <header className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <h1 className="text-2xl md:text-3xl font-bold truncate">{user.username}</h1>
+          <p className="text-muted-foreground text-sm truncate">@{user.userId}</p>
         </div>
-        <Link href="/leaderboard" className="text-sm text-muted-foreground hover:text-foreground">
+        <Link href="/leaderboard" className="text-sm text-muted-foreground hover:text-foreground shrink-0">
           ← Leaderboard
         </Link>
       </header>
@@ -189,6 +218,28 @@ export default async function PlayerDetailPage({
           <div className="text-2xl font-bold text-danger">{totals.penalty}</div>
         </Card>
       </div>
+
+      {chartData.length > 0 ? (
+        <Card>
+          <h2 className="font-semibold mb-3">📊 {user.username}&apos;s stats</h2>
+          <PlayerCharts
+            data={chartData}
+            totals={{
+              league: totals.league,
+              prediction: totals.pred,
+              bonus: totals.bonus,
+              penalty: totals.penalty,
+            }}
+          />
+        </Card>
+      ) : (
+        <Card>
+          <h2 className="font-semibold mb-2">📊 {user.username}&apos;s stats</h2>
+          <p className="text-sm text-muted-foreground">
+            Charts will appear here once match results are scored.
+          </p>
+        </Card>
+      )}
 
       <h2 className="text-xl font-semibold mt-4">Match-by-match breakdown</h2>
       {rows.length === 0 && (

@@ -60,6 +60,7 @@ export function ResultEntryForm({
   }, [matchId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!players.length) void fetchPlayers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

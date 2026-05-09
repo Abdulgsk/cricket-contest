@@ -4,7 +4,7 @@ import { Prediction } from "@/models/Prediction";
 import { PredictionAuditLog } from "@/models/PredictionAuditLog";
 import mongoose from "mongoose";
 
-/** Submit a prediction. Locks once submitted; cannot be edited. */
+/** Submit or update a prediction. Editable until the match starts (or admin lock). */
 export async function submitPrediction(args: {
   userId: string;
   matchId: string;
@@ -18,15 +18,29 @@ export async function submitPrediction(args: {
   if (match.predictionsLocked || match.startTime <= new Date()) {
     throw new Error("Predictions are locked for this match");
   }
+
   const existing = await Prediction.findOne({ matchId: args.matchId, userId: args.userId });
-  if (existing) throw new Error("You've already submitted predictions for this match (locked)");
+  const data = {
+    winner: args.winner.trim(),
+    topBatter: args.topBatter.trim(),
+    topBowler: args.topBowler.trim(),
+  };
+
+  if (existing) {
+    existing.set(data);
+    await existing.save();
+    await PredictionAuditLog.create({
+      userId: args.userId,
+      matchId: args.matchId,
+      actionType: "update",
+    });
+    return existing;
+  }
 
   const created = await Prediction.create({
     matchId: args.matchId,
     userId: args.userId,
-    winner: args.winner.trim(),
-    topBatter: args.topBatter.trim(),
-    topBowler: args.topBowler.trim(),
+    ...data,
   });
   await PredictionAuditLog.create({
     userId: args.userId,

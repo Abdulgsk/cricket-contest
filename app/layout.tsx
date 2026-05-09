@@ -7,7 +7,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "IPL Fantasy League — 13 Friends",
+  title: "GullyXI — IPL League for the Squad",
   description: "Private Dream11 league management, leaderboards, predictions, bonuses & drama.",
 };
 

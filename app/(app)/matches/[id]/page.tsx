@@ -76,26 +76,37 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       <div className="grid md:grid-cols-2 gap-4">
         <Card>
           <h2 className="font-semibold mb-3">Your Prediction</h2>
-          {myPred ? (
-            <div className="space-y-2 text-sm">
-              <p className="text-success text-xs">🔒 LOCKED — cannot be edited.</p>
-              <Field label="Winner" value={myPred.winner} />
-              <Field label="Top batter" value={myPred.topBatter} />
-              <Field label="Top bowler" value={myPred.topBowler} />
-              {myPred.scored && (
-                <div className="mt-3 rounded-xl bg-success/10 p-3 text-success">
-                  Earned {myPred.pointsAwarded} prediction points
-                </div>
-              )}
-            </div>
-          ) : matchStarted ? (
-            <p className="text-sm text-muted-foreground">You did not submit a prediction in time.</p>
+          {matchStarted ? (
+            myPred ? (
+              <div className="space-y-2 text-sm">
+                <p className="text-success text-xs">🔒 LOCKED — match has started.</p>
+                <Field label="Winner" value={myPred.winner} />
+                <Field label="Top batter" value={myPred.topBatter} />
+                <Field label="Top bowler" value={myPred.topBowler} />
+                {myPred.scored && (
+                  <div className="mt-3 rounded-xl bg-success/10 p-3 text-success">
+                    Earned {myPred.pointsAwarded} prediction points
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">You did not submit a prediction in time.</p>
+            )
           ) : (
             <PredictionForm
               matchId={id}
               teamA={match.teamA}
               teamB={match.teamB}
               players={(match.players ?? []).map((p) => p.name)}
+              initial={
+                myPred
+                  ? {
+                      winner: myPred.winner,
+                      topBatter: myPred.topBatter,
+                      topBowler: myPred.topBowler,
+                    }
+                  : undefined
+              }
             />
           )}
         </Card>

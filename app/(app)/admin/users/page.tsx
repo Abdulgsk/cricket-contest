@@ -16,8 +16,8 @@ export default async function AdminUsers() {
           <tr className="text-left">
             <th className="p-2">User</th>
             <th className="p-2">Role</th>
-            <th className="p-2">WhatsApp</th>
-            <th className="p-2">Joined</th>
+            <th className="p-2 hidden sm:table-cell">WhatsApp</th>
+            <th className="p-2 hidden md:table-cell">Joined</th>
             {me.role === "superadmin" && <th className="p-2">Actions</th>}
           </tr>
         </thead>
@@ -33,8 +33,8 @@ export default async function AdminUsers() {
                   {u.role}
                 </Badge>
               </td>
-              <td className="p-2 text-muted-foreground">{u.whatsapp ?? "—"}</td>
-              <td className="p-2 text-muted-foreground text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
+              <td className="p-2 text-muted-foreground hidden sm:table-cell">{u.whatsapp ?? "—"}</td>
+              <td className="p-2 text-muted-foreground text-xs hidden md:table-cell">{new Date(u.createdAt).toLocaleDateString()}</td>
               {me.role === "superadmin" && (
                 <td className="p-2">
                   <UserRoleControls userId={String(u._id)} role={u.role} self={String(u._id) === String(me._id)} />

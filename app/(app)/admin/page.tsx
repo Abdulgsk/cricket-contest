@@ -8,8 +8,7 @@ import { requireRole } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 
 export default async function AdminHome() {
-  const me = await requireRole("admin", "superadmin");
-  const isSuper = me.role === "superadmin";
+  await requireRole("admin", "superadmin");
   await connectDB();
   
   // Auto-update match statuses on page load
