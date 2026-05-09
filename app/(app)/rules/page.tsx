@@ -58,18 +58,31 @@ export default function RulesPage() {
           <li className="flex justify-between font-semibold"><span>All three correct (bonus)</span><span className="text-success">+{PREDICTION_POINTS.ALL_THREE_BONUS}</span></li>
         </ul>
         <p className="text-xs text-muted-foreground mt-3">
-          🔒 Predictions lock instantly on submit. Choices stay hidden — even from admins — until the
-          match starts. Admins can only RESET predictions (not view them) before match start.
+          ✏️ Predictions are editable until match start (and while admin has not manually locked the
+          match). Choices stay hidden — even from admins — until the match starts. Admins can only
+          reset predictions before match start; they still cannot view hidden choices.
         </p>
       </Card>
 
       <Card>
         <h2 className="font-semibold mb-3">⚡ Special Match Modes</h2>
-        <ul className="text-sm space-y-1.5 text-muted-foreground">
-          <li><strong className="text-foreground">2× Points:</strong> all rank points doubled.</li>
-          <li><strong className="text-foreground">No Bonus:</strong> bonuses disabled this match.</li>
-          <li><strong className="text-foreground">Chaos Match:</strong> bonus rules apply with extra drama.</li>
-          <li><strong className="text-foreground">Prediction Madness:</strong> prediction points apply with extra weight.</li>
+        <ul className="text-sm space-y-2 text-muted-foreground">
+          <li>
+            <strong className="text-foreground">2× Points:</strong> Doubles base rank points only.
+            Example: if rank points are +5, this mode makes it +10 for that match.
+          </li>
+          <li>
+            <strong className="text-foreground">No Bonus:</strong> Disables all bonus calculations for
+            that match. Penalties and base points still apply normally.
+          </li>
+          <li>
+            <strong className="text-foreground">Chaos Match:</strong> All awarded bonuses are doubled,
+            and the per-match bonus cap is also doubled.
+          </li>
+          <li>
+            <strong className="text-foreground">Prediction Madness:</strong> Final prediction points for
+            that match are multiplied by 2 after normal prediction scoring.
+          </li>
         </ul>
       </Card>
     </div>
