@@ -5,11 +5,15 @@ import { User } from "@/models/User";
 import { Card, Badge } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils";
 import { requireRole } from "@/lib/rbac";
+import { autoUpdateMatchStatuses } from "@/services/match-status";
 
 export default async function AdminHome() {
   const me = await requireRole("admin", "superadmin");
   const isSuper = me.role === "superadmin";
   await connectDB();
+  
+  // Auto-update match statuses on page load
+  await autoUpdateMatchStatuses();
   const [total, users, pending, upcoming, live, completed, next3] = await Promise.all([
     Match.countDocuments(),
     User.countDocuments(),
@@ -25,30 +29,30 @@ export default async function AdminHome() {
 
   return (
     <div className="space-y-4">
-      <div className="grid md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <div className="text-xs uppercase text-muted-foreground tracking-wider">Total matches</div>
-          <div className="text-4xl font-bold mt-2">{total}</div>
+          <div className="text-3xl sm:text-4xl font-bold mt-2">{total}</div>
           <div className="text-xs text-muted-foreground mt-1">
             {upcoming} upcoming · {live} live · {completed} done
           </div>
         </Card>
         <Card>
           <div className="text-xs uppercase text-muted-foreground tracking-wider">Players</div>
-          <div className="text-4xl font-bold mt-2">{users}</div>
+          <div className="text-3xl sm:text-4xl font-bold mt-2">{users}</div>
         </Card>
         <Card>
           <div className="text-xs uppercase text-muted-foreground tracking-wider">Pending results</div>
-          <div className="text-4xl font-bold mt-2 text-warning">{pending}</div>
-          <Link href="/admin/matches" className="text-xs text-pink-400 hover:underline">
+          <div className="text-3xl sm:text-4xl font-bold mt-2 text-warning">{pending}</div>
+          <Link href="/admin/matches" className="text-xs text-pink-400 hover:underline mt-1">
             Enter results →
           </Link>
         </Card>
         <Card>
           <div className="text-xs uppercase text-muted-foreground tracking-wider">Quick actions</div>
-          <div className="mt-2 flex flex-col gap-1 text-sm">
+          <div className="mt-2 flex flex-col gap-1.5 text-xs">
             <Link href="/admin/matches" className="text-pink-400 hover:underline">
-              ⚡ Sync IPL fixtures
+              ⚡ Sync IPL
             </Link>
             <a
               href="/api/admin/scrape-debug"
@@ -56,7 +60,7 @@ export default async function AdminHome() {
               rel="noreferrer"
               className="text-pink-400 hover:underline"
             >
-              🔍 Test scrapers (JSON)
+              🔍 Test scrapers
             </a>
           </div>
         </Card>

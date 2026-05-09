@@ -13,11 +13,16 @@ import { PredictionForm } from "@/components/prediction-form";
 import { CustomPoolsList } from "@/components/custom-pools-list";
 import { MatchPlayers } from "@/components/match/match-players";
 import { FetchPlayersButton } from "@/components/match/fetch-players-button";
+import { autoUpdateMatchStatuses } from "@/services/match-status";
 
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const me = await requireUser();
   await connectDB();
+  
+  // Auto-update match statuses on page load
+  await autoUpdateMatchStatuses();
+  
   const match = await Match.findById(id).lean();
   if (!match) notFound();
 

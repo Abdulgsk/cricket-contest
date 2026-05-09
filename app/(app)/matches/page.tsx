@@ -6,6 +6,7 @@ import { Card, Badge } from "@/components/ui/card";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
 import type { IMatch } from "@/models/Match";
+import { autoUpdateMatchStatuses } from "@/services/match-status";
 
 type MatchLean = Omit<IMatch, "_id"> & { _id: { toString(): string } };
 
@@ -50,6 +51,10 @@ function MatchCard({ m, completed }: { m: MatchLean; completed?: boolean }) {
 export default async function MatchesPage() {
   await requireUser();
   await connectDB();
+  
+  // Auto-update match statuses on page load
+  await autoUpdateMatchStatuses();
+  
   const all = await Match.find().sort({ startTime: 1 }).lean();
 
   const upcoming = all

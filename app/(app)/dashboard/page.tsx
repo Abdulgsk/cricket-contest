@@ -7,10 +7,15 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/card";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate, ordinal } from "@/lib/utils";
+import { autoUpdateMatchStatuses } from "@/services/match-status";
 
 export default async function Dashboard() {
   const me = await requireUser();
   await connectDB();
+  
+  // Auto-update match statuses on page load
+  await autoUpdateMatchStatuses();
+  
   const lb = await computeLeaderboard();
   const myIdx = lb.findIndex((r) => String(r.userId) === String(me._id));
   const myRow = myIdx >= 0 ? lb[myIdx] : null;

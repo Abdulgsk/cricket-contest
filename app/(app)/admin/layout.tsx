@@ -6,16 +6,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await requireRole("admin", "superadmin");
   return (
     <div className="space-y-4">
-      <Card className="flex items-center justify-between">
+      <Card className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">⚙️ Admin</h1>
           <p className="text-xs text-muted-foreground">Manage matches, results & users.</p>
         </div>
-        <nav className="flex gap-2 text-sm">
-          <Link href="/admin" className="rounded-lg px-3 py-1.5 hover:bg-muted">Overview</Link>
-          <Link href="/admin/matches" className="rounded-lg px-3 py-1.5 hover:bg-muted">Matches</Link>
-          <Link href="/admin/users" className="rounded-lg px-3 py-1.5 hover:bg-muted">Users</Link>
-          <Link href="/admin/settings" className="rounded-lg px-3 py-1.5 hover:bg-muted">Settings</Link>
+        <nav className="flex flex-wrap gap-1.5 text-sm">
+          <Link href="/admin" className="rounded-lg px-3 py-1.5 hover:bg-muted bg-muted/40 whitespace-nowrap">Overview</Link>
+          <Link href="/admin/matches" className="rounded-lg px-3 py-1.5 hover:bg-muted bg-muted/40 whitespace-nowrap">Matches</Link>
+          <Link href="/admin/users" className="rounded-lg px-3 py-1.5 hover:bg-muted bg-muted/40 whitespace-nowrap">Users</Link>
+          <Link href="/admin/settings" className="rounded-lg px-3 py-1.5 hover:bg-muted bg-muted/40 whitespace-nowrap">Settings</Link>
         </nav>
       </Card>
       {children}
