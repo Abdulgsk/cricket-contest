@@ -13,10 +13,23 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(() => {
+              try {
+                const t = localStorage.getItem('theme');
+                if (t === 'dark') document.documentElement.classList.add('dark');
+                if (t === 'light') document.documentElement.classList.remove('dark');
+              } catch {}
+            })();`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         {children}
-        <Toaster theme="dark" position="top-right" richColors />
+        <Toaster theme="system" position="top-right" richColors />
       </body>
     </html>
   );

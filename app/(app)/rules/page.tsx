@@ -45,8 +45,16 @@ export default function RulesPage() {
 
           <li className="flex justify-between"><span>Underdog · ranked 10–13 finish Top 2</span><span className="text-success">+{BONUSES.UNDERDOG}</span></li>
           <li className="flex justify-between"><span>Match Domination · win by 100+ FP</span><span className="text-success">+{BONUSES.MATCH_DOMINATION}</span></li>
-          <li className="flex justify-between"><span>Bounty · beat the bounty holder</span><span className="text-success">+{BONUSES.BOUNTY}</span></li>
         </ul>
+      </Card>
+
+      <Card>
+        <h2 className="font-semibold mb-3">🎯 Bounty (separate from bonuses)</h2>
+        <p className="text-sm text-muted-foreground">
+          Bounty is selected per match by admin. If no player is selected, that match has no bounty.
+          Any non-missed player who finishes above the selected bounty holder gets <span className="text-success">+{BONUSES.BOUNTY}</span> bounty points.
+          These points are added to final score, but they are tracked separately from bonus points.
+        </p>
       </Card>
 
       <Card>
@@ -59,7 +67,7 @@ export default function RulesPage() {
         </ul>
         <p className="text-xs text-muted-foreground mt-3">
           ✏️ Predictions are editable until match start (and while admin has not manually locked the
-          match). Choices stay hidden — even from admins — until the match starts. Admins can only
+          match). Choices stay hidden — even from admins — until the match is completed. Admins can only
           reset predictions before match start; they still cannot view hidden choices.
         </p>
       </Card>

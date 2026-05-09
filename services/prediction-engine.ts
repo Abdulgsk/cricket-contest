@@ -73,13 +73,13 @@ export async function adminResetPrediction(args: {
 
 /**
  * Aggregate-only suspense view: returns counts/percentages, never reveals
- * individual choices, until match has officially started.
+ * individual choices, until match is officially completed.
  */
 export async function getPredictionSuspense(matchId: string) {
   await connectDB();
   const match = await Match.findById(matchId);
   if (!match) throw new Error("Match not found");
-  const revealed = match.startTime <= new Date();
+  const revealed = match.status === "completed";
 
   const totalCount = await Prediction.countDocuments({ matchId });
 
@@ -97,7 +97,7 @@ export async function getPredictionSuspense(matchId: string) {
     return { revealed: false, totalCount, winnerSplit };
   }
 
-  // Once match started, full predictions are public
+  // Once match is completed, full predictions are public
   const all = await Prediction.find({ matchId }).populate("userId", "username userId").lean();
   return { revealed: true, totalCount, winnerSplit, predictions: all };
 }

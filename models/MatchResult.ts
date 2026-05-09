@@ -16,6 +16,7 @@ export interface IMatchResult {
   // Computed
   basePoints: number; // from rank table
   bonusPoints: number; // capped per match
+  bountyPoints: number; // separate from bonuses
   penaltyPoints: number;
   finalPoints: number;
   bonuses: IBonusBreakdown[];
@@ -38,6 +39,7 @@ const MatchResultSchema = new Schema<IMatchResult>(
     missed: { type: Boolean, default: false },
     basePoints: { type: Number, default: 0 },
     bonusPoints: { type: Number, default: 0 },
+    bountyPoints: { type: Number, default: 0 },
     penaltyPoints: { type: Number, default: 0 },
     finalPoints: { type: Number, default: 0 },
     bonuses: { type: [BreakdownSchema], default: [] },

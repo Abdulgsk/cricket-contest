@@ -11,7 +11,7 @@ export async function autoUpdateMatchStatuses() {
   const now = new Date();
 
   // Update upcoming → live
-  await Match.updateMany(
+  const upcomingToLive = await Match.updateMany(
     {
       status: "upcoming",
       startTime: { $lte: now },
@@ -20,11 +20,16 @@ export async function autoUpdateMatchStatuses() {
   );
 
   // Update live → completed if results are entered
-  await Match.updateMany(
+  const liveToCompleted = await Match.updateMany(
     {
       status: "live",
       resultsEntered: true,
     },
     { status: "completed" }
   );
+
+  return {
+    upcomingToLive: upcomingToLive.modifiedCount,
+    liveToCompleted: liveToCompleted.modifiedCount,
+  };
 }

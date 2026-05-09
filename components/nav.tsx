@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/actions/auth";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV = [
   { href: "/dashboard", label: "Home" },
@@ -61,6 +62,9 @@ export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
         </Link>
         {renderLinks()}
         <div className="mt-auto pt-4">
+          <ThemeToggle />
+        </div>
+        <div className="pt-2">
           <LogoutButton />
         </div>
       </aside>
@@ -109,6 +113,9 @@ export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
           </button>
           {renderLinks(() => setOpen(false))}
           <div className="mt-auto pt-4">
+            <ThemeToggle />
+          </div>
+          <div className="pt-2">
             <LogoutButton />
           </div>
         </aside>

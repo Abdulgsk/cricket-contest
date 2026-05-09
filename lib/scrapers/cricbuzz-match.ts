@@ -96,7 +96,8 @@ export interface CricbuzzListing {
   team2Short: string;
 }
 
-export async function scrapeCricbuzzListings(season: string): Promise<CricbuzzListing[]> {
+export async function scrapeCricbuzzListings(_season: string): Promise<CricbuzzListing[]> {
+  void _season;
   // Two sources, deduped by match id:
   //   1) IPL series page (desktop) — full team names in title attrs, includes
   //      recent + upcoming matches whose ids have been published.

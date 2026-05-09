@@ -21,10 +21,10 @@ export interface CustomPoolView {
 
 export function CustomPoolsList({
   pools,
-  matchStarted,
+  canPredict,
 }: {
   pools: CustomPoolView[];
-  matchStarted: boolean;
+  canPredict: boolean;
 }) {
   if (!pools.length) return null;
   return (
@@ -32,14 +32,14 @@ export function CustomPoolsList({
       <h2 className="font-semibold mb-3">🎯 Custom Prediction Pools</h2>
       <div className="space-y-4">
         {pools.map((p) => (
-          <PoolCard key={p.id} pool={p} matchStarted={matchStarted} />
+          <PoolCard key={p.id} pool={p} canPredict={canPredict} />
         ))}
       </div>
     </Card>
   );
 }
 
-function PoolCard({ pool, matchStarted }: { pool: CustomPoolView; matchStarted: boolean }) {
+function PoolCard({ pool, canPredict }: { pool: CustomPoolView; canPredict: boolean }) {
   const [pending, start] = useTransition();
   const submit = (choice: string) => {
     const fd = new FormData();
@@ -70,13 +70,13 @@ function PoolCard({ pool, matchStarted }: { pool: CustomPoolView; matchStarted: 
         )}
       </div>
 
-      {/* Pre-match: locked-in = show locked badge; otherwise option buttons */}
-      {!matchStarted && pool.myChoice && (
+      {/* Pre-lock window: locked-in = show locked badge; otherwise option buttons */}
+      {canPredict && pool.myChoice && (
         <div className="mt-3 rounded-lg bg-success/10 px-3 py-2 text-xs text-success">
           🔒 Locked in: <strong>{pool.myChoice}</strong>
         </div>
       )}
-      {!matchStarted && !pool.myChoice && (
+      {canPredict && !pool.myChoice && (
         <div className="mt-3 grid grid-cols-2 gap-2">
           {pool.options.map((o) => (
             <Button

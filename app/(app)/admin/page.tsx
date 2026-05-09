@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { Card, Badge } from "@/components/ui/card";
+import { AutomationTools } from "@/components/admin/automation-tools";
 import { formatDate } from "@/lib/utils";
 import { requireRole } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
@@ -96,23 +97,45 @@ export default async function AdminHome() {
         )}
       </Card>
 
+      <AutomationTools />
+
       <Card>
-        <h2 className="font-semibold mb-2">⏱ Automatic schedule</h2>
-        <ul className="text-xs text-muted-foreground space-y-1">
-          <li>
-            <code>00:30 UTC daily</code> · pulls fresh fixtures from Sportskeeda
-          </li>
-          <li>
-            <code>every 10 min</code> · polls Cricbuzz for live scores & marks completed matches
-          </li>
-          <li>
-            <code>every 15 min</code> · in-app reminders 75 min before each match
-          </li>
-        </ul>
-        <p className="text-[11px] text-muted-foreground mt-2">
-          Crons are wired in <code>vercel.json</code> and run automatically once deployed.
-        </p>
+        <h2 className="font-semibold mb-3">How Automations Work</h2>
+        <div className="space-y-3 text-sm text-muted-foreground">
+          <div>
+            <div className="font-medium text-foreground">Refresh Match Statuses</div>
+            <p>
+              Moves matches from upcoming to live when start time passes. Moves live to completed
+              only after results are entered.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium text-foreground">Sync Fixtures Now</div>
+            <p>
+              Pulls latest IPL fixtures from Sportskeeda, adds missing matches, and updates existing
+              upcoming fixtures safely.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium text-foreground">Force Complete</div>
+            <p>
+              Manually sets a selected match to completed and locks predictions immediately. This is
+              useful when you confirm the match has ended and want reveal to happen at match end.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium text-foreground">Automatic On Page Load</div>
+            <p>
+              Admin and match pages automatically run a status refresh so dashboard values stay
+              current when pages are opened.
+            </p>
+          </div>
+        </div>
       </Card>
+
     </div>
   );
 }

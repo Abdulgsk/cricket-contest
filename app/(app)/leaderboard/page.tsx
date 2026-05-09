@@ -40,7 +40,7 @@ export default async function LeaderboardPage() {
                   className={mine ? "bg-primary/10" : i % 2 ? "bg-muted/20" : ""}
                 >
                   <td className="p-2 sm:p-3 font-bold">
-                    {i === 0 ? "🏆" : i + 1}
+                    {r.position === 1 ? "🏆" : r.position}
                   </td>
                   <td className="p-2 sm:p-3">
                     <Link

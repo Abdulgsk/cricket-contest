@@ -17,8 +17,7 @@ export default async function Dashboard() {
   await autoUpdateMatchStatuses();
   
   const lb = await computeLeaderboard();
-  const myIdx = lb.findIndex((r) => String(r.userId) === String(me._id));
-  const myRow = myIdx >= 0 ? lb[myIdx] : null;
+  const myRow = lb.find((r) => String(r.userId) === String(me._id)) ?? null;
   const next = await Match.findOne({ status: "upcoming", startTime: { $gte: new Date() } })
     .sort({ startTime: 1 })
     .lean();
@@ -33,8 +32,8 @@ export default async function Dashboard() {
       <div className="grid md:grid-cols-3 gap-4">
         <Card className="md:col-span-1 glow">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">Your rank</div>
-          <div className="mt-2 text-5xl font-extrabold bg-gradient-to-br from-white to-pink-300 bg-clip-text text-transparent">
-            {myRow ? ordinal(myIdx + 1) : "—"}
+          <div className="mt-2 text-5xl font-extrabold bg-gradient-to-br from-foreground to-primary bg-clip-text text-transparent">
+            {myRow ? ordinal(myRow.position) : "—"}
           </div>
           <div className="mt-2 text-sm text-muted-foreground">
             {myRow?.totalPoints ?? 0} points · <span className="text-base">🥇</span> {myRow?.wins ?? 0} · <span className="text-base">🥈</span> {myRow?.silver ?? 0} · <span className="text-base">🥉</span> {myRow?.bronze ?? 0}
@@ -78,13 +77,13 @@ export default async function Dashboard() {
           <Link href="/leaderboard" className="text-xs text-muted-foreground hover:text-foreground">View full →</Link>
         </div>
         <ol className="space-y-2">
-          {lb.slice(0, 5).map((r, i) => (
+          {lb.slice(0, 5).map((r) => (
             <li
               key={String(r.userId)}
               className="flex items-center justify-between gap-2 rounded-xl bg-muted/40 px-3 sm:px-4 py-2"
             >
               <span className="flex items-center gap-2 sm:gap-3 min-w-0">
-                <Badge tone={i === 0 ? "warning" : "default"}>{i + 1}</Badge>
+                <Badge tone={r.position === 1 ? "warning" : "default"}>{r.position}</Badge>
                 <span className="font-medium truncate">{r.username}</span>
                 {String(r.userId) === String(me._id) && <Badge tone="accent">You</Badge>}
               </span>

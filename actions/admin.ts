@@ -179,6 +179,39 @@ export async function resetPredictionAction(matchId: string, userId: string) {
   revalidatePath(`/matches/${matchId}`);
 }
 
+const MatchBountySchema = z.object({
+  matchId: z.string().min(1),
+  bountyUserId: z.string().min(1).nullable(),
+  bountyReason: z.string().max(200).optional().or(z.literal("")),
+});
+
+export async function updateMatchBountyAction(payload: unknown) {
+  const me = await requireRole("admin", "superadmin");
+  const parsed = MatchBountySchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  await connectDB();
+  const { matchId, bountyUserId, bountyReason } = parsed.data;
+  if (bountyUserId) {
+    const reason = bountyReason?.trim() ?? "";
+    if (reason) {
+      await Match.updateOne({ _id: matchId }, { $set: { bountyUserId, bountyReason: reason } });
+    } else {
+      await Match.updateOne({ _id: matchId }, { $set: { bountyUserId }, $unset: { bountyReason: 1 } });
+    }
+  } else {
+    await Match.updateOne({ _id: matchId }, { $unset: { bountyUserId: 1, bountyReason: 1 } });
+  }
+  await AuditLog.create({
+    actorId: me._id,
+    action: "match.bounty",
+    meta: { matchId, bountyUserId, bountyReason },
+  });
+  revalidatePath(`/admin/matches/${matchId}/result`);
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath("/dashboard");
+  return { ok: true as const };
+}
+
 export async function setBountyAction(userId: string | null) {
   const me = await requireRole("admin", "superadmin");
   await connectDB();

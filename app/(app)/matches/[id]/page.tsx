@@ -133,7 +133,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           <h2 className="font-semibold mb-3">Suspense Pool</h2>
           <p className="text-xs text-muted-foreground mb-3">
             {suspense.totalCount} prediction{suspense.totalCount === 1 ? "" : "s"} submitted ·{" "}
-            {suspense.revealed ? "🔓 revealed" : "🔒 hidden until match starts"}
+            {suspense.revealed ? "🔓 revealed" : "🔒 hidden until match ends"}
           </p>
           <div className="space-y-2">
             {suspense.winnerSplit.map((w) => (
@@ -173,7 +173,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         </Card>
       </div>
 
-      <CustomPoolsList pools={pools} matchStarted={matchStarted} />
+      <CustomPoolsList pools={pools} canPredict={!matchStarted} />
 
       <MatchPlayers
         players={match.players}
@@ -195,6 +195,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
                   <th className="p-2 text-right">FP</th>
                   <th className="p-2 text-right">Base</th>
                   <th className="p-2 text-right">Bonus</th>
+                  <th className="p-2 text-right">Bounty</th>
                   <th className="p-2 text-right">Penalty</th>
                   <th className="p-2 text-right">Final</th>
                 </tr>
@@ -209,6 +210,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
                       <td className="p-2 text-right">{r.fantasyPoints}</td>
                       <td className="p-2 text-right">{r.basePoints}</td>
                       <td className="p-2 text-right text-success">+{r.bonusPoints}</td>
+                      <td className="p-2 text-right text-amber-300">+{r.bountyPoints ?? 0}</td>
                       <td className="p-2 text-right text-danger">{r.penaltyPoints}</td>
                       <td className="p-2 text-right font-bold text-primary">{r.finalPoints}</td>
                     </tr>

@@ -3,19 +3,14 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea, Label } from "@/components/ui/input";
-import { setAnnouncementAction, setBountyAction } from "@/actions/admin";
+import { setAnnouncementAction } from "@/actions/admin";
 
 export function SettingsForms({
   announcement,
-  bountyHolder,
-  users,
 }: {
   announcement: string;
-  bountyHolder: string;
-  users: { id: string; name: string; handle: string }[];
 }) {
   const [text, setText] = useState(announcement);
-  const [bounty, setBounty] = useState(bountyHolder);
   const [pending, start] = useTransition();
 
   return (
@@ -33,31 +28,6 @@ export function SettingsForms({
           }
         >
           Save announcement
-        </Button>
-      </div>
-
-      <div className="space-y-2">
-        <Label>Bounty holder (next player to beat them gets +3)</Label>
-        <select
-          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
-          value={bounty}
-          onChange={(e) => setBounty(e.target.value)}
-        >
-          <option value="">— No bounty —</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>{u.name} (@{u.handle})</option>
-          ))}
-        </select>
-        <Button
-          loading={pending}
-          onClick={() =>
-            start(async () => {
-              await setBountyAction(bounty || null);
-              toast.success("Bounty updated");
-            })
-          }
-        >
-          Save bounty
         </Button>
       </div>
     </div>

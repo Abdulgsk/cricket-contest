@@ -103,12 +103,12 @@ export async function scoreCustomPools(
   }
 }
 
-/** Suspense view for a match's custom pools. Hides choices until match starts. */
+/** Suspense view for a match's custom pools. Hides choices until match completes. */
 export async function getCustomPoolsForMatch(matchId: string, viewerId: string) {
   await connectDB();
   const match = await Match.findById(matchId);
   if (!match) return [];
-  const revealed = match.startTime <= new Date();
+  const revealed = match.status === "completed";
   const pools = await CustomPool.find({ matchId }).lean();
   const out = [] as Array<{
     id: string;

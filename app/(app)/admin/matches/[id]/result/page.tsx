@@ -12,6 +12,7 @@ import { RefreshSquadsButton } from "@/components/admin/refresh-squads-button";
 import { MatchModesPanel } from "@/components/admin/match-modes-panel";
 import { PredictionResetPanel } from "@/components/admin/prediction-reset-panel";
 import { ContestUrlForm } from "@/components/admin/contest-url-form";
+import { MatchBountyPanel } from "@/components/admin/match-bounty-panel";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
 
@@ -67,6 +68,17 @@ export default async function AdminMatchResultPage({
       />
 
       <ContestUrlForm matchId={id} initial={match.contestUrl} />
+
+      <MatchBountyPanel
+        matchId={id}
+        initialBountyUserId={match.bountyUserId ? String(match.bountyUserId) : ""}
+        initialReason={match.bountyReason ?? ""}
+        users={users.map((u) => ({
+          id: String(u._id),
+          name: u.username,
+          handle: u.userId,
+        }))}
+      />
 
       {!matchStarted && (
         <PredictionResetPanel

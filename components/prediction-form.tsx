@@ -1,8 +1,8 @@
 "use client";
-import { useTransition, useState, useEffect, useCallback } from "react";
+import { useTransition, useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/input";
+import { Input, Label } from "@/components/ui/input";
 import { submitPredictionAction, loadMatchPlayersAction } from "@/actions/predictions";
 
 export function PredictionForm({
@@ -126,22 +126,72 @@ export function PredictionForm({
 
 function PlayerSelect({ name, players, initial }: { name: string; players: string[]; initial?: string }) {
   const [v, setV] = useState(initial ?? "");
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const sortedPlayers = [...players].sort((a, b) => a.localeCompare(b));
+  const filteredPlayers = query.trim()
+    ? sortedPlayers.filter((p) => p.toLowerCase().includes(query.trim().toLowerCase()))
+    : sortedPlayers;
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!wrapperRef.current) return;
+      if (!wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
   return (
     <>
       <input type="hidden" name={name} value={v} required />
-      <select
-        className="h-12 md:h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
-        value={v}
-        onChange={(e) => setV(e.target.value)}
-        required
-      >
-        <option value="">— pick a player —</option>
-        {players.map((p) => (
-          <option key={p} value={p}>
-            {p}
-          </option>
-        ))}
-      </select>
+      <div ref={wrapperRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((s) => !s)}
+          className="h-12 md:h-11 w-full rounded-xl border border-border bg-card px-3 text-sm text-left flex items-center justify-between"
+        >
+          <span className={v ? "text-foreground" : "text-muted-foreground"}>{v || "— pick a player —"}</span>
+          <span className="text-muted-foreground">▾</span>
+        </button>
+
+        {open && (
+          <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-card p-2 shadow-xl space-y-2">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search player"
+              className="h-9"
+              autoFocus
+            />
+            <div className="max-h-52 overflow-auto space-y-1">
+              {filteredPlayers.length ? (
+                filteredPlayers.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      setV(p);
+                      setOpen(false);
+                      setQuery("");
+                    }}
+                    className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition ${
+                      v === p ? "bg-primary/15 text-primary" : "hover:bg-muted"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))
+              ) : (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">No players found.</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }

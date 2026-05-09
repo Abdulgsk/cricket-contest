@@ -6,7 +6,6 @@ import { Prediction } from "@/models/Prediction";
 import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
 import { BonusAuditLog } from "@/models/BonusAuditLog";
 import { User } from "@/models/User";
-import { getSettings } from "@/models/Settings";
 import {
   RANK_POINTS,
   PENALTIES,
@@ -52,13 +51,12 @@ export async function processMatchResults(
   const allowBonuses = !match.noBonus;
   const chaos = !!match.chaosMatch;
   const madness = !!match.predictionMadness;
+  const bountyId = match.bountyUserId ? String(match.bountyUserId) : null;
 
   // --- Snapshot leaderboard BEFORE this match (for movement & bonuses) ---
   const prevLb = await computeLeaderboard({ excludeMatchId: matchId });
-  const prevRankMap = new Map(prevLb.map((r, i) => [String(r.userId), i + 1]));
+  const prevRankMap = new Map(prevLb.map((r) => [String(r.userId), r.position]));
   const prevLeaderId = prevLb[0]?.userId ? String(prevLb[0].userId) : null;
-  const settings = await getSettings();
-  const bountyId = settings.bountyHolderUserId ? String(settings.bountyHolderUserId) : null;
 
   // --- Persist raw results & compute base+penalty per user ---
   const created: HydratedDocument<IMatchResult>[] = [];
@@ -108,6 +106,7 @@ export async function processMatchResults(
         penaltyPoints: penaltyTotal,
         penalties: penaltyBreak,
         bonusPoints: 0,
+        bountyPoints: 0,
         bonuses: [],
         finalPoints: base + penaltyTotal,
       },
@@ -123,10 +122,12 @@ export async function processMatchResults(
       results: created,
       prevRankMap,
       prevLeaderId,
-      bountyId,
       chaos,
     });
   }
+
+  // --- Bounty points (separate bucket, not part of bonuses) ---
+  await applyBountyPoints({ matchId, results: created, bountyId });
 
   // --- Score predictions for this match ---
   if (predictionResult) {
@@ -174,10 +175,9 @@ async function applyBonuses(args: {
   results: HydratedDocument<IMatchResult>[];
   prevRankMap: Map<string, number>;
   prevLeaderId: string | null;
-  bountyId: string | null;
   chaos: boolean;
 }) {
-  const { matchId, results, prevRankMap, prevLeaderId, bountyId, chaos } = args;
+  const { matchId, results, prevRankMap, prevLeaderId, chaos } = args;
   // In Chaos mode, every bonus value is doubled and the per-match cap is doubled too.
   const bonusMul = chaos ? 2 : 1;
   const cap = chaos ? MAX_BONUS_PER_MATCH * 2 : MAX_BONUS_PER_MATCH;
@@ -194,7 +194,7 @@ async function applyBonuses(args: {
 
   // Compute "after this match" leaderboard for comeback / king slayer / underdog
   const newLb = await computeLeaderboard();
-  const newRankMap = new Map(newLb.map((r, i) => [String(r.userId), i + 1]));
+  const newRankMap = new Map(newLb.map((r) => [String(r.userId), r.position]));
 
   for (const r of results) {
     const uid = String(r.userId);
@@ -237,14 +237,6 @@ async function applyBonuses(args: {
       );
     }
 
-    // Bounty: beat the bounty holder this match
-    if (bountyId && bountyId !== uid && !r.missed) {
-      const bountyRes = results.find((x) => String(x.userId) === bountyId);
-      if (bountyRes && !bountyRes.missed && r.rank < bountyRes.rank) {
-        add("bounty", BONUSES.BOUNTY, "Beat the bounty holder this match");
-      }
-    }
-
     // Consistency: 3 consecutive top-5 finishes (this match counts)
     if (!r.missed && top5.has(uid)) {
       const streak = await countConsecutiveTop5(uid, matchId);
@@ -279,6 +271,51 @@ async function applyBonuses(args: {
         explanation: b.reason,
       });
     }
+  }
+}
+
+async function applyBountyPoints(args: {
+  matchId: string;
+  results: HydratedDocument<IMatchResult>[];
+  bountyId: string | null;
+}) {
+  const { matchId, results, bountyId } = args;
+  if (!bountyId) {
+    for (const r of results) {
+      if (r.bountyPoints) {
+        r.bountyPoints = 0;
+        r.finalPoints = r.basePoints + r.penaltyPoints + r.bonusPoints;
+        await r.save();
+      }
+    }
+    return;
+  }
+
+  const bountyRes = results.find((x) => String(x.userId) === bountyId);
+  for (const r of results) {
+    const uid = String(r.userId);
+    let bountyPts = 0;
+    if (
+      uid !== bountyId &&
+      !r.missed &&
+      bountyRes &&
+      !bountyRes.missed &&
+      r.rank > 0 &&
+      bountyRes.rank > 0 &&
+      r.rank < bountyRes.rank
+    ) {
+      bountyPts = BONUSES.BOUNTY;
+      await BonusAuditLog.create({
+        userId: r.userId,
+        matchId,
+        bonusType: "bounty_match",
+        points: bountyPts,
+        explanation: "Beat the selected bounty holder for this match",
+      });
+    }
+    r.bountyPoints = bountyPts;
+    r.finalPoints = r.basePoints + r.penaltyPoints + r.bonusPoints + bountyPts;
+    await r.save();
   }
 }
 
@@ -343,6 +380,7 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
         totalPoints: { $sum: "$finalPoints" },
         basePoints: { $sum: "$basePoints" },
         bonusPoints: { $sum: "$bonusPoints" },
+        bountyPoints: { $sum: "$bountyPoints" },
         penaltyPoints: { $sum: "$penaltyPoints" },
         matches: { $sum: 1 },
         wins: { $sum: { $cond: [{ $eq: ["$rank", 1] }, 1, 0] } },
@@ -389,6 +427,7 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
       customPoolPoints: pool,
       basePoints: r.basePoints as number,
       bonusPoints: r.bonusPoints as number,
+      bountyPoints: (r.bountyPoints as number) ?? 0,
       penaltyPoints: r.penaltyPoints as number,
       matches: r.matches as number,
       wins: r.wins as number,
@@ -416,6 +455,7 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
         customPoolPoints: pool,
         basePoints: 0,
         bonusPoints: 0,
+        bountyPoints: 0,
         penaltyPoints: 0,
         matches: 0,
         wins: 0,
@@ -429,8 +469,20 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
     }
   }
 
-  merged.sort((a, b) => b.totalPoints - a.totalPoints);
-  return merged;
+  merged.sort((a, b) => {
+    if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+    return a.username.localeCompare(b.username);
+  });
+
+  let lastPoints: number | null = null;
+  let position = 0;
+  return merged.map((r, i) => {
+    if (lastPoints === null || r.totalPoints < lastPoints) {
+      position = i + 1;
+      lastPoints = r.totalPoints;
+    }
+    return { ...r, position };
+  });
 }
 
 export type LeaderboardRow = Awaited<ReturnType<typeof computeLeaderboard>>[number];

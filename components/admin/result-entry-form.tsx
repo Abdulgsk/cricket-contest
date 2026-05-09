@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition, useEffect, useCallback } from "react";
+import { useState, useTransition, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -43,6 +43,8 @@ export function ResultEntryForm({
   const [scoreSummary, setScoreSummary] = useState("");
   const [pending, start] = useTransition();
   const [players, setPlayers] = useState<string[]>(initialPlayers);
+  const [batterSearch, setBatterSearch] = useState("");
+  const [bowlerSearch, setBowlerSearch] = useState("");
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [playersError, setPlayersError] = useState<string | null>(null);
 
@@ -120,7 +122,22 @@ export function ResultEntryForm({
     });
   };
 
-  const hasPlayers = players.length > 0;
+  const sortedPlayers = useMemo(
+    () => [...players].sort((a, b) => a.localeCompare(b)),
+    [players]
+  );
+  const filteredBatterPlayers = useMemo(() => {
+    const q = batterSearch.trim().toLowerCase();
+    if (!q) return sortedPlayers;
+    return sortedPlayers.filter((p) => p.toLowerCase().includes(q));
+  }, [sortedPlayers, batterSearch]);
+  const filteredBowlerPlayers = useMemo(() => {
+    const q = bowlerSearch.trim().toLowerCase();
+    if (!q) return sortedPlayers;
+    return sortedPlayers.filter((p) => p.toLowerCase().includes(q));
+  }, [sortedPlayers, bowlerSearch]);
+
+  const hasPlayers = sortedPlayers.length > 0;
 
   return (
     <div className="space-y-4">
@@ -141,6 +158,12 @@ export function ResultEntryForm({
           </div>
           <div className="space-y-1.5">
             <Label>Top Batter</Label>
+            <Input
+              value={batterSearch}
+              onChange={(e) => setBatterSearch(e.target.value)}
+              placeholder="Search batter"
+              disabled={!hasPlayers}
+            />
             <select
               className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm disabled:opacity-60"
               value={predBatter}
@@ -148,7 +171,7 @@ export function ResultEntryForm({
               disabled={!hasPlayers}
             >
               <option value="">{hasPlayers ? "— pick player —" : "Players not fetched yet"}</option>
-              {players.map((p) => (
+              {filteredBatterPlayers.map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
@@ -157,6 +180,12 @@ export function ResultEntryForm({
           </div>
           <div className="space-y-1.5">
             <Label>Top Bowler</Label>
+            <Input
+              value={bowlerSearch}
+              onChange={(e) => setBowlerSearch(e.target.value)}
+              placeholder="Search bowler"
+              disabled={!hasPlayers}
+            />
             <select
               className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm disabled:opacity-60"
               value={predBowler}
@@ -164,7 +193,7 @@ export function ResultEntryForm({
               disabled={!hasPlayers}
             >
               <option value="">{hasPlayers ? "— pick player —" : "Players not fetched yet"}</option>
-              {players.map((p) => (
+              {filteredBowlerPlayers.map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
