@@ -17,7 +17,19 @@ export default async function AdminMatches() {
   // Auto-update match statuses on page load
   await autoUpdateMatchStatuses();
   
-  const matches = await Match.find().sort({ startTime: -1 }).lean();
+  const all = await Match.find().lean();
+
+  // Sort: live first, then upcoming (soonest first), then completed (most recent first)
+  const statusOrder = { live: 0, upcoming: 1, completed: 2 } as const;
+  const matches = all.sort((a, b) => {
+    const sa = statusOrder[a.status as keyof typeof statusOrder] ?? 3;
+    const sb = statusOrder[b.status as keyof typeof statusOrder] ?? 3;
+    if (sa !== sb) return sa - sb;
+    const ta = +new Date(a.startTime);
+    const tb = +new Date(b.startTime);
+    // upcoming/live: soonest first (asc); completed: most recent first (desc)
+    return a.status === "completed" ? tb - ta : ta - tb;
+  });
   return (
     <div className="space-y-4">
       <SyncIplPanel />
