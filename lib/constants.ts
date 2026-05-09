@@ -28,9 +28,9 @@ export const BONUSES = {
 export const MAX_BONUS_PER_MATCH = 10;
 
 export const PREDICTION_POINTS = {
-  WINNER: 5,
-  TOP_BATTER: 7,
-  TOP_BOWLER: 8,
+  WINNER: 3,
+  TOP_BATTER: 4,
+  TOP_BOWLER: 4,
   ALL_THREE_BONUS: 20,
 } as const;
 
