@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Nav role={me.role} />
       <div className="flex-1 flex flex-col min-w-0">
         {settings.announcement ? (
-          <div className="m-3 md:m-4 glass rounded-xl px-4 py-2 text-sm text-pink-300">
+          <div className="m-3 md:m-4 ml-14 md:ml-3 glass rounded-xl px-4 py-2 text-sm text-pink-300">
             📣 {settings.announcement}
           </div>
         ) : null}

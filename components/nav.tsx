@@ -65,68 +65,54 @@ export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
         </div>
       </aside>
 
-      {/* Mobile top bar with hamburger */}
-      <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3 py-2 glass border-b border-border">
-        <button
-          type="button"
-          aria-label="Open menu"
-          aria-expanded={open}
-          onClick={() => setOpen(true)}
-          className="p-2 rounded-lg hover:bg-muted"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-        <Link href="/" className="font-bold text-base">
-          🏏 <span className="bg-gradient-to-r from-pink-400 to-sky-400 bg-clip-text text-transparent">GullyXI</span>
-        </Link>
-        <span className="w-9" aria-hidden />
-      </header>
+      {/* Mobile hamburger button - top left, high z-index */}
+      <button
+        type="button"
+        className="md:hidden fixed top-4 left-3 z-50 p-2 rounded-lg hover:bg-muted"
+        aria-label="Open menu"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
 
       {/* Mobile drawer backdrop */}
-      <div
-        className={cn(
-          "md:hidden fixed inset-0 z-40 bg-black/50 transition-opacity",
-          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        )}
-        onClick={() => setOpen(false)}
-        aria-hidden
-      />
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/50 transition-opacity"
+          onClick={() => setOpen(false)}
+          aria-hidden
+        />
+      )}
 
-      {/* Mobile drawer */}
-      <aside
-        className={cn(
-          "md:hidden fixed top-0 left-0 z-50 h-full w-64 max-w-[80%] flex flex-col p-4 gap-2 border-r border-border bg-card transition-transform duration-200",
-          open ? "translate-x-0" : "-translate-x-full"
-        )}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Navigation"
-      >
-        <div className="flex items-center justify-between mb-4">
-          <Link href="/" className="font-bold text-lg px-2" onClick={() => setOpen(false)}>
-            🏏 <span className="bg-gradient-to-r from-pink-400 to-sky-400 bg-clip-text text-transparent">GullyXI</span>
-          </Link>
+      {/* Mobile drawer - only render when open */}
+      {open && (
+        <aside
+          className="md:hidden fixed top-0 left-0 z-50 h-full w-56 flex flex-col p-4 gap-3 border-r border-border bg-card animate-in slide-in-from-left duration-200"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation"
+        >
           <button
             type="button"
             aria-label="Close menu"
             onClick={() => setOpen(false)}
-            className="p-2 rounded-lg hover:bg-muted"
+            className="p-2 rounded-lg hover:bg-muted w-fit"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+              <path d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-        </div>
-        {renderLinks(() => setOpen(false))}
-        <div className="mt-auto pt-4">
-          <LogoutButton />
-        </div>
-      </aside>
+          {renderLinks(() => setOpen(false))}
+          <div className="mt-auto pt-4">
+            <LogoutButton />
+          </div>
+        </aside>
+      )}
     </>
   );
 }
