@@ -1,6 +1,9 @@
-// Ensure browsers are loaded from the build directory
+// Ensure browsers are loaded from a stable path next to this script
+import { fileURLToPath } from "node:url";
+import { dirname, resolve as resolvePath } from "node:path";
+const __dirname = dirname(fileURLToPath(import.meta.url));
 if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
-  process.env.PLAYWRIGHT_BROWSERS_PATH = "./.browsers";
+  process.env.PLAYWRIGHT_BROWSERS_PATH = resolvePath(__dirname, ".browsers");
 }
 
 import "dotenv/config";
