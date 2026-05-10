@@ -113,7 +113,7 @@ export async function resolveContestUrlFromInvite(
 
 export async function captureLeaderboardRequestFromManualClick(
   sessionCookie?: string,
-  startUrl = "https://www.my11circle.com/lobby/contests"
+  _startUrl = "https://www.my11circle.com/lobby/contests"
 ): Promise<CapturedLeaderboardRequest | null> {
   const page = await createPage();
   try {
@@ -150,6 +150,10 @@ export async function captureLeaderboardRequestFromManualClick(
 
           const headers = request.headers();
           const referer = headers.referer || page.url();
+          const isLeaderboardTriggered =
+            referer.includes("/leaderboard/") || page.url().includes("/leaderboard/");
+          if (!isLeaderboardTriggered) return;
+
           const currentCookieString =
             headers.cookie || sessionCookie?.trim() || "";
 

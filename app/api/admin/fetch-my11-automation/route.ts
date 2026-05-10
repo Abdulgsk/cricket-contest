@@ -7,7 +7,6 @@ import { fetchContestLeaderboard, normalizeMy11circleName } from "@/lib/my11circ
 import {
   captureLeaderboardRequestFromManualClick,
   loginToMy11Circle,
-  resolveContestUrlFromInvite,
 } from "@/lib/puppeteer-my11";
 import { getSession } from "@/lib/session";
 
@@ -151,39 +150,30 @@ export async function POST(req: NextRequest) {
         match.contestUrl
       );
 
-      if (captured) {
-        const resolvedUrl = `https://www.my11circle.com/lobby/contests/leaderboard/${captured.matchId}/${captured.contestId}`;
-        if (captured.sessionCookie) {
-          sessionCookie = captured.sessionCookie;
-          await Settings.updateOne(
-            { _id: settings._id },
-            {
-              my11sessionCookie: sessionCookie,
-              my11cookieExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            }
-          );
-        }
-        await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
-        leaderboard = await fetchContestLeaderboard(resolvedUrl, sessionCookie);
-      } else {
-        try {
-          leaderboard = await fetchContestLeaderboard(match.contestUrl, sessionCookie);
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "";
-          if (message.includes("Could not resolve contest link")) {
-            const resolvedUrl = await resolveContestUrlFromInvite(match.contestUrl, sessionCookie);
-            if (!resolvedUrl) {
-              throw new Error(
-                "Could not capture leaderboard request. After login, open the contest and wait for leaderboard to load, then retry Fetch Points."
-              );
-            }
-            await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
-            leaderboard = await fetchContestLeaderboard(resolvedUrl, sessionCookie);
-          } else {
-            throw e;
-          }
-        }
+      if (!captured) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "No manual leaderboard selection detected. Please open a contest leaderboard in the My11 window, then retry.",
+          } as FetchResponse,
+          { status: 400 }
+        );
       }
+
+      const resolvedUrl = `https://www.my11circle.com/lobby/contests/leaderboard/${captured.matchId}/${captured.contestId}`;
+      if (captured.sessionCookie) {
+        sessionCookie = captured.sessionCookie;
+        await Settings.updateOne(
+          { _id: settings._id },
+          {
+            my11sessionCookie: sessionCookie,
+            my11cookieExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          }
+        );
+      }
+      await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
+      leaderboard = await fetchContestLeaderboard(resolvedUrl, sessionCookie);
     } else {
       leaderboard = await fetchContestLeaderboard(match.contestUrl, sessionCookie);
     }
