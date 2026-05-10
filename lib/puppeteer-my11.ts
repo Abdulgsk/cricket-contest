@@ -169,15 +169,12 @@ export async function captureLeaderboardRequestFromManualClick(
       page.on("request", onRequest);
     });
 
-    await page.goto(startUrl, {
+    // Always navigate to contests list, never auto-navigate to leaderboard or auto-reload
+    // This ensures user must manually click to select a leaderboard
+    await page.goto("https://www.my11circle.com/lobby/contests", {
       waitUntil: "networkidle2",
       timeout: 45000,
     });
-
-    // If already on leaderboard, trigger one reload to force API request emission.
-    if (page.url().includes("/leaderboard/")) {
-      await page.reload({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {});
-    }
 
     return await capturedPromise;
   } finally {
