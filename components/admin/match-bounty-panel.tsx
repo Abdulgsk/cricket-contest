@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
@@ -26,8 +26,10 @@ export function MatchBountyPanel({
 }) {
   const [pending, start] = useTransition();
   const [selected, setSelected] = useState(initialBountyUserId ?? "");
-  const [search, setSearch] = useState("");
   const [reason, setReason] = useState(initialReason ?? "");
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const sortedUsers = useMemo(
     () => [...users].sort((a, b) => a.name.localeCompare(b.name)),
@@ -35,12 +37,24 @@ export function MatchBountyPanel({
   );
 
   const filteredUsers = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = query.trim().toLowerCase();
     if (!q) return sortedUsers;
     return sortedUsers.filter(
       (u) => u.name.toLowerCase().includes(q) || u.handle.toLowerCase().includes(q)
     );
-  }, [sortedUsers, search]);
+  }, [sortedUsers, query]);
+
+  const selectedUser = sortedUsers.find((user) => user.id === selected);
+
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   const save = () =>
     start(async () => {
@@ -64,30 +78,67 @@ export function MatchBountyPanel({
       </p>
 
       <div className="space-y-2 mt-3">
-        <Label htmlFor="bountySearch">Search player</Label>
-        <Input
-          id="bountySearch"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Type name or handle"
-        />
-      </div>
-
-      <div className="space-y-2 mt-3">
         <Label htmlFor="bountySelect">Bounty holder</Label>
-        <select
-          id="bountySelect"
-          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-        >
-          <option value="">— No bounty for this match —</option>
-          {filteredUsers.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name} (@{u.handle})
-            </option>
-          ))}
-        </select>
+        <div ref={wrapperRef} className="relative">
+          <button
+            id="bountySelect"
+            type="button"
+            onClick={() => setOpen((state) => !state)}
+            className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm text-left flex items-center justify-between"
+          >
+            <span className={selectedUser ? "text-foreground" : "text-muted-foreground"}>
+              {selectedUser ? `${selectedUser.name} (@${selectedUser.handle})` : "— No bounty for this match —"}
+            </span>
+            <span className="text-muted-foreground">▾</span>
+          </button>
+
+          {open ? (
+            <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-card p-2 shadow-xl space-y-2">
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search player"
+                className="h-9"
+                autoFocus
+              />
+              <div className="max-h-52 overflow-auto space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelected("");
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition ${
+                    !selected ? "bg-primary/15 text-primary" : "hover:bg-muted"
+                  }`}
+                >
+                  — No bounty for this match —
+                </button>
+                {filteredUsers.length ? (
+                  filteredUsers.map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => {
+                        setSelected(user.id);
+                        setOpen(false);
+                        setQuery("");
+                      }}
+                      className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition ${
+                        selected === user.id ? "bg-primary/15 text-primary" : "hover:bg-muted"
+                      }`}
+                    >
+                      {user.name} (@{user.handle})
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">No players found.</div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="space-y-2 mt-3">

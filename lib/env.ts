@@ -13,6 +13,10 @@ export const env = {
   CRON_SECRET: process.env.CRON_SECRET ?? "",
   APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   IPL_SEASON: process.env.IPL_SEASON ?? String(new Date().getUTCFullYear()),
+  MY11CIRCLE_COOKIE: process.env.MY11CIRCLE_COOKIE ?? "",
+  MY11CIRCLE_USER_AGENT:
+    process.env.MY11CIRCLE_USER_AGENT ??
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
 };
 
 export function requireEnv(key: keyof typeof env): string {

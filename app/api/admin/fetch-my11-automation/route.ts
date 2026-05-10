@@ -1,0 +1,274 @@
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Settings } from "@/models/Settings";
+import { Match } from "@/models/Match";
+import { User } from "@/models/User";
+import { fetchContestLeaderboard, normalizeMy11circleName } from "@/lib/my11circle";
+import {
+  captureLeaderboardRequestFromManualClick,
+  loginToMy11Circle,
+  resolveContestUrlFromInvite,
+} from "@/lib/puppeteer-my11";
+import { getSession } from "@/lib/session";
+
+interface RequestBody {
+  matchId: string;
+}
+
+interface FetchResponse {
+  ok: boolean;
+  error?: string;
+  contestId?: number;
+  sourceMatchId?: number;
+  entries?: Array<{
+    userId: string;
+    username: string;
+    handle: string;
+    my11circleName: string;
+    resolvedMy11Name?: string;
+    mappedBy?: "saved" | "inferred" | "none";
+    fantasyPoints: number;
+    found: boolean;
+  }>;
+  suggestedMappings?: Array<{
+    userId: string;
+    username: string;
+    handle: string;
+    suggestedMy11Name: string;
+  }>;
+  unmappedLeaderboardNames?: string[];
+  usedCachedCookie?: boolean;
+  needsLogin?: boolean;
+}
+
+function normalizeLoose(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function inferMy11Name(args: {
+  username: string;
+  handle: string;
+  leaderboardNames: string[];
+}) {
+  const usernameKey = normalizeLoose(args.username);
+  const handleKey = normalizeLoose(args.handle);
+  const scored = args.leaderboardNames
+    .map((name) => {
+      const key = normalizeLoose(name);
+      let score = 0;
+      if (key === usernameKey || key === handleKey) score = 100;
+      else if (
+        (usernameKey.length >= 4 && (key.startsWith(usernameKey) || usernameKey.startsWith(key))) ||
+        (handleKey.length >= 4 && (key.startsWith(handleKey) || handleKey.startsWith(key)))
+      ) {
+        score = 70;
+      } else if (
+        (usernameKey.length >= 5 && (key.includes(usernameKey) || usernameKey.includes(key))) ||
+        (handleKey.length >= 5 && (key.includes(handleKey) || handleKey.includes(key)))
+      ) {
+        score = 50;
+      }
+      return { name, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (!scored.length) return null;
+  if (scored.length === 1) return scored[0].name;
+  if (scored[0].score > scored[1].score) return scored[0].name;
+  return null;
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    // Get session and verify admin
+    const session = await getSession();
+    if (!session?.userId || !["admin", "superadmin"].includes(session.role)) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = (await req.json()) as RequestBody;
+    const { matchId } = body;
+
+    if (!matchId) {
+      return NextResponse.json({ ok: false, error: "matchId required" }, { status: 400 });
+    }
+
+    await connectDB();
+
+    // Get match and verify contest URL exists
+    const match = await Match.findById(matchId).select("contestUrl").lean();
+    if (!match?.contestUrl) {
+      return NextResponse.json({ ok: false, error: "Add the contest link first" }, { status: 400 });
+    }
+
+    // Get or create settings
+    let settings = await Settings.findOne().select("+my11sessionCookie my11cookieExpiresAt");
+    if (!settings) {
+      settings = await Settings.create({});
+    }
+
+    // Check if cookie exists and is still valid
+    const now = new Date();
+    let sessionCookie = settings.my11sessionCookie;
+    let isFreshCookie = false;
+
+    if (sessionCookie && settings.my11cookieExpiresAt && settings.my11cookieExpiresAt > now) {
+      // Cookie is still valid, use it
+      isFreshCookie = true;
+    } else {
+      if (process.env.VERCEL) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "My11Circle interactive login cannot run on Vercel. Please paste a fresh cookie in admin once, then Fetch Points.",
+            needsLogin: true,
+          } as FetchResponse,
+          { status: 401 }
+        );
+      }
+
+      // Cookie expired or missing, need to login
+      const loginResult = await loginToMy11Circle();
+      sessionCookie = loginResult.cookie;
+
+      // Save cookie to database
+      await Settings.updateOne(
+        { _id: settings._id },
+        {
+          my11sessionCookie: sessionCookie,
+          my11cookieExpiresAt: loginResult.expiresAt,
+        }
+      );
+    }
+
+    // Fetch leaderboard with the cookie
+    let leaderboard;
+    if (!process.env.VERCEL) {
+      const captured = await captureLeaderboardRequestFromManualClick(
+        sessionCookie,
+        match.contestUrl
+      );
+
+      if (captured) {
+        const resolvedUrl = `https://www.my11circle.com/lobby/contests/leaderboard/${captured.matchId}/${captured.contestId}`;
+        if (captured.sessionCookie) {
+          sessionCookie = captured.sessionCookie;
+          await Settings.updateOne(
+            { _id: settings._id },
+            {
+              my11sessionCookie: sessionCookie,
+              my11cookieExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            }
+          );
+        }
+        await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
+        leaderboard = await fetchContestLeaderboard(resolvedUrl, sessionCookie);
+      } else {
+        try {
+          leaderboard = await fetchContestLeaderboard(match.contestUrl, sessionCookie);
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "";
+          if (message.includes("Could not resolve contest link")) {
+            const resolvedUrl = await resolveContestUrlFromInvite(match.contestUrl, sessionCookie);
+            if (!resolvedUrl) {
+              throw new Error(
+                "Could not capture leaderboard request. After login, open the contest and wait for leaderboard to load, then retry Fetch Points."
+              );
+            }
+            await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
+            leaderboard = await fetchContestLeaderboard(resolvedUrl, sessionCookie);
+          } else {
+            throw e;
+          }
+        }
+      }
+    } else {
+      leaderboard = await fetchContestLeaderboard(match.contestUrl, sessionCookie);
+    }
+
+    const users = await User.find().select("username userId my11circleName").lean();
+
+    const leaderboardRows = Array.from(leaderboard.entries.values());
+
+    const leaderboardNames = leaderboardRows.map((row) => row.username);
+    const usedLeaderboardNames = new Set<string>();
+    const suggestedMappings: NonNullable<FetchResponse["suggestedMappings"]> = [];
+
+    const entries = users.map((user) => {
+      const savedName = user.my11circleName?.trim() || "";
+      const inferredName = !savedName
+        ? inferMy11Name({ username: user.username, handle: user.userId, leaderboardNames })
+        : null;
+      const resolvedMy11Name = savedName || inferredName || "";
+      const key = resolvedMy11Name ? normalizeMy11circleName(resolvedMy11Name) : "";
+      const hit = key ? leaderboard.entries.get(key) : undefined;
+      if (hit) usedLeaderboardNames.add(normalizeMy11circleName(hit.username));
+
+      if (!savedName && inferredName) {
+        suggestedMappings.push({
+          userId: String(user._id),
+          username: user.username,
+          handle: user.userId,
+          suggestedMy11Name: inferredName,
+        });
+      }
+
+      return {
+        userId: String(user._id),
+        username: user.username,
+        handle: user.userId,
+        my11circleName: savedName,
+        resolvedMy11Name: resolvedMy11Name || undefined,
+        mappedBy: savedName ? (hit ? "saved" : "none") : inferredName ? "inferred" : "none",
+        fantasyPoints: hit?.totalScore ?? 0,
+        found: !!hit,
+      };
+    });
+
+    const unmappedLeaderboardNames = leaderboardRows
+      .map((row) => row.username)
+      .filter((name) => !usedLeaderboardNames.has(normalizeMy11circleName(name)));
+
+    return NextResponse.json({
+      ok: true,
+      contestId: leaderboard.contestId,
+      sourceMatchId: leaderboard.matchId,
+      entries,
+      suggestedMappings,
+      unmappedLeaderboardNames,
+      usedCachedCookie: isFreshCookie,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+
+    if (message.includes("Waiting failed")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Login timed out. Complete phone + OTP in the opened browser window, then click Fetch again.",
+          needsLogin: true,
+        } as FetchResponse,
+        { status: 408 }
+      );
+    }
+
+    // If error mentions "session expired" or "401", indicate cookie needs refresh
+    if (message.includes("session expired") || message.includes("401")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Session expired. Please trigger login again.",
+          needsLogin: true,
+        } as FetchResponse,
+        { status: 401 }
+      );
+    }
+
+    return NextResponse.json(
+      { ok: false, error: message, needsLogin: false } as FetchResponse,
+      { status: 500 }
+    );
+  }
+}

@@ -6,7 +6,11 @@ import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { changePasswordAction, logoutAction, updateProfileAction } from "@/actions/auth";
 
-export function ProfileForms({ initial }: { initial: { username: string; whatsapp?: string } }) {
+export function ProfileForms({
+  initial,
+}: {
+  initial: { username: string; whatsapp?: string; my11circleName?: string };
+}) {
   const [pending, start] = useTransition();
   const [pwPending, pwStart] = useTransition();
   const [pwMsg, setPwMsg] = useState<string | null>(null);
@@ -47,6 +51,15 @@ export function ProfileForms({ initial }: { initial: { username: string; whatsap
                 className="flex-1 bg-transparent px-3 py-2 text-sm outline-none"
               />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="my11circleName">My11Circle name</Label>
+            <Input
+              id="my11circleName"
+              name="my11circleName"
+              defaultValue={initial.my11circleName ?? ""}
+              placeholder="Exact My11Circle username"
+            />
           </div>
           <Button loading={pending} variant="glow">{pending ? "Saving…" : "Save changes"}</Button>
         </form>

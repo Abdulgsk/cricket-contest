@@ -110,6 +110,7 @@ export default async function AdminMatchResultPage({
         teamA={match.teamA}
         teamB={match.teamB}
         players={(match.players ?? []).map((p) => p.name)}
+        contestLinked={!!match.contestUrl}
         pools={pools.map((p) => ({
           id: String(p._id),
           question: p.question,
@@ -121,6 +122,7 @@ export default async function AdminMatchResultPage({
           id: String(u._id),
           username: u.username,
           handle: u.userId,
+          my11circleName: u.my11circleName,
           existing: existingMap.get(String(u._id))
             ? {
                 rank: existingMap.get(String(u._id))!.rank,

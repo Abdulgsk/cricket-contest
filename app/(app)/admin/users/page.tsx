@@ -16,6 +16,7 @@ export default async function AdminUsers() {
           <tr className="text-left">
             <th className="p-2">User</th>
             <th className="p-2">Role</th>
+            <th className="p-2 hidden md:table-cell">My11Circle</th>
             <th className="p-2 hidden sm:table-cell">WhatsApp</th>
             <th className="p-2 hidden md:table-cell">Joined</th>
             {me.role === "superadmin" && <th className="p-2">Actions</th>}
@@ -32,6 +33,9 @@ export default async function AdminUsers() {
                 <Badge tone={u.role === "superadmin" ? "warning" : u.role === "admin" ? "accent" : "default"}>
                   {u.role}
                 </Badge>
+              </td>
+              <td className="p-2 text-muted-foreground hidden md:table-cell">
+                {u.my11circleName?.trim() ? u.my11circleName : "—"}
               </td>
               <td className="p-2 text-muted-foreground hidden sm:table-cell">{u.whatsapp ?? "—"}</td>
               <td className="p-2 text-muted-foreground text-xs hidden md:table-cell">{new Date(u.createdAt).toLocaleDateString()}</td>

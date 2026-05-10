@@ -13,6 +13,7 @@ import { syncIplMatches, refreshSquads, refreshMatchPlayers } from "@/services/i
 import { scoreCustomPools } from "@/actions/custom-pools";
 import { requireRole } from "@/lib/rbac";
 import { env } from "@/lib/env";
+import { fetchContestLeaderboard, normalizeMy11circleName } from "@/lib/my11circle";
 
 const MatchSchema = z.object({
   teamA: z.string().min(1),
@@ -277,6 +278,58 @@ export async function refreshMatchPlayersAction(matchId: string) {
     return { ok: true as const, ...r };
   } catch (e) {
     return { ok: false as const, error: (e as Error).message };
+  }
+}
+
+export async function fetchContestPointsAction(payload: unknown) {
+  await requireRole("admin", "superadmin");
+  await connectDB();
+
+  const FetchContestPointsSchema = z.object({
+    matchId: z.string().min(1),
+    sessionCookie: z.string().optional(),
+  });
+
+  const parsed = FetchContestPointsSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Invalid payload" };
+  }
+
+  const { matchId: targetMatchId, sessionCookie } = parsed.data;
+
+  const match = await Match.findById(targetMatchId).select("contestUrl").lean();
+  if (!match?.contestUrl) {
+    return { ok: false as const, error: "Add the contest link first" };
+  }
+
+  try {
+    const leaderboard = await fetchContestLeaderboard(match.contestUrl, sessionCookie);
+    const users = await User.find().select("username userId my11circleName").lean();
+
+    const entries = users.map((user) => {
+      const key = user.my11circleName ? normalizeMy11circleName(user.my11circleName) : "";
+      const hit = key ? leaderboard.entries.get(key) : undefined;
+      return {
+        userId: String(user._id),
+        username: user.username,
+        handle: user.userId,
+        my11circleName: user.my11circleName ?? "",
+        fantasyPoints: hit?.totalScore ?? 0,
+        found: !!hit,
+      };
+    });
+
+    return {
+      ok: true as const,
+      contestId: leaderboard.contestId,
+      sourceMatchId: leaderboard.matchId,
+      entries,
+    };
+  } catch (e) {
+    return {
+      ok: false as const,
+      error: e instanceof Error ? e.message : "Failed to fetch contest points",
+    };
   }
 }
 

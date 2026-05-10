@@ -109,6 +109,7 @@ export async function changePasswordAction(formData: FormData): Promise<ActionRe
 const ProfileSchema = z.object({
   username: z.string().min(2).max(60),
   whatsapp: z.string().optional().or(z.literal("")),
+  my11circleName: z.string().max(80).optional().or(z.literal("")),
 });
 
 export async function updateProfileAction(formData: FormData): Promise<ActionResult> {
@@ -117,6 +118,7 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
   const parsed = ProfileSchema.safeParse({
     username: formData.get("username"),
     whatsapp: formData.get("whatsapp") ?? "",
+    my11circleName: formData.get("my11circleName") ?? "",
   });
   if (!parsed.success) return { ok: false, error: "Invalid input" };
   await connectDB();
@@ -126,7 +128,11 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
   }
   await User.updateOne(
     { _id: me._id },
-    { username: parsed.data.username.trim(), whatsapp: wa }
+    {
+      username: parsed.data.username.trim(),
+      whatsapp: wa,
+      my11circleName: parsed.data.my11circleName?.trim() || undefined,
+    }
   );
   revalidatePath("/profile");
   return { ok: true };

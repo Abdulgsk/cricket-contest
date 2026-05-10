@@ -5,12 +5,16 @@ export interface ISettings {
   bountyHolderUserId?: mongoose.Types.ObjectId;
   announcement?: string;
   seasonName: string;
+  my11sessionCookie?: string;
+  my11cookieExpiresAt?: Date;
   updatedAt: Date;
 }
 
 const SettingsSchema = new Schema<ISettings>(
   {
     bountyHolderUserId: { type: Schema.Types.ObjectId, ref: "User" },
+    my11sessionCookie: { type: String, select: false },
+    my11cookieExpiresAt: { type: Date },
     announcement: { type: String, default: "" },
     seasonName: { type: String, default: "IPL 2026" },
   },

@@ -18,6 +18,7 @@ const NAV = [
 export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const [showMenuButton, setShowMenuButton] = useState(true);
   const items = role === "admin" || role === "superadmin" ? [...NAV, { href: "/admin", label: "Admin" }] : NAV;
 
   // Close drawer when route changes
@@ -35,6 +36,25 @@ export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
       document.body.style.overflow = prev;
     };
   }, [open]);
+
+  useEffect(() => {
+    let lastY = window.scrollY;
+
+    const onScroll = () => {
+      const currentY = window.scrollY;
+      if (currentY <= 16) {
+        setShowMenuButton(true);
+      } else if (currentY > lastY) {
+        setShowMenuButton(false);
+      } else if (currentY < lastY) {
+        setShowMenuButton(true);
+      }
+      lastY = currentY;
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const renderLinks = (onClick?: () => void) =>
     items.map((it) => (
@@ -72,7 +92,10 @@ export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
       {/* Mobile hamburger button - top left, high z-index */}
       <button
         type="button"
-        className="md:hidden fixed top-4 left-3 z-50 p-2 rounded-lg hover:bg-muted"
+        className={cn(
+          "md:hidden fixed top-4 left-3 z-50 rounded-lg bg-background/85 p-2 shadow-sm backdrop-blur transition-transform duration-200 hover:bg-muted",
+          open || showMenuButton ? "translate-y-0 opacity-100" : "-translate-y-16 opacity-0 pointer-events-none"
+        )}
         aria-label="Open menu"
         aria-expanded={open}
         onClick={() => setOpen(true)}

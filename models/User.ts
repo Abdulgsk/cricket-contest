@@ -7,6 +7,7 @@ export interface IUser {
   username: string; // display name
   password: string; // PLAIN TEXT per spec (do NOT hash)
   whatsapp?: string;
+  my11circleName?: string;
   role: Role;
   avatarColor?: string;
   createdAt: Date;
@@ -19,6 +20,7 @@ const UserSchema = new Schema<IUser>(
     username: { type: String, required: true, trim: true },
     password: { type: String, required: true }, // intentionally plaintext
     whatsapp: { type: String, trim: true },
+    my11circleName: { type: String, trim: true },
     role: { type: String, enum: ["user", "admin", "superadmin"], default: "user", index: true },
     avatarColor: { type: String },
   },

@@ -11,6 +11,7 @@ interface UserRow {
   id: string;
   username: string;
   handle: string;
+  my11circleName?: string;
   existing?: { rank: number; fp: number };
 }
 
@@ -29,6 +30,7 @@ export function ResultEntryForm({
   teamA,
   teamB,
   players: initialPlayers = [],
+  contestLinked = false,
 }: {
   matchId: string;
   users: UserRow[];
@@ -36,6 +38,7 @@ export function ResultEntryForm({
   teamA: string;
   teamB: string;
   players?: string[];
+  contestLinked?: boolean;
 }) {
   const [predWinner, setPredWinner] = useState("");
   const [predBatter, setPredBatter] = useState("");
@@ -47,6 +50,7 @@ export function ResultEntryForm({
   const [bowlerSearch, setBowlerSearch] = useState("");
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [playersError, setPlayersError] = useState<string | null>(null);
+  const [fetchingContestPoints, setFetchingContestPoints] = useState(false);
 
   const fetchPlayers = useCallback(async () => {
     setLoadingPlayers(true);
@@ -62,10 +66,15 @@ export function ResultEntryForm({
   }, [matchId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!players.length) void fetchPlayers();
+    if (!players.length) {
+      const id = window.setTimeout(() => {
+        void fetchPlayers();
+      }, 0);
+      return () => window.clearTimeout(id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   const [poolAnswers, setPoolAnswers] = useState<Record<string, string>>(
     Object.fromEntries(pools.map((p) => [p.id, p.correctOption ?? ""]))
   );
@@ -78,6 +87,11 @@ export function ResultEntryForm({
 
   const update = (id: string, value: number) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, fp: value } : r)));
+
+  const clearAllPoints = () => {
+    setRows((rs) => rs.map((r) => ({ ...r, fp: 0 })));
+    toast.success("Cleared all fantasy points");
+  };
 
   // Compute ranks from FP: descending. Equal FP → same rank. FP=0 → missed (rank 0).
   // Standard competition ranking (1, 2, 2, 4) so RANK_POINTS keep aligning.
@@ -120,6 +134,57 @@ export function ResultEntryForm({
       if (r?.ok) toast.success("Results processed · scoring engine ran");
       else toast.error(r?.error ?? "Failed");
     });
+  };
+
+  const fetchContestPoints = async () => {
+    setFetchingContestPoints(true);
+    try {
+      const response = await fetch("/api/admin/fetch-my11-automation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId }),
+      });
+
+      const data = (await response.json()) as {
+        ok: boolean;
+        error?: string;
+        needsLogin?: boolean;
+        entries?: Array<{
+          userId: string;
+          fantasyPoints: number;
+          found: boolean;
+        }>;
+        usedCachedCookie?: boolean;
+      };
+
+      if (!response.ok) {
+        if (data.needsLogin || response.status === 401) {
+          toast.error(data.error || "Login required. Complete My11 login and retry.");
+          return;
+        }
+        toast.error(data.error || "Failed to fetch");
+        return;
+      }
+
+      const pointMap = new Map(
+        (data.entries ?? []).map((entry) => [entry.userId, entry.fantasyPoints])
+      );
+      const foundCount = (data.entries ?? []).filter((entry) => entry.found).length;
+
+      setRows((currentRows) =>
+        currentRows.map((row) => ({
+          ...row,
+          fp: pointMap.get(row.id) ?? 0,
+        }))
+      );
+
+      const cacheMsg = data.usedCachedCookie ? " (used cached session)" : " (new login)";
+      toast.success(
+        `Contest points loaded · matched ${foundCount}/${data.entries?.length ?? 0} players${cacheMsg}`
+      );
+    } finally {
+      setFetchingContestPoints(false);
+    }
   };
 
   const sortedPlayers = useMemo(
@@ -257,10 +322,45 @@ export function ResultEntryForm({
       )}
 
       <Card className="overflow-x-auto">
-        <h2 className="font-semibold mb-3">Per-player Dream11 entry</h2>
-        <p className="text-xs text-muted-foreground mb-2">
-          Enter Dream11 fantasy points — ranks are auto-calculated (highest FP = rank 1; tied FP share rank). Leave at 0 to mark as missed.
-        </p>
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Per-player Dream11 entry</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Enter Dream11 fantasy points — ranks are auto-calculated (highest FP = rank 1; tied FP share rank). Leave at 0 to mark as missed.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearAllPoints}
+            >
+              Clear All (0)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchContestPoints}
+              loading={fetchingContestPoints}
+              disabled={!contestLinked}
+            >
+              {fetchingContestPoints ? "Authenticating & Fetching…" : "🔄 Fetch My11 Points"}
+            </Button>
+          </div>
+        </div>
+        {!contestLinked && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            Add the contest URL above. Then click Fetch Points &mdash; you&apos;ll log in once and we auto-capture your session.
+          </p>
+        )}
+        {contestLinked && (
+          <div className="mb-3 rounded-xl bg-blue-500/10 border border-blue-500/30 p-3 space-y-1.5">
+            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">ℹ️ One-Click Automation</p>
+            <p className="text-[11px] text-blue-600/80 dark:text-blue-400/80">
+              When you click the button, it will open My11Circle for login (if session expired). Once logged in, we automatically capture your session and fetch the contest points. No manual cookie pasting needed!
+            </p>
+          </div>
+        )}
         <table className="w-full text-sm">
           <thead className="text-xs uppercase text-muted-foreground">
             <tr className="text-left">
@@ -286,6 +386,9 @@ export function ResultEntryForm({
                   <td className="p-2">
                     <div className="font-medium">{r.username}</div>
                     <div className="text-xs text-muted-foreground">@{r.handle}</div>
+                    {r.my11circleName ? (
+                      <div className="text-[11px] text-muted-foreground">My11Circle: {r.my11circleName}</div>
+                    ) : null}
                   </td>
                   <td className="p-2">
                     <Input

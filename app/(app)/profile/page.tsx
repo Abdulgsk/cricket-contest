@@ -15,7 +15,13 @@ export default async function ProfilePage() {
           {me.role}
         </Badge>
       </header>
-      <ProfileForms initial={{ username: me.username, whatsapp: me.whatsapp }} />
+      <ProfileForms
+        initial={{
+          username: me.username,
+          whatsapp: me.whatsapp,
+          my11circleName: me.my11circleName,
+        }}
+      />
     </div>
   );
 }
