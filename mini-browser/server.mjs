@@ -1,3 +1,8 @@
+// Ensure browsers are loaded from the build directory
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = "./.browsers";
+}
+
 import "dotenv/config";
 import { createServer } from "node:http";
 import { parse as parseUrl } from "node:url";
