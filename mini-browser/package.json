@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
-    "build": "playwright install --with-deps chromium",
+    "build": "playwright install chromium",
     "browsers:install": "playwright install chromium",
     "postinstall": "playwright install chromium"
   },
