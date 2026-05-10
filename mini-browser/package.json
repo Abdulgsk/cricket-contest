@@ -1,0 +1,17 @@
+{
+  "name": "my11-mini-browser",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "build": "playwright install --with-deps chromium",
+    "browsers:install": "playwright install chromium",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "playwright": "^1.54.2"
+  }
+}

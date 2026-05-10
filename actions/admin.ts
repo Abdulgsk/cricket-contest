@@ -13,7 +13,8 @@ import { syncIplMatches, refreshSquads, refreshMatchPlayers } from "@/services/i
 import { scoreCustomPools } from "@/actions/custom-pools";
 import { requireRole } from "@/lib/rbac";
 import { env } from "@/lib/env";
-import { fetchContestLeaderboard, normalizeMy11circleName } from "@/lib/my11circle";
+import { normalizeMy11circleName } from "@/lib/my11circle";
+import { fetchLeaderboardFromMiniBrowser } from "@/lib/my11-mini-browser";
 
 const MatchSchema = z.object({
   teamA: z.string().min(1),
@@ -287,7 +288,6 @@ export async function fetchContestPointsAction(payload: unknown) {
 
   const FetchContestPointsSchema = z.object({
     matchId: z.string().min(1),
-    sessionCookie: z.string().optional(),
   });
 
   const parsed = FetchContestPointsSchema.safeParse(payload);
@@ -295,7 +295,7 @@ export async function fetchContestPointsAction(payload: unknown) {
     return { ok: false as const, error: "Invalid payload" };
   }
 
-  const { matchId: targetMatchId, sessionCookie } = parsed.data;
+  const { matchId: targetMatchId } = parsed.data;
 
   const match = await Match.findById(targetMatchId).select("contestUrl").lean();
   if (!match?.contestUrl) {
@@ -303,12 +303,16 @@ export async function fetchContestPointsAction(payload: unknown) {
   }
 
   try {
-    const leaderboard = await fetchContestLeaderboard(match.contestUrl, sessionCookie);
+    const leaderboard = await fetchLeaderboardFromMiniBrowser(match.contestUrl);
     const users = await User.find().select("username userId my11circleName").lean();
+
+    const leaderboardMap = new Map(
+      leaderboard.entries.map((row) => [normalizeMy11circleName(row.username), row])
+    );
 
     const entries = users.map((user) => {
       const key = user.my11circleName ? normalizeMy11circleName(user.my11circleName) : "";
-      const hit = key ? leaderboard.entries.get(key) : undefined;
+      const hit = key ? leaderboardMap.get(key) : undefined;
       return {
         userId: String(user._id),
         username: user.username,

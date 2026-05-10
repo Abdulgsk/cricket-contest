@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "mini-browser:install": "npm --prefix mini-browser install",
+    "mini-browser:browsers": "npm --prefix mini-browser run browsers:install",
+    "mini-browser:dev": "npm --prefix mini-browser run dev",
+    "mini-browser:start": "npm --prefix mini-browser run start"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
@@ -17,7 +21,6 @@
     "lucide-react": "^1.14.0",
     "mongoose": "^9.6.1",
     "next": "16.2.6",
-    "puppeteer": "^24.43.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",

@@ -53,6 +53,27 @@ npm install
 npm run dev
 ```
 
+`npm run dev` now starts both the Next.js app and the My11 mini-browser bridge in one command.
+
+### My11 mini-browser bridge (required for production My11 sync)
+
+The app now uses a separate mini-browser service for My11Circle login/session.
+Set these in your main app environment:
+
+- `MY11_MINI_BROWSER_URL` (example: `http://127.0.0.1:4010`)
+- `MY11_MINI_BROWSER_TOKEN` (must match mini-browser token)
+- `MY11_MINI_BROWSER_TIMEOUT_MS` (optional, default `30000`)
+
+The standalone service is in [mini-browser/README.md](mini-browser/README.md).
+
+For production on a Node host, use one process command:
+
+```bash
+npm run start
+```
+
+This starts both services together so you do not need two separate deployments.
+
 Open http://localhost:3000 and **sign up using the same `userId` as `SUPER_ADMIN_USER_ID`**
 to be auto-promoted to super-admin. All other users start as `user`.
 

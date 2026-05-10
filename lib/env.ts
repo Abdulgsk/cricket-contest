@@ -13,7 +13,9 @@ export const env = {
   CRON_SECRET: process.env.CRON_SECRET ?? "",
   APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   IPL_SEASON: process.env.IPL_SEASON ?? String(new Date().getUTCFullYear()),
-  MY11CIRCLE_COOKIE: process.env.MY11CIRCLE_COOKIE ?? "",
+  MY11_MINI_BROWSER_URL: process.env.MY11_MINI_BROWSER_URL ?? "",
+  MY11_MINI_BROWSER_TOKEN: process.env.MY11_MINI_BROWSER_TOKEN ?? "",
+  MY11_MINI_BROWSER_TIMEOUT_MS: Number(process.env.MY11_MINI_BROWSER_TIMEOUT_MS ?? "30000"),
   MY11CIRCLE_USER_AGENT:
     process.env.MY11CIRCLE_USER_AGENT ??
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
@@ -21,6 +23,8 @@ export const env = {
 
 export function requireEnv(key: keyof typeof env): string {
   const v = env[key];
-  if (!v) throw new Error(`Missing required env var: ${key}`);
+  if (typeof v !== "string" || !v) {
+    throw new Error(`Missing required env var: ${key}`);
+  }
   return v;
 }

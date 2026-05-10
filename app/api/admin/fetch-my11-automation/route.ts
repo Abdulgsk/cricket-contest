@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Settings } from "@/models/Settings";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
-import { fetchContestLeaderboard, normalizeMy11circleName } from "@/lib/my11circle";
+import { normalizeMy11circleName } from "@/lib/my11circle";
 import {
-  captureLeaderboardRequestFromManualClick,
-  loginToMy11Circle,
-} from "@/lib/puppeteer-my11";
+  captureLeaderboardFromMiniBrowser,
+  fetchLeaderboardFromMiniBrowser,
+} from "@/lib/my11-mini-browser";
 import { getSession } from "@/lib/session";
 
 interface RequestBody {
@@ -36,7 +35,6 @@ interface FetchResponse {
     suggestedMy11Name: string;
   }>;
   unmappedLeaderboardNames?: string[];
-  usedCachedCookie?: boolean;
   needsLogin?: boolean;
 }
 
@@ -101,60 +99,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Add the contest link first" }, { status: 400 });
     }
 
-    const now = new Date();
-    let sessionCookie: string | undefined;
-
-    if (process.env.VERCEL) {
-      const settings = await Settings.findOne().select("+my11sessionCookie my11cookieExpiresAt");
-      if (!settings?.my11sessionCookie || !settings.my11cookieExpiresAt || settings.my11cookieExpiresAt <= now) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              "My11Circle interactive login cannot run on Vercel. Please paste a fresh cookie in admin once, then Fetch Points.",
-            needsLogin: true,
-          } as FetchResponse,
-          { status: 401 }
-        );
-      }
-      sessionCookie = settings.my11sessionCookie;
-    } else {
-      const loginResult = await loginToMy11Circle();
-      sessionCookie = loginResult.cookie;
-    }
-
-    // Fetch leaderboard with the cookie
     let leaderboard;
-    if (!process.env.VERCEL) {
-      const captured = await captureLeaderboardRequestFromManualClick(
-        sessionCookie,
-        match.contestUrl
-      );
+    try {
+      leaderboard = await fetchLeaderboardFromMiniBrowser(match.contestUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const shouldFallback =
+        message.includes("Unable to resolve leaderboard ids") ||
+        message.includes("Invalid contest URL");
 
-      if (!captured) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              "No manual leaderboard selection detected. Please open a contest leaderboard in the My11 window, then retry.",
-          } as FetchResponse,
-          { status: 400 }
-        );
+      if (!shouldFallback) {
+        throw error;
       }
 
-      const resolvedUrl = `https://www.my11circle.com/lobby/contests/leaderboard/${captured.matchId}/${captured.contestId}`;
-      if (captured.sessionCookie) {
-        sessionCookie = captured.sessionCookie;
-      }
-      await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
-      leaderboard = await fetchContestLeaderboard(resolvedUrl, sessionCookie);
-    } else {
-      leaderboard = await fetchContestLeaderboard(match.contestUrl, sessionCookie);
+      leaderboard = await captureLeaderboardFromMiniBrowser(180000);
     }
+
+    const resolvedUrl = `https://www.my11circle.com/lobby/contests/leaderboard/${leaderboard.matchId}/${leaderboard.contestId}`;
+    await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
 
     const users = await User.find().select("username userId my11circleName").lean();
 
-    const leaderboardRows = Array.from(leaderboard.entries.values());
+    const leaderboardRows = leaderboard.entries;
+    const leaderboardMap = new Map(
+      leaderboardRows.map((row) => [normalizeMy11circleName(row.username), row])
+    );
 
     const leaderboardNames = leaderboardRows.map((row) => row.username);
     const usedLeaderboardNames = new Set<string>();
@@ -167,7 +136,7 @@ export async function POST(req: NextRequest) {
         : null;
       const resolvedMy11Name = savedName || inferredName || "";
       const key = resolvedMy11Name ? normalizeMy11circleName(resolvedMy11Name) : "";
-      const hit = key ? leaderboard.entries.get(key) : undefined;
+      const hit = key ? leaderboardMap.get(key) : undefined;
       if (hit) usedLeaderboardNames.add(normalizeMy11circleName(hit.username));
 
       if (!savedName && inferredName) {
@@ -206,23 +175,27 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
 
-    if (message.includes("Waiting failed")) {
+    if (message.includes("timed out")) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Login timed out. Complete phone + OTP in the opened browser window, then click Fetch again.",
+          error:
+            "Mini-browser timed out. Open a contest leaderboard in the mini-browser window and retry.",
           needsLogin: true,
         } as FetchResponse,
         { status: 408 }
       );
     }
 
-    // If error mentions "session expired" or "401", indicate cookie needs refresh
-    if (message.includes("session expired") || message.includes("401")) {
+    if (
+      message.toLowerCase().includes("not logged") ||
+      message.includes("401") ||
+      message.toLowerCase().includes("unauthorized")
+    ) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Session expired. Please trigger login again.",
+          error: "Mini-browser is not logged in to My11Circle. Login on the mini-browser service, then retry.",
           needsLogin: true,
         } as FetchResponse,
         { status: 401 }

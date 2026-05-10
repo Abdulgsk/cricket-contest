@@ -51,6 +51,11 @@ export function ResultEntryForm({
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [fetchingContestPoints, setFetchingContestPoints] = useState(false);
+  const [startingMiniBrowser, setStartingMiniBrowser] = useState(false);
+  const [checkingMiniBrowser, setCheckingMiniBrowser] = useState(false);
+  const [miniBrowserStarted, setMiniBrowserStarted] = useState(false);
+  const [miniBrowserStartedAt, setMiniBrowserStartedAt] = useState<string | null>(null);
+  const [miniBrowserLoggedIn, setMiniBrowserLoggedIn] = useState<"unknown" | "yes" | "no">("unknown");
 
   const fetchPlayers = useCallback(async () => {
     setLoadingPlayers(true);
@@ -186,6 +191,86 @@ export function ResultEntryForm({
       setFetchingContestPoints(false);
     }
   };
+
+  const checkMiniBrowserStatus = useCallback(async () => {
+    setCheckingMiniBrowser(true);
+    try {
+      const runtimeRes = await fetch("/api/admin/my11-mini-browser", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "runtimeStatus" }),
+      });
+      const runtimeData = (await runtimeRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        data?: {
+          ok?: boolean;
+          warmState?: {
+            bootedAt?: string;
+            warmed?: boolean;
+          };
+        };
+      };
+      if (!runtimeRes.ok || !runtimeData.ok) {
+        throw new Error(runtimeData.error || "Mini-browser is not reachable");
+      }
+
+      const started = Boolean(runtimeData.data?.ok);
+      setMiniBrowserStarted(started);
+      setMiniBrowserStartedAt(runtimeData.data?.warmState?.bootedAt ?? null);
+
+      const sessionRes = await fetch("/api/admin/my11-mini-browser", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sessionStatus" }),
+      });
+      const sessionData = (await sessionRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: { loggedIn?: boolean };
+      };
+      if (sessionRes.ok && sessionData.ok) {
+        setMiniBrowserLoggedIn(sessionData.data?.loggedIn ? "yes" : "no");
+      } else {
+        setMiniBrowserLoggedIn("unknown");
+      }
+    } catch {
+      setMiniBrowserStarted(false);
+      setMiniBrowserStartedAt(null);
+      setMiniBrowserLoggedIn("unknown");
+    } finally {
+      setCheckingMiniBrowser(false);
+    }
+  }, []);
+
+  const startMiniBrowser = async () => {
+    setStartingMiniBrowser(true);
+    try {
+      const response = await fetch("/api/admin/my11-mini-browser", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "startLogin" }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Failed to start mini-browser login");
+      }
+      setMiniBrowserStarted(true);
+      setMiniBrowserLoggedIn("no");
+      toast.success("Mini-browser started. Complete My11 phone + OTP login in that browser.");
+      await checkMiniBrowserStatus();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start mini-browser");
+    } finally {
+      setStartingMiniBrowser(false);
+    }
+  };
+
+  useEffect(() => {
+    void checkMiniBrowserStatus();
+  }, [checkMiniBrowserStatus]);
 
   const sortedPlayers = useMemo(
     () => [...players].sort((a, b) => a.localeCompare(b)),
@@ -333,6 +418,22 @@ export function ResultEntryForm({
             <Button
               variant="outline"
               size="sm"
+              onClick={startMiniBrowser}
+              loading={startingMiniBrowser}
+            >
+              {startingMiniBrowser ? "Starting…" : "▶ Start Mini Browser"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void checkMiniBrowserStatus()}
+              loading={checkingMiniBrowser}
+            >
+              Check Status
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={clearAllPoints}
             >
               Clear All (0)
@@ -357,7 +458,11 @@ export function ResultEntryForm({
           <div className="mb-3 rounded-xl bg-blue-500/10 border border-blue-500/30 p-3 space-y-1.5">
             <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">ℹ️ One-Click Automation</p>
             <p className="text-[11px] text-blue-600/80 dark:text-blue-400/80">
-              When you click the button, it will open My11Circle for login (if session expired). Once logged in, we automatically capture your session and fetch the contest points. No manual cookie pasting needed!
+              Start mini-browser first, complete My11 login if needed, then fetch points.
+            </p>
+            <p className="text-[11px] text-blue-600/80 dark:text-blue-400/80">
+              Status: {miniBrowserStarted ? "Started" : "Not started"} · Logged in: {miniBrowserLoggedIn}
+              {miniBrowserStartedAt ? ` · Started at: ${new Date(miniBrowserStartedAt).toLocaleString()}` : ""}
             </p>
           </div>
         )}
