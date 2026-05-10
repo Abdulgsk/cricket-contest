@@ -3,11 +3,14 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { normalizeMy11circleName } from "@/lib/my11circle";
-import {
-  captureLeaderboardFromMiniBrowser,
-  fetchLeaderboardFromMiniBrowser,
-} from "@/lib/my11-mini-browser";
+import { getLeaderboard, My11AuthError } from "@/lib/my11-api";
 import { getSession } from "@/lib/session";
+
+function parseIdsFromContestUrl(url: string): { matchId: number; contestId: number } | null {
+  const m = url.match(/leaderboard\/(\d+)\/(\d+)/);
+  if (!m) return null;
+  return { matchId: Number(m[1]), contestId: Number(m[2]) };
+}
 
 interface RequestBody {
   matchId: string;
@@ -99,21 +102,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Add the contest link first" }, { status: 400 });
     }
 
-    let leaderboard;
-    try {
-      leaderboard = await fetchLeaderboardFromMiniBrowser(match.contestUrl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const shouldFallback =
-        message.includes("Unable to resolve leaderboard ids") ||
-        message.includes("Invalid contest URL");
-
-      if (!shouldFallback) {
-        throw error;
-      }
-
-      leaderboard = await captureLeaderboardFromMiniBrowser(180000);
+    const ids = parseIdsFromContestUrl(match.contestUrl);
+    if (!ids) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Contest URL must contain /leaderboard/<matchId>/<contestId>",
+        },
+        { status: 400 }
+      );
     }
+
+    const leaderboard = await getLeaderboard(ids.matchId, ids.contestId);
 
     const resolvedUrl = `https://www.my11circle.com/lobby/contests/leaderboard/${leaderboard.matchId}/${leaderboard.contestId}`;
     await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
@@ -173,35 +173,17 @@ export async function POST(req: NextRequest) {
       unmappedLeaderboardNames,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-
-    if (message.includes("timed out")) {
+    if (error instanceof My11AuthError) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Mini-browser timed out. Open a contest leaderboard in the mini-browser window and retry.",
-          needsLogin: true,
-        } as FetchResponse,
-        { status: 408 }
-      );
-    }
-
-    if (
-      message.toLowerCase().includes("not logged") ||
-      message.includes("401") ||
-      message.toLowerCase().includes("unauthorized")
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Mini-browser is not logged in to My11Circle. Login on the mini-browser service, then retry.",
+          error: "My11 session expired. Re-sync the cookie via the browser extension.",
           needsLogin: true,
         } as FetchResponse,
         { status: 401 }
       );
     }
-
+    const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
       { ok: false, error: message, needsLogin: false } as FetchResponse,
       { status: 500 }

@@ -14,7 +14,7 @@ import { scoreCustomPools } from "@/actions/custom-pools";
 import { requireRole } from "@/lib/rbac";
 import { env } from "@/lib/env";
 import { normalizeMy11circleName } from "@/lib/my11circle";
-import { fetchLeaderboardFromMiniBrowser } from "@/lib/my11-mini-browser";
+import { fetchLeaderboardFromContestUrl } from "@/lib/my11-api";
 
 const MatchSchema = z.object({
   teamA: z.string().min(1),
@@ -232,6 +232,80 @@ export async function setAnnouncementAction(text: string) {
   revalidatePath("/dashboard");
 }
 
+export async function checkMy11SessionAction() {
+  await requireRole("admin", "superadmin");
+  try {
+    const { checkLogin, getSessionCookieMeta } = await import("@/lib/my11-api");
+    const meta = await getSessionCookieMeta();
+    if (!meta.hasCookie) {
+      return { ok: true as const, hasCookie: false, loggedIn: false, expiresAt: null };
+    }
+    const probe = await checkLogin();
+    return {
+      ok: true as const,
+      hasCookie: true,
+      loggedIn: probe.loggedIn,
+      expiresAt: meta.expiresAt,
+    };
+  } catch (e) {
+    return { ok: false as const, error: (e as Error).message };
+  }
+}
+
+export async function listMy11MatchesAction() {
+  await requireRole("admin", "superadmin");
+  try {
+    const { listAllMatches } = await import("@/lib/my11-api");
+    const matches = await listAllMatches();
+    return {
+      ok: true as const,
+      matches: matches.map((m) => ({
+        matchId: m.matchId,
+        team1: m.team1,
+        team1Short: m.team1Short,
+        team2: m.team2,
+        team2Short: m.team2Short,
+        displayName: m.displayName,
+        startTime: m.startTime,
+        status: m.status,
+        statusLabel: m.statusLabel,
+        isJoined: m.isJoined,
+        seriesName: m.seriesName,
+      })),
+    };
+  } catch (e) {
+    return { ok: false as const, error: (e as Error).message };
+  }
+}
+
+export async function listMy11ContestsAction(my11MatchId: number) {
+  await requireRole("admin", "superadmin");
+  try {
+    const { listMyContests } = await import("@/lib/my11-api");
+    const contests = await listMyContests(my11MatchId);
+    return {
+      ok: true as const,
+      contests: contests.map((c) => ({
+        contestId: c.contestId,
+        contestName: c.contestName,
+        prizePool: c.prizePool,
+        totalTeams: c.totalTeams,
+        joinedTeams: c.joinedTeams,
+      })),
+    };
+  } catch (e) {
+    return { ok: false as const, error: (e as Error).message };
+  }
+}
+
+export async function setMatchContestUrlAction(matchId: string, contestUrl: string) {
+  await requireRole("admin", "superadmin");
+  await connectDB();
+  await Match.updateOne({ _id: matchId }, { $set: { contestUrl } });
+  revalidatePath(`/admin/matches/${matchId}/result`);
+  return { ok: true as const };
+}
+
 // ---- IPL auto-import ----
 
 export async function syncIplMatchesAction() {
@@ -303,7 +377,7 @@ export async function fetchContestPointsAction(payload: unknown) {
   }
 
   try {
-    const leaderboard = await fetchLeaderboardFromMiniBrowser(match.contestUrl);
+    const leaderboard = await fetchLeaderboardFromContestUrl(match.contestUrl);
     const users = await User.find().select("username userId my11circleName").lean();
 
     const leaderboardMap = new Map(

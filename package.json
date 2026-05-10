@@ -6,11 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "mini-browser:install": "npm --prefix mini-browser install",
-    "mini-browser:browsers": "npm --prefix mini-browser run browsers:install",
-    "mini-browser:dev": "npm --prefix mini-browser run dev",
-    "mini-browser:start": "npm --prefix mini-browser run start"
+    "lint": "eslint"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

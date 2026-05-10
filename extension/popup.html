@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>My11 Cookie Sync</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        width: 320px;
+        padding: 16px;
+        background: #0b1220;
+        color: #e5e7eb;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 12px;
+        font-weight: 600;
+      }
+      label {
+        display: block;
+        font-size: 11px;
+        color: #94a3b8;
+        margin: 8px 0 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      input {
+        width: 100%;
+        padding: 8px 10px;
+        background: #1e293b;
+        border: 1px solid #334155;
+        color: #e5e7eb;
+        border-radius: 6px;
+        font-size: 12px;
+        box-sizing: border-box;
+      }
+      button {
+        width: 100%;
+        margin-top: 12px;
+        padding: 10px;
+        background: #6366f1;
+        color: white;
+        border: 0;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #4f46e5;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .status {
+        margin-top: 12px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.5;
+        background: #1e293b;
+        border: 1px solid #334155;
+        display: none;
+        word-break: break-word;
+      }
+      .status.ok {
+        background: #052e1e;
+        border-color: #064e3b;
+        color: #6ee7b7;
+      }
+      .status.err {
+        background: #2e0505;
+        border-color: #4e0606;
+        color: #fca5a5;
+      }
+      .hint {
+        font-size: 11px;
+        color: #64748b;
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>My11 Cookie Sync</h1>
+
+    <label for="endpoint">Admin endpoint</label>
+    <input
+      id="endpoint"
+      type="url"
+      placeholder="https://cricket-contest.vercel.app/api/admin/my11-cookie"
+    />
+
+    <label for="token">Sync token</label>
+    <input id="token" type="password" placeholder="MY11_COOKIE_SYNC_TOKEN value" />
+
+    <button id="sync">Sync My11 cookie</button>
+
+    <div id="status" class="status"></div>
+
+    <p class="hint">
+      Make sure you're logged in to my11circle.com in this browser. Then click
+      Sync. Cookie is read locally and POSTed to your admin endpoint with the
+      bearer token.
+    </p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

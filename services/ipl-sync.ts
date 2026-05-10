@@ -102,9 +102,6 @@ export async function refreshMatchPlayers(matchId: string) {
   await connectDB();
   let { cricbuzzId, slug } = await resolveCricbuzzId(matchId);
   let players = await scrapeCricbuzzMatchSquad(cricbuzzId, slug);
-  console.log(
-    `[refreshMatchPlayers] matchId=${matchId} cricbuzzId=${cricbuzzId} slug=${slug} scraped=${players.length}`
-  );
 
   // Cached cricbuzzId/slug may be stale (Cricbuzz sometimes renames slugs).
   // If we got nothing, clear the cache and re-resolve once from the listings.
@@ -119,9 +116,6 @@ export async function refreshMatchPlayers(matchId: string) {
     cricbuzzId = fresh.cricbuzzId;
     slug = fresh.slug;
     players = await scrapeCricbuzzMatchSquad(cricbuzzId, slug);
-    console.log(
-      `[refreshMatchPlayers retry] cricbuzzId=${cricbuzzId} slug=${slug} scraped=${players.length}`
-    );
   }
 
   if (!players.length) throw new Error("Cricbuzz returned no players for this match");
@@ -130,7 +124,6 @@ export async function refreshMatchPlayers(matchId: string) {
   m.players = players;
   m.playersFetchedAt = new Date();
   await m.save();
-  console.log(`[refreshMatchPlayers] saved=${m.players?.length ?? 0}`);
   return { players: players.length, fetchedAt: m.playersFetchedAt, names: players.map((p) => p.name) };
 }
 

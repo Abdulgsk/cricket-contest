@@ -1,10 +1,17 @@
 "use client";
 import { useState, useTransition, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { submitResultsAction } from "@/actions/admin";
+import {
+  submitResultsAction,
+  checkMy11SessionAction,
+  listMy11MatchesAction,
+  listMy11ContestsAction,
+  setMatchContestUrlAction,
+} from "@/actions/admin";
 import { loadMatchPlayersAction } from "@/actions/predictions";
 
 interface UserRow {
@@ -45,17 +52,47 @@ export function ResultEntryForm({
   const [predBowler, setPredBowler] = useState("");
   const [scoreSummary, setScoreSummary] = useState("");
   const [pending, start] = useTransition();
+  const router = useRouter();
   const [players, setPlayers] = useState<string[]>(initialPlayers);
   const [batterSearch, setBatterSearch] = useState("");
   const [bowlerSearch, setBowlerSearch] = useState("");
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [fetchingContestPoints, setFetchingContestPoints] = useState(false);
-  const [startingMiniBrowser, setStartingMiniBrowser] = useState(false);
-  const [checkingMiniBrowser, setCheckingMiniBrowser] = useState(false);
-  const [miniBrowserStarted, setMiniBrowserStarted] = useState(false);
-  const [miniBrowserStartedAt, setMiniBrowserStartedAt] = useState<string | null>(null);
-  const [miniBrowserLoggedIn, setMiniBrowserLoggedIn] = useState<"unknown" | "yes" | "no">("unknown");
+  const [my11Session, setMy11Session] = useState<{
+    hasCookie: boolean;
+    loggedIn: boolean;
+    expiresAt: string | null;
+  } | null>(null);
+
+  // My11 contest picker
+  type My11MatchOpt = {
+    matchId: number;
+    team1: string;
+    team1Short: string;
+    team2: string;
+    team2Short: string;
+    displayName: string;
+    startTime: number | null;
+    status: number | null;
+    statusLabel: string;
+    isJoined: boolean;
+    seriesName: string;
+  };
+  type My11ContestOpt = {
+    contestId: number;
+    contestName: string;
+    prizePool: number | null;
+    joinedTeams: number | null;
+    totalTeams: number | null;
+  };
+  const [my11Matches, setMy11Matches] = useState<My11MatchOpt[]>([]);
+  const [my11Contests, setMy11Contests] = useState<My11ContestOpt[]>([]);
+  const [pickedMatchId, setPickedMatchId] = useState<number | null>(null);
+  const [pickedContestId, setPickedContestId] = useState<number | null>(null);
+  const [loadingMy11Matches, setLoadingMy11Matches] = useState(false);
+  const [loadingMy11Contests, setLoadingMy11Contests] = useState(false);
+  const [savingContestUrl, setSavingContestUrl] = useState(false);
 
   const fetchPlayers = useCallback(async () => {
     setLoadingPlayers(true);
@@ -192,85 +229,112 @@ export function ResultEntryForm({
     }
   };
 
-  const checkMiniBrowserStatus = useCallback(async () => {
-    setCheckingMiniBrowser(true);
+  const checkMy11Status = useCallback(async () => {
     try {
-      const runtimeRes = await fetch("/api/admin/my11-mini-browser", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "runtimeStatus" }),
-      });
-      const runtimeData = (await runtimeRes.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-        data?: {
-          ok?: boolean;
-          warmState?: {
-            bootedAt?: string;
-            warmed?: boolean;
-          };
-        };
-      };
-      if (!runtimeRes.ok || !runtimeData.ok) {
-        throw new Error(runtimeData.error || "Mini-browser is not reachable");
-      }
-
-      const started = Boolean(runtimeData.data?.ok);
-      setMiniBrowserStarted(started);
-      setMiniBrowserStartedAt(runtimeData.data?.warmState?.bootedAt ?? null);
-
-      const sessionRes = await fetch("/api/admin/my11-mini-browser", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sessionStatus" }),
-      });
-      const sessionData = (await sessionRes.json().catch(() => ({}))) as {
-        ok?: boolean;
-        data?: { loggedIn?: boolean };
-      };
-      if (sessionRes.ok && sessionData.ok) {
-        setMiniBrowserLoggedIn(sessionData.data?.loggedIn ? "yes" : "no");
+      const res = await checkMy11SessionAction();
+      if (res.ok) {
+        setMy11Session({
+          hasCookie: res.hasCookie,
+          loggedIn: res.loggedIn,
+          expiresAt: res.expiresAt,
+        });
       } else {
-        setMiniBrowserLoggedIn("unknown");
+        setMy11Session(null);
       }
-    } catch {
-      setMiniBrowserStarted(false);
-      setMiniBrowserStartedAt(null);
-      setMiniBrowserLoggedIn("unknown");
     } finally {
-      setCheckingMiniBrowser(false);
+      // no-op
     }
   }, []);
 
-  const startMiniBrowser = async () => {
-    setStartingMiniBrowser(true);
+  useEffect(() => {
+    void checkMy11Status();
+  }, [checkMy11Status]);
+
+  const loadMy11Matches = async () => {
+    setLoadingMy11Matches(true);
     try {
-      const response = await fetch("/api/admin/my11-mini-browser", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "startLogin" }),
-      });
-      const data = (await response.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Failed to start mini-browser login");
+      const res = await listMy11MatchesAction();
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
       }
-      setMiniBrowserStarted(true);
-      setMiniBrowserLoggedIn("no");
-      toast.success("Mini-browser started. Complete My11 phone + OTP login in that browser.");
-      await checkMiniBrowserStatus();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to start mini-browser");
+      // Show IPL matches only (seriesId 3629 / tour name contains "Premier League")
+      const iplOnly = res.matches.filter(
+        (m) =>
+          /indian t20 league|indian premier league/i.test(m.seriesName) ||
+          /indian premier league/i.test(
+            (m as unknown as { tourName?: string }).tourName ?? ""
+          )
+      );
+      setMy11Matches(iplOnly.length ? iplOnly : res.matches);
+      // Try to auto-select a match by team-name (full or short) match
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
+      const a = norm(teamA);
+      const b = norm(teamB);
+      const matches = (n1: string, n2: string) => {
+        const x = norm(n1);
+        const y = norm(n2);
+        const ax = a && x && (x.includes(a) || a.includes(x));
+        const by = b && y && (y.includes(b) || b.includes(y));
+        return ax && by;
+      };
+      const candidates = iplOnly.length ? iplOnly : res.matches;
+      const auto = candidates.find(
+        (m) =>
+          matches(m.team1, m.team2) ||
+          matches(m.team2, m.team1) ||
+          matches(m.team1Short, m.team2Short) ||
+          matches(m.team2Short, m.team1Short)
+      );
+      if (auto) {
+        setPickedMatchId(auto.matchId);
+        await loadMy11Contests(auto.matchId);
+      } else {
+        toast.success(`Loaded ${candidates.length} My11 matches`);
+      }
     } finally {
-      setStartingMiniBrowser(false);
+      setLoadingMy11Matches(false);
     }
   };
 
-  useEffect(() => {
-    void checkMiniBrowserStatus();
-  }, [checkMiniBrowserStatus]);
+  const loadMy11Contests = async (my11MatchId: number) => {
+    setLoadingMy11Contests(true);
+    setMy11Contests([]);
+    setPickedContestId(null);
+    try {
+      const res = await listMy11ContestsAction(my11MatchId);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setMy11Contests(res.contests);
+      if (!res.contests.length) {
+        toast.error("No joined contests found for this match");
+      }
+    } finally {
+      setLoadingMy11Contests(false);
+    }
+  };
+
+  const saveContestSelection = async () => {
+    if (pickedMatchId == null || pickedContestId == null) {
+      toast.error("Pick a match and contest first");
+      return;
+    }
+    setSavingContestUrl(true);
+    try {
+      const url = `https://www.my11circle.com/lobby/contests/leaderboard/${pickedMatchId}/${pickedContestId}`;
+      const res = await setMatchContestUrlAction(matchId, url);
+      if (!res.ok) {
+        toast.error("Failed to save contest URL");
+        return;
+      }
+      toast.success("Contest URL saved. Now click Fetch My11 Points.");
+      router.refresh();
+    } finally {
+      setSavingContestUrl(false);
+    }
+  };
 
   const sortedPlayers = useMemo(
     () => [...players].sort((a, b) => a.localeCompare(b)),
@@ -414,23 +478,7 @@ export function ResultEntryForm({
               Enter Dream11 fantasy points — ranks are auto-calculated (highest FP = rank 1; tied FP share rank). Leave at 0 to mark as missed.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={startMiniBrowser}
-              loading={startingMiniBrowser}
-            >
-              {startingMiniBrowser ? "Starting…" : "▶ Start Mini Browser"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void checkMiniBrowserStatus()}
-              loading={checkingMiniBrowser}
-            >
-              Check Status
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -445,24 +493,106 @@ export function ResultEntryForm({
               loading={fetchingContestPoints}
               disabled={!contestLinked}
             >
-              {fetchingContestPoints ? "Authenticating & Fetching…" : "🔄 Fetch My11 Points"}
+              {fetchingContestPoints ? "Fetching…" : "🔄 Fetch My11 Points"}
             </Button>
           </div>
         </div>
         {!contestLinked && (
           <p className="mb-3 text-xs text-muted-foreground">
-            Add the contest URL above. Then click Fetch Points &mdash; you&apos;ll log in once and we auto-capture your session.
+            No contest linked yet. Use the picker below or add a contest URL on the match.
           </p>
         )}
+
+        <div className="mb-3 rounded-xl border border-border/50 p-3 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label className="text-xs">My11 Contest Picker</Label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void loadMy11Matches()}
+              loading={loadingMy11Matches}
+            >
+              {my11Matches.length ? "Reload My11 matches" : "Load My11 matches"}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Pick a match (auto-matched by team names) → pick a contest you joined → save.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <select
+              className="h-9 w-full rounded-lg border border-border bg-card px-2 text-sm"
+              value={pickedMatchId ?? ""}
+              onChange={(e) => {
+                const v = e.target.value ? Number(e.target.value) : null;
+                setPickedMatchId(v);
+                if (v != null) void loadMy11Contests(v);
+                else setMy11Contests([]);
+              }}
+              disabled={!my11Matches.length}
+            >
+              <option value="">— pick My11 match —</option>
+              {my11Matches.map((m) => (
+                <option key={m.matchId} value={m.matchId}>
+                  {m.displayName || `${m.team1Short || m.team1} vs ${m.team2Short || m.team2}`}
+                  {m.statusLabel ? ` (${m.statusLabel})` : ""}
+                  {m.isJoined ? " ★" : ""} · #{m.matchId}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-9 w-full rounded-lg border border-border bg-card px-2 text-sm"
+              value={pickedContestId ?? ""}
+              onChange={(e) =>
+                setPickedContestId(e.target.value ? Number(e.target.value) : null)
+              }
+              disabled={loadingMy11Contests || !my11Contests.length}
+            >
+              <option value="">
+                {loadingMy11Contests
+                  ? "loading contests…"
+                  : my11Contests.length
+                    ? "— pick contest —"
+                    : "— pick a match first —"}
+              </option>
+              {my11Contests.map((c) => (
+                <option key={c.contestId} value={c.contestId}>
+                  {c.contestName || `Contest #${c.contestId}`}
+                  {c.joinedTeams != null && c.totalTeams != null
+                    ? ` · ${c.joinedTeams}/${c.totalTeams}`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void saveContestSelection()}
+            loading={savingContestUrl}
+            disabled={pickedMatchId == null || pickedContestId == null}
+          >
+            Save selection as contest URL
+          </Button>
+        </div>
+
         {contestLinked && (
           <div className="mb-3 rounded-xl bg-blue-500/10 border border-blue-500/30 p-3 space-y-1.5">
-            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">ℹ️ One-Click Automation</p>
+            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">ℹ️ Direct My11 API</p>
             <p className="text-[11px] text-blue-600/80 dark:text-blue-400/80">
-              Start mini-browser first, complete My11 login if needed, then fetch points.
+              Sync your My11 cookie via the browser extension first, then click Fetch Points.
             </p>
             <p className="text-[11px] text-blue-600/80 dark:text-blue-400/80">
-              Status: {miniBrowserStarted ? "Started" : "Not started"} · Logged in: {miniBrowserLoggedIn}
-              {miniBrowserStartedAt ? ` · Started at: ${new Date(miniBrowserStartedAt).toLocaleString()}` : ""}
+              My11 session:{" "}
+              {!my11Session
+                ? "unknown"
+                : !my11Session.hasCookie
+                  ? "no cookie synced"
+                  : my11Session.loggedIn
+                    ? "active"
+                    : "expired / logged out"}
+              {my11Session?.expiresAt
+                ? ` · expires ${new Date(my11Session.expiresAt).toLocaleString()}`
+                : ""}
             </p>
           </div>
         )}

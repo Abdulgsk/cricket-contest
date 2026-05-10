@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Cricket Contest – My11 Cookie Sync",
+  "version": "1.0.0",
+  "description": "Reads your My11Circle session cookies and uploads them to the cricket-contest admin so leaderboards can be fetched.",
+  "permissions": ["cookies", "storage"],
+  "host_permissions": [
+    "https://www.my11circle.com/*",
+    "https://my11circle.com/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Sync My11 cookie"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}

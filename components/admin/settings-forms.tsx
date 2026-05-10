@@ -5,89 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea, Label } from "@/components/ui/input";
 import { setAnnouncementAction } from "@/actions/admin";
 
-export function SettingsForms({
-  announcement,
-}: {
-  announcement: string;
-}) {
+export function SettingsForms({ announcement }: { announcement: string }) {
   const [text, setText] = useState(announcement);
   const [pending, start] = useTransition();
-  const [my11Status, setMy11Status] = useState<"unknown" | "logged-in" | "logged-out">("unknown");
-  const [my11StateText, setMy11StateText] = useState("");
-
-  const checkMy11Status = () =>
-    start(async () => {
-      try {
-        const res = await fetch("/api/admin/my11-mini-browser", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "sessionStatus" }),
-        });
-        const data = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          error?: string;
-          data?: { loggedIn?: boolean };
-        };
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || "Failed to check mini-browser status");
-        }
-        const loggedIn = Boolean(data.data?.loggedIn);
-        setMy11Status(loggedIn ? "logged-in" : "logged-out");
-        toast.success(loggedIn ? "Mini-browser is logged in" : "Mini-browser is not logged in");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Failed to check mini-browser status");
-      }
-    });
-
-  const startMy11Login = () =>
-    start(async () => {
-      try {
-        const res = await fetch("/api/admin/my11-mini-browser", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "startLogin" }),
-        });
-        const data = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          error?: string;
-        };
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || "Failed to start My11 login");
-        }
-        setMy11Status("logged-out");
-        toast.success("My11 login window opened. Complete phone + OTP there, then click Check status.");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Failed to start My11 login");
-      }
-    });
-
-  const uploadMy11State = () =>
-    start(async () => {
-      try {
-        let state;
-        try {
-          state = JSON.parse(my11StateText);
-        } catch {
-          throw new Error("Invalid JSON in state textarea");
-        }
-        const res = await fetch("/api/admin/my11-mini-browser", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "uploadState", state }),
-        });
-        const data = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          error?: string;
-        };
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || "Failed to upload My11 state");
-        }
-        toast.success("My11 state uploaded successfully");
-        setMy11StateText("");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Failed to upload My11 state");
-      }
-    });
 
   return (
     <div className="space-y-6">
@@ -105,40 +25,6 @@ export function SettingsForms({
         >
           Save announcement
         </Button>
-      </div>
-
-      <div className="space-y-2 border border-border/50 rounded-xl p-3">
-        <Label>My11 Mini-Browser Login</Label>
-        <p className="text-xs text-muted-foreground">
-          Start login to open My11 in the mini-browser process. Complete phone + OTP there, then
-          check status.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" loading={pending} onClick={startMy11Login}>
-            Start My11 Login
-          </Button>
-          <Button variant="outline" loading={pending} onClick={checkMy11Status}>
-            Check Session Status
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Session: {my11Status === "unknown" ? "unknown" : my11Status === "logged-in" ? "logged in" : "logged out"}
-        </p>
-        <div className="space-y-2">
-          <Label>Upload My11 State (from local mini-browser)</Label>
-          <p className="text-xs text-muted-foreground">
-            Paste the JSON content from your local mini-browser's my11-storage-state.json file here.
-          </p>
-          <Textarea
-            value={my11StateText}
-            onChange={(e) => setMy11StateText(e.target.value)}
-            placeholder='{"cookies": [...], "localStorage": {...}}'
-            rows={5}
-          />
-          <Button variant="outline" loading={pending} onClick={uploadMy11State}>
-            Upload State to Production
-          </Button>
-        </div>
       </div>
     </div>
   );

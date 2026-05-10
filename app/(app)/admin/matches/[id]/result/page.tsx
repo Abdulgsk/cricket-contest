@@ -36,9 +36,9 @@ export default async function AdminMatchResultPage({
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold flex items-center flex-wrap gap-2">
               <TeamLogo name={match.teamA} size={32} />
               {match.teamA}
               <span className="text-muted-foreground text-sm">vs</span>
@@ -47,12 +47,16 @@ export default async function AdminMatchResultPage({
             </h1>
             <p className="text-sm text-muted-foreground">{formatDate(match.startTime)}</p>
             {match.externalId && (
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1 break-all">
                 Source id: <code>{match.externalId}</code> · Players: {match.players?.length ?? 0}
               </p>
             )}
           </div>
-          {match.externalId && <RefreshSquadsButton matchId={id} />}
+          {match.externalId && (
+            <div className="shrink-0">
+              <RefreshSquadsButton matchId={id} />
+            </div>
+          )}
         </div>
       </Card>
 
