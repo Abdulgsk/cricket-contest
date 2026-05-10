@@ -183,6 +183,7 @@ export async function captureLeaderboardRequestFromManualClick(
     return await capturedPromise;
   } finally {
     await page.close().catch(() => {});
+    await closeBrowser().catch(() => {});
   }
 }
 
@@ -259,6 +260,7 @@ export async function loginToMy11Circle(): Promise<LoginResult> {
     };
   } finally {
     await page.close().catch(() => {});
+    await closeBrowser().catch(() => {});
   }
 }
 
