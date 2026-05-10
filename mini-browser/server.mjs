@@ -480,6 +480,24 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true, data });
     }
 
+    if (pathname === "/v1/my11/upload-state" && req.method === "POST") {
+      if (!payload.state || typeof payload.state !== "object") {
+        return json(res, 400, { ok: false, error: "state object required" });
+      }
+      await writeFile(STATE_PATH, JSON.stringify(payload.state, null, 2), "utf8");
+      logInfo("state:uploaded", {});
+      return json(res, 200, { ok: true, message: "State uploaded successfully" });
+    }
+
+    if (pathname === "/v1/my11/download-state" && req.method === "GET") {
+      try {
+        const state = await readFile(STATE_PATH, "utf8");
+        return json(res, 200, { ok: true, state: JSON.parse(state) });
+      } catch (error) {
+        return json(res, 404, { ok: false, error: "State file not found" });
+      }
+    }
+
     if (pathname === "/v1/my11/request" && req.method === "POST") {
       const data = await handleMy11Request(ctx, payload);
       await persistState();

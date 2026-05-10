@@ -13,6 +13,7 @@ export function SettingsForms({
   const [text, setText] = useState(announcement);
   const [pending, start] = useTransition();
   const [my11Status, setMy11Status] = useState<"unknown" | "logged-in" | "logged-out">("unknown");
+  const [my11StateText, setMy11StateText] = useState("");
 
   const checkMy11Status = () =>
     start(async () => {
@@ -60,6 +61,34 @@ export function SettingsForms({
       }
     });
 
+  const uploadMy11State = () =>
+    start(async () => {
+      try {
+        let state;
+        try {
+          state = JSON.parse(my11StateText);
+        } catch {
+          throw new Error("Invalid JSON in state textarea");
+        }
+        const res = await fetch("/api/admin/my11-mini-browser", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "uploadState", state }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+        };
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || "Failed to upload My11 state");
+        }
+        toast.success("My11 state uploaded successfully");
+        setMy11StateText("");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to upload My11 state");
+      }
+    });
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -95,6 +124,21 @@ export function SettingsForms({
         <p className="text-xs text-muted-foreground">
           Session: {my11Status === "unknown" ? "unknown" : my11Status === "logged-in" ? "logged in" : "logged out"}
         </p>
+        <div className="space-y-2">
+          <Label>Upload My11 State (from local mini-browser)</Label>
+          <p className="text-xs text-muted-foreground">
+            Paste the JSON content from your local mini-browser's my11-storage-state.json file here.
+          </p>
+          <Textarea
+            value={my11StateText}
+            onChange={(e) => setMy11StateText(e.target.value)}
+            placeholder='{"cookies": [...], "localStorage": {...}}'
+            rows={5}
+          />
+          <Button variant="outline" loading={pending} onClick={uploadMy11State}>
+            Upload State to Production
+          </Button>
+        </div>
       </div>
     </div>
   );

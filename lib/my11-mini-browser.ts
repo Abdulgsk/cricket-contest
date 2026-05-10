@@ -127,6 +127,14 @@ export async function startMiniBrowserLogin() {
   );
 }
 
+export async function uploadMiniBrowserState(state: unknown) {
+  return callBridge<{ message: string }>("/v1/my11/upload-state", { state });
+}
+
+export async function downloadMiniBrowserState() {
+  return callBridge<{ state: unknown }>("/v1/my11/download-state", {});
+}
+
 export async function getMiniBrowserRuntimeStatus() {
   requireBridgeUrl();
   const timeoutMs = Number.isFinite(env.MY11_MINI_BROWSER_TIMEOUT_MS)

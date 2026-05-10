@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import {
+  downloadMiniBrowserState,
   getMiniBrowserSessionStatus,
   getMiniBrowserRuntimeStatus,
   proxyMy11Request,
   startMiniBrowserLogin,
+  uploadMiniBrowserState,
 } from "@/lib/my11-mini-browser";
 
 interface ProxyBody {
-  action: "runtimeStatus" | "sessionStatus" | "requestJson" | "startLogin";
+  action: "runtimeStatus" | "sessionStatus" | "requestJson" | "startLogin" | "uploadState" | "downloadState";
   url?: string;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   headers?: Record<string, string>;
   body?: unknown;
+  state?: unknown;
 }
 
 function isAllowedMy11Url(value: string) {
@@ -45,6 +48,16 @@ export async function POST(req: NextRequest) {
 
     if (body.action === "startLogin") {
       const data = await startMiniBrowserLogin();
+      return NextResponse.json({ ok: true, data });
+    }
+
+    if (body.action === "uploadState") {
+      const data = await uploadMiniBrowserState(body.state);
+      return NextResponse.json({ ok: true, data });
+    }
+
+    if (body.action === "downloadState") {
+      const data = await downloadMiniBrowserState();
       return NextResponse.json({ ok: true, data });
     }
 
