@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition, useEffect, useCallback, useMemo } from "react";
+import { useState, useTransition, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,10 @@ export function ResultEntryForm({
   teamB,
   players: initialPlayers = [],
   contestLinked = false,
+  resultsEntered = false,
+  isSuperadmin = false,
+  existingPrediction = { winner: "", topBatter: "", topBowler: "" },
+  existingScoreSummary = "",
 }: {
   matchId: string;
   users: UserRow[];
@@ -46,16 +50,20 @@ export function ResultEntryForm({
   teamB: string;
   players?: string[];
   contestLinked?: boolean;
+  resultsEntered?: boolean;
+  isSuperadmin?: boolean;
+  existingPrediction?: { winner: string; topBatter: string; topBowler: string };
+  existingScoreSummary?: string;
 }) {
-  const [predWinner, setPredWinner] = useState("");
-  const [predBatter, setPredBatter] = useState("");
-  const [predBowler, setPredBowler] = useState("");
-  const [scoreSummary, setScoreSummary] = useState("");
+  const [editing, setEditing] = useState(!resultsEntered);
+  const locked = resultsEntered && !editing;
+  const [predWinner, setPredWinner] = useState(existingPrediction.winner);
+  const [predBatter, setPredBatter] = useState(existingPrediction.topBatter);
+  const [predBowler, setPredBowler] = useState(existingPrediction.topBowler);
+  const [scoreSummary, setScoreSummary] = useState(existingScoreSummary);
   const [pending, start] = useTransition();
   const router = useRouter();
   const [players, setPlayers] = useState<string[]>(initialPlayers);
-  const [batterSearch, setBatterSearch] = useState("");
-  const [bowlerSearch, setBowlerSearch] = useState("");
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [fetchingContestPoints, setFetchingContestPoints] = useState(false);
@@ -123,7 +131,7 @@ export function ResultEntryForm({
   const [rows, setRows] = useState(
     users.map((u) => ({
       ...u,
-      fp: 0, // Always start with 0, only populate after explicit Fetch click
+      fp: u.existing?.fp ?? 0,
     }))
   );
 
@@ -340,79 +348,150 @@ export function ResultEntryForm({
     () => [...players].sort((a, b) => a.localeCompare(b)),
     [players]
   );
-  const filteredBatterPlayers = useMemo(() => {
-    const q = batterSearch.trim().toLowerCase();
-    if (!q) return sortedPlayers;
-    return sortedPlayers.filter((p) => p.toLowerCase().includes(q));
-  }, [sortedPlayers, batterSearch]);
-  const filteredBowlerPlayers = useMemo(() => {
-    const q = bowlerSearch.trim().toLowerCase();
-    if (!q) return sortedPlayers;
-    return sortedPlayers.filter((p) => p.toLowerCase().includes(q));
-  }, [sortedPlayers, bowlerSearch]);
 
   const hasPlayers = sortedPlayers.length > 0;
 
+  if (locked) {
+    const ranked = [...rows]
+      .filter((r) => r.fp > 0)
+      .sort((a, b) => b.fp - a.fp);
+    return (
+      <Card>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2">
+              🔒 Results locked
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              This match has been scored. Edits are restricted to superadmins.
+            </p>
+          </div>
+          {isSuperadmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              Enable edit mode
+            </Button>
+          )}
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-3 text-sm mb-4">
+          <div className="rounded-xl bg-muted/40 p-3">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Winner</div>
+            <div className="font-semibold mt-1">{predWinner || "—"}</div>
+          </div>
+          <div className="rounded-xl bg-muted/40 p-3">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Top Batter</div>
+            <div className="font-semibold mt-1">{predBatter || "—"}</div>
+          </div>
+          <div className="rounded-xl bg-muted/40 p-3">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Top Bowler</div>
+            <div className="font-semibold mt-1">{predBowler || "—"}</div>
+          </div>
+        </div>
+
+        {scoreSummary && (
+          <p className="mb-4 text-xs text-muted-foreground">
+            <strong>Summary:</strong> {scoreSummary}
+          </p>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs uppercase text-muted-foreground">
+              <tr className="text-left">
+                <th className="p-2 w-16">Rank</th>
+                <th className="p-2">Player</th>
+                <th className="p-2 w-24 text-right">FP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranked.map((r, i) => (
+                <tr key={r.id} className="border-t border-border/40">
+                  <td className="p-2">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/15 text-primary font-bold text-xs">
+                      {i + 1}
+                    </span>
+                  </td>
+                  <td className="p-2">
+                    <div className="font-medium">{r.username}</div>
+                    <div className="text-xs text-muted-foreground">@{r.handle}</div>
+                  </td>
+                  <td className="p-2 text-right font-semibold">{r.fp}</td>
+                </tr>
+              ))}
+              {ranked.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="p-3 text-center text-muted-foreground">
+                    No fantasy points recorded.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {resultsEntered && editing && (
+        <Card className="border border-warning/40 bg-warning/10">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold">✏️ Editing locked results</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                Re-submitting will recompute scoring, bonuses and storyline facts.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </Card>
+      )}
       <Card>
         <h2 className="font-semibold mb-3">Actual prediction results</h2>
-        <div className="grid md:grid-cols-3 gap-3">
-          <div className="space-y-1.5">
+        <div className="space-y-3">
+          <div>
             <Label>Match Winner</Label>
-            <select
-              className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm"
-              value={predWinner}
-              onChange={(e) => setPredWinner(e.target.value)}
-            >
-              <option value="">— pick winner —</option>
-              <option value={teamA}>{teamA}</option>
-              <option value={teamB}>{teamB}</option>
-            </select>
+            <div className="grid grid-cols-2 gap-2 mt-1.5">
+              {[teamA, teamB].map((t) => (
+                <button
+                  type="button"
+                  key={t}
+                  onClick={() => setPredWinner(t)}
+                  className={`rounded-xl px-3 py-3 text-sm font-semibold transition border ${
+                    predWinner === t
+                      ? "border-primary bg-primary/15 text-primary"
+                      : "border-border bg-muted/30 hover:bg-muted"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Top Batter</Label>
-            <Input
-              value={batterSearch}
-              onChange={(e) => setBatterSearch(e.target.value)}
-              placeholder="Search batter"
+            <PlayerPicker
+              value={predBatter}
+              onChange={setPredBatter}
+              players={sortedPlayers}
               disabled={!hasPlayers}
             />
-            <select
-              className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm disabled:opacity-60"
-              value={predBatter}
-              onChange={(e) => setPredBatter(e.target.value)}
-              disabled={!hasPlayers}
-            >
-              <option value="">{hasPlayers ? "— pick player —" : "Players not fetched yet"}</option>
-              {filteredBatterPlayers.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
           </div>
           <div className="space-y-1.5">
             <Label>Top Bowler</Label>
-            <Input
-              value={bowlerSearch}
-              onChange={(e) => setBowlerSearch(e.target.value)}
-              placeholder="Search bowler"
+            <PlayerPicker
+              value={predBowler}
+              onChange={setPredBowler}
+              players={sortedPlayers}
               disabled={!hasPlayers}
             />
-            <select
-              className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm disabled:opacity-60"
-              value={predBowler}
-              onChange={(e) => setPredBowler(e.target.value)}
-              disabled={!hasPlayers}
-            >
-              <option value="">{hasPlayers ? "— pick player —" : "Players not fetched yet"}</option>
-              {filteredBowlerPlayers.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
         {!hasPlayers && (
@@ -640,10 +719,91 @@ export function ResultEntryForm({
         </table>
         <div className="mt-4">
           <Button variant="glow" onClick={submit} loading={pending}>
-            {pending ? "Processing…" : "Process & publish results"}
+            {pending
+              ? "Processing…"
+              : resultsEntered
+                ? "Save updated results"
+                : "Process & publish results"}
           </Button>
         </div>
       </Card>
+    </div>
+  );
+}
+
+function PlayerPicker({
+  value,
+  onChange,
+  players,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  players: string[];
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const filtered = query.trim()
+    ? players.filter((p) => p.toLowerCase().includes(query.trim().toLowerCase()))
+    : players;
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!wrapperRef.current) return;
+      if (!wrapperRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((s) => !s)}
+        className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm text-left flex items-center justify-between disabled:opacity-60"
+      >
+        <span className={value ? "text-foreground" : "text-muted-foreground"}>
+          {value || (disabled ? "Players not fetched yet" : "— pick a player —")}
+        </span>
+        <span className="text-muted-foreground">▾</span>
+      </button>
+      {open && !disabled && (
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-card p-2 shadow-xl space-y-2">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search player"
+            className="h-9"
+            autoFocus
+          />
+          <div className="max-h-52 overflow-auto space-y-1">
+            {filtered.length ? (
+              filtered.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => {
+                    onChange(p);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition ${
+                    value === p ? "bg-primary/15 text-primary" : "hover:bg-muted"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))
+            ) : (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">No players found.</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

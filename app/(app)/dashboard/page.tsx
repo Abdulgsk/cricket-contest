@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/rbac";
 import { computeLeaderboard } from "@/services/scoring";
+import { getLatestFacts } from "@/services/facts";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { Card } from "@/components/ui/card";
@@ -21,6 +22,7 @@ export default async function Dashboard() {
   const next = await Match.findOne({ status: "upcoming", startTime: { $gte: new Date() } })
     .sort({ startTime: 1 })
     .lean();
+  const facts = await getLatestFacts();
 
   return (
     <div className="space-y-6">
@@ -92,6 +94,25 @@ export default async function Dashboard() {
           ))}
         </ol>
       </Card>
+
+      {facts.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">📰 Today&apos;s storylines</h2>
+            <span className="text-xs text-muted-foreground">From the latest match</span>
+          </div>
+          <ul className="space-y-2">
+            {facts.map((f) => (
+              <li
+                key={String(f._id)}
+                className="rounded-xl bg-muted/40 px-3 sm:px-4 py-2 text-sm leading-relaxed"
+              >
+                {f.text}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
 }

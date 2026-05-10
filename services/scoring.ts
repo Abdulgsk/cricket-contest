@@ -74,7 +74,7 @@ export async function processMatchResults(
         points: PENALTIES.MISSED_MATCH,
         reason: "Did not submit Dream11 team for this match",
       });
-      const consec = await countConsecutiveMisses(e.userId, match.startTime);
+      const consec = await countConsecutiveMisses(e.userId, match.startTime, matchId);
       // consec includes this match; so 2 consecutive => apply extra, 3+ => apply extra-extra
       if (consec >= 2) {
         penaltyTotal += PENALTIES.TWO_CONSECUTIVE_MISSES_EXTRA;
@@ -107,6 +107,7 @@ export async function processMatchResults(
         penalties: penaltyBreak,
         bonusPoints: 0,
         bountyPoints: 0,
+        rivalryPoints: 0,
         bonuses: [],
         finalPoints: base + penaltyTotal,
       },
@@ -116,6 +117,9 @@ export async function processMatchResults(
   }
 
   // --- Bonuses (need full match snapshot first) ---
+  // Clear any prior bonus audit log entries for this match so re-submissions
+  // don't accumulate duplicate audit rows.
+  await BonusAuditLog.deleteMany({ matchId });
   if (allowBonuses) {
     await applyBonuses({
       matchId,
@@ -129,6 +133,9 @@ export async function processMatchResults(
   // --- Bounty points (separate bucket, not part of bonuses) ---
   await applyBountyPoints({ matchId, results: created, bountyId });
 
+  // --- Rivalry points (1v1 challenges) ---
+  await settleRivalries({ matchId, results: created });
+
   // --- Score predictions for this match ---
   if (predictionResult) {
     await scorePredictions(matchId, predictionResult, { madness });
@@ -140,16 +147,38 @@ export async function processMatchResults(
   if (predictionResult?.winner) {
     match.matchWinner = predictionResult.winner;
   }
+  if (predictionResult?.topBatter) {
+    match.predictionTopBatter = predictionResult.topBatter;
+  }
+  if (predictionResult?.topBowler) {
+    match.predictionTopBowler = predictionResult.topBowler;
+  }
   if (opts.scoreSummary) {
     match.scoreSummary = opts.scoreSummary;
   }
   await match.save();
+
+  // --- Generate storyline facts (best-effort, never fails the result entry) ---
+  try {
+    const { generateFactsForMatch } = await import("@/services/facts");
+    await generateFactsForMatch(matchId);
+  } catch {
+    // facts are non-critical; ignore failures
+  }
 }
 
-async function countConsecutiveMisses(userId: string, beforeOrAtDate: Date): Promise<number> {
+async function countConsecutiveMisses(
+  userId: string,
+  beforeOrAtDate: Date,
+  excludeMatchId: string
+): Promise<number> {
   // Look at this user's last few matches up to and including the current one,
-  // counting trailing consecutive misses.
-  const recent = await MatchResult.find({ userId })
+  // counting trailing consecutive misses. Excludes the current match's existing
+  // MatchResult (if any) so re-submissions don't double-count.
+  const recent = await MatchResult.find({
+    userId,
+    matchId: { $ne: new mongoose.Types.ObjectId(excludeMatchId) },
+  })
     .populate({ path: "matchId", select: "startTime", model: Match })
     .sort({ createdAt: -1 })
     .limit(10)
@@ -188,9 +217,9 @@ async function applyBonuses(args: {
   const top2 = ranked[1];
   const top5 = new Set(ranked.slice(0, 5).map((r) => String(r.userId)));
 
-  // Match domination: top1 wins by >= 100 fp over top2
+  // Match domination: top1 wins by >= 300 fp over top2
   const dominationApplies =
-    top1 && top2 && top1.fantasyPoints - top2.fantasyPoints >= 100;
+    top1 && top2 && top1.fantasyPoints - top2.fantasyPoints >= 300;
 
   // Compute "after this match" leaderboard for comeback / king slayer / underdog
   const newLb = await computeLeaderboard();
@@ -284,7 +313,8 @@ async function applyBountyPoints(args: {
     for (const r of results) {
       if (r.bountyPoints) {
         r.bountyPoints = 0;
-        r.finalPoints = r.basePoints + r.penaltyPoints + r.bonusPoints;
+        r.finalPoints =
+          r.basePoints + r.penaltyPoints + r.bonusPoints + (r.rivalryPoints ?? 0);
         await r.save();
       }
     }
@@ -314,7 +344,111 @@ async function applyBountyPoints(args: {
       });
     }
     r.bountyPoints = bountyPts;
-    r.finalPoints = r.basePoints + r.penaltyPoints + r.bonusPoints + bountyPts;
+    r.finalPoints =
+      r.basePoints + r.penaltyPoints + r.bonusPoints + bountyPts + (r.rivalryPoints ?? 0);
+    await r.save();
+  }
+}
+
+const RIVALRY_POINTS = 3;
+
+async function settleRivalries(args: {
+  matchId: string;
+  results: HydratedDocument<IMatchResult>[];
+}) {
+  const { Rivalry } = await import("@/models/Rivalry");
+  const { Notification } = await import("@/models/Notification");
+  const { matchId, results } = args;
+  const rivalries = await Rivalry.find({ matchId, status: "accepted" });
+  if (!rivalries.length) {
+    // Nothing to settle, but reset any stale rivalry points on results just in case.
+    for (const r of results) {
+      if (r.rivalryPoints) {
+        r.rivalryPoints = 0;
+        r.finalPoints =
+          r.basePoints + r.penaltyPoints + r.bonusPoints + (r.bountyPoints ?? 0);
+        await r.save();
+      }
+    }
+    return;
+  }
+
+  const resByUser = new Map(results.map((r) => [String(r.userId), r]));
+  // Reset all current rivalry credits before re-applying.
+  for (const r of results) {
+    r.rivalryPoints = 0;
+  }
+
+  for (const riv of rivalries) {
+    const cRes = resByUser.get(String(riv.challengerId));
+    const oRes = resByUser.get(String(riv.opponentId));
+    let winnerId: mongoose.Types.ObjectId | null = null;
+    if (cRes && oRes) {
+      const cMissed = cRes.missed || cRes.rank === 0;
+      const oMissed = oRes.missed || oRes.rank === 0;
+      if (cMissed && oMissed) {
+        winnerId = null;
+      } else if (cMissed) {
+        winnerId = riv.opponentId;
+      } else if (oMissed) {
+        winnerId = riv.challengerId;
+      } else if (cRes.rank < oRes.rank) {
+        winnerId = riv.challengerId;
+      } else if (oRes.rank < cRes.rank) {
+        winnerId = riv.opponentId;
+      } else {
+        winnerId = null;
+      }
+    }
+    riv.settled = true;
+    riv.winnerId = winnerId ?? null;
+    riv.pointsAwarded = winnerId ? RIVALRY_POINTS : 0;
+    await riv.save();
+
+    if (winnerId) {
+      const winnerRes = resByUser.get(String(winnerId));
+      if (winnerRes) {
+        winnerRes.rivalryPoints = (winnerRes.rivalryPoints ?? 0) + RIVALRY_POINTS;
+        await BonusAuditLog.create({
+          userId: winnerId,
+          matchId,
+          bonusType: "rivalry_win",
+          points: RIVALRY_POINTS,
+          explanation: "Won a 1v1 rivalry challenge for this match",
+        });
+      }
+      // Notify both players
+      const loserId =
+        String(winnerId) === String(riv.challengerId) ? riv.opponentId : riv.challengerId;
+      await Notification.create({
+        userId: winnerId,
+        title: "Rivalry won \ud83c\udfc6",
+        body: `You beat your rival this match (+${RIVALRY_POINTS} points).`,
+      });
+      await Notification.create({
+        userId: loserId,
+        title: "Rivalry lost",
+        body: "Your rival finished above you this match.",
+      });
+    } else {
+      // No winner (tie or both missed) - notify both as a draw
+      await Notification.create({
+        userId: riv.challengerId,
+        title: "Rivalry tied",
+        body: "Your 1v1 rivalry ended in a tie this match.",
+      });
+      await Notification.create({
+        userId: riv.opponentId,
+        title: "Rivalry tied",
+        body: "Your 1v1 rivalry ended in a tie this match.",
+      });
+    }
+  }
+
+  // Persist updated final points for every result (rivalry points may have changed).
+  for (const r of results) {
+    r.finalPoints =
+      r.basePoints + r.penaltyPoints + r.bonusPoints + (r.bountyPoints ?? 0) + (r.rivalryPoints ?? 0);
     await r.save();
   }
 }
@@ -381,6 +515,7 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
         basePoints: { $sum: "$basePoints" },
         bonusPoints: { $sum: "$bonusPoints" },
         bountyPoints: { $sum: "$bountyPoints" },
+        rivalryPoints: { $sum: "$rivalryPoints" },
         penaltyPoints: { $sum: "$penaltyPoints" },
         matches: { $sum: 1 },
         wins: { $sum: { $cond: [{ $eq: ["$rank", 1] }, 1, 0] } },
@@ -408,6 +543,16 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
   ]);
   const poolMap = new Map(poolAgg.map((p) => [String(p._id), p.poolPoints as number]));
 
+  // rivalry withdrawal penalties (per user)
+  const { Rivalry: RivalryModel } = await import("@/models/Rivalry");
+  const withdrawAgg = await RivalryModel.aggregate([
+    { $match: { status: "cancelled", cancelledBy: { $ne: null } } },
+    { $group: { _id: "$cancelledBy", penalty: { $sum: "$pointsPenalty" } } },
+  ]);
+  const withdrawMap = new Map(
+    withdrawAgg.map((w: { _id: unknown; penalty: number }) => [String(w._id), w.penalty])
+  );
+
   const users = await User.find().lean();
   const userMap = new Map(users.map((u) => [String(u._id), u]));
 
@@ -417,17 +562,20 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
     const avg = ranks.length ? ranks.reduce((a, b) => a + b, 0) / ranks.length : 0;
     const pred = predMap.get(String(r._id)) ?? 0;
     const pool = poolMap.get(String(r._id)) ?? 0;
+    const withdraw = withdrawMap.get(String(r._id)) ?? 0;
     return {
       userId: r._id,
       username: u?.username ?? "Unknown",
       handle: u?.userId ?? "",
-      totalPoints: (r.totalPoints as number) + pred + pool,
+      totalPoints: (r.totalPoints as number) + pred + pool - withdraw,
       leaguePoints: r.totalPoints as number,
       predictionPoints: pred + pool,
       customPoolPoints: pool,
       basePoints: r.basePoints as number,
       bonusPoints: r.bonusPoints as number,
       bountyPoints: (r.bountyPoints as number) ?? 0,
+      rivalryPoints: (r.rivalryPoints as number) ?? 0,
+      rivalryWithdrawPenalty: withdraw,
       penaltyPoints: r.penaltyPoints as number,
       matches: r.matches as number,
       wins: r.wins as number,
@@ -445,17 +593,20 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
     if (!merged.find((m) => String(m.userId) === String(u._id))) {
       const pred = predMap.get(String(u._id)) ?? 0;
       const pool = poolMap.get(String(u._id)) ?? 0;
+      const withdraw = withdrawMap.get(String(u._id)) ?? 0;
       merged.push({
         userId: u._id,
         username: u.username,
         handle: u.userId,
-        totalPoints: pred + pool,
+        totalPoints: pred + pool - withdraw,
         leaguePoints: 0,
         predictionPoints: pred + pool,
         customPoolPoints: pool,
         basePoints: 0,
         bonusPoints: 0,
         bountyPoints: 0,
+        rivalryPoints: 0,
+        rivalryWithdrawPenalty: withdraw,
         penaltyPoints: 0,
         matches: 0,
         wins: 0,

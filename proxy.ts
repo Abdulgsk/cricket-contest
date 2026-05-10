@@ -3,7 +3,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 
-const PROTECTED = ["/dashboard", "/leaderboard", "/matches", "/predictions", "/profile", "/analytics", "/admin"];
+const PROTECTED = ["/dashboard", "/leaderboard", "/matches", "/predictions", "/profile", "/analytics", "/admin", "/rivalry", "/rules", "/players"];
 const AUTH_PAGES = ["/login", "/signup", "/forgot-password"];
 
 export function proxy(req: NextRequest) {
@@ -29,7 +29,11 @@ export function proxy(req: NextRequest) {
   // after a user is promoted to admin) and would otherwise lock them out
   // until they log out and back in.
 
-  return NextResponse.next();
+  const requestHeaders = new Headers(req.headers);
+  // Expose the request pathname so server layouts can react to the current
+  // route (e.g. clear the rivalry unseen badge when on /rivalry).
+  requestHeaders.set("x-pathname", pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

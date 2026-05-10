@@ -10,6 +10,7 @@ export interface IUser {
   my11circleName?: string;
   role: Role;
   avatarColor?: string;
+  lastSeenRivalryAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +24,7 @@ const UserSchema = new Schema<IUser>(
     my11circleName: { type: String, trim: true },
     role: { type: String, enum: ["user", "admin", "superadmin"], default: "user", index: true },
     avatarColor: { type: String },
+    lastSeenRivalryAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

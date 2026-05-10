@@ -15,12 +15,15 @@ import { ContestUrlForm } from "@/components/admin/contest-url-form";
 import { MatchBountyPanel } from "@/components/admin/match-bounty-panel";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
+import { requireRole } from "@/lib/rbac";
 
 export default async function AdminMatchResultPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const me = await requireRole("admin", "superadmin");
+  const isSuperadmin = me.role === "superadmin";
   const { id } = await params;
   await connectDB();
   const match = await Match.findById(id).lean();
@@ -29,8 +32,28 @@ export default async function AdminMatchResultPage({
   const existing = await MatchResult.find({ matchId: id }).lean();
   const existingMap = new Map(existing.map((e) => [String(e.userId), e]));
   const pools = await CustomPool.find({ matchId: id }).lean();
-  const preds = await Prediction.find({ matchId: id }).select("userId").lean();
+  const preds = await Prediction.find({ matchId: id })
+    .select("userId winner topBatter topBowler correctWinner correctBatter correctBowler")
+    .lean();
   const predUserIds = new Set(preds.map((p) => String(p.userId)));
+
+  // Fallback for legacy matches scored before Match.predictionTopBatter/Bowler existed:
+  // recover the official answer from any scored Prediction marked correct.
+  const inferred = {
+    winner: match.matchWinner ?? "",
+    topBatter: match.predictionTopBatter ?? "",
+    topBowler: match.predictionTopBowler ?? "",
+  };
+  if (!inferred.winner) {
+    inferred.winner = preds.find((p) => p.correctWinner)?.winner ?? "";
+  }
+  if (!inferred.topBatter) {
+    inferred.topBatter = preds.find((p) => p.correctBatter)?.topBatter ?? "";
+  }
+  if (!inferred.topBowler) {
+    inferred.topBowler = preds.find((p) => p.correctBowler)?.topBowler ?? "";
+  }
+
   const matchStarted = new Date(match.startTime) <= new Date();
 
   return (
@@ -115,6 +138,10 @@ export default async function AdminMatchResultPage({
         teamB={match.teamB}
         players={(match.players ?? []).map((p) => p.name)}
         contestLinked={!!match.contestUrl}
+        resultsEntered={!!match.resultsEntered}
+        isSuperadmin={isSuperadmin}
+        existingPrediction={inferred}
+        existingScoreSummary={match.scoreSummary ?? ""}
         pools={pools.map((p) => ({
           id: String(p._id),
           question: p.question,

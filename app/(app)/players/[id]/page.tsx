@@ -47,6 +47,7 @@ export default async function PlayerDetailPage({
     base: number;
     bonus: number;
     bounty: number;
+    rivalry: number;
     penalty: number;
     bonuses: { type: string; points: number; reason: string }[];
     penalties: { type: string; points: number; reason: string }[];
@@ -107,6 +108,7 @@ export default async function PlayerDetailPage({
       base: r.basePoints,
       bonus: r.bonusPoints,
       bounty: r.bountyPoints ?? 0,
+      rivalry: r.rivalryPoints ?? 0,
       penalty: r.penaltyPoints,
       bonuses: r.bonuses ?? [],
       penalties: r.penalties ?? [],
@@ -134,6 +136,7 @@ export default async function PlayerDetailPage({
       base: 0,
       bonus: 0,
       bounty: 0,
+      rivalry: 0,
       penalty: 0,
       bonuses: [],
       penalties: [],
@@ -157,11 +160,12 @@ export default async function PlayerDetailPage({
       acc.league += r.leaguePoints;
       acc.bonus += r.bonus;
       acc.bounty += r.bounty;
+      acc.rivalry += r.rivalry;
       acc.penalty += r.penalty;
       acc.pred += r.predPoints;
       return acc;
     },
-    { league: 0, bonus: 0, bounty: 0, penalty: 0, pred: 0 }
+    { league: 0, bonus: 0, bounty: 0, rivalry: 0, penalty: 0, pred: 0 }
   );
 
   // Chart data — oldest → newest with running cumulative league points
@@ -204,7 +208,7 @@ export default async function PlayerDetailPage({
         </Link>
       </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <Card>
           <div className="text-xs text-muted-foreground">League</div>
           <div className="text-2xl font-bold">{totals.league}</div>
@@ -220,6 +224,10 @@ export default async function PlayerDetailPage({
         <Card>
           <div className="text-xs text-muted-foreground">Bounty (lifetime)</div>
           <div className="text-2xl font-bold text-warning">+{totals.bounty}</div>
+        </Card>
+        <Card>
+          <div className="text-xs text-muted-foreground">Rivalry (lifetime)</div>
+          <div className="text-2xl font-bold text-accent">+{totals.rivalry}</div>
         </Card>
         <Card>
           <div className="text-xs text-muted-foreground">Penalty (lifetime)</div>
@@ -289,6 +297,7 @@ export default async function PlayerDetailPage({
               )}
               <Badge tone="success">League: {r.leaguePoints}</Badge>
               {r.bounty > 0 && <Badge tone="warning">Bounty: +{r.bounty}</Badge>}
+              {r.rivalry > 0 && <Badge tone="accent">Rivalry: +{r.rivalry}</Badge>}
               {r.predPoints > 0 && (
                 <Badge tone="accent">Prediction: +{r.predPoints}</Badge>
               )}
@@ -312,6 +321,12 @@ export default async function PlayerDetailPage({
                     <div className="flex justify-between text-warning">
                       <span>+ Match bounty</span>
                       <span>+{r.bounty}</span>
+                    </div>
+                  )}
+                  {r.rivalry > 0 && (
+                    <div className="flex justify-between text-accent">
+                      <span>+ Rivalry win</span>
+                      <span>+{r.rivalry}</span>
                     </div>
                   )}
                   {r.penalties.map((p, i) => (

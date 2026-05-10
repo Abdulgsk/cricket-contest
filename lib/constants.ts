@@ -23,6 +23,7 @@ export const BONUSES = {
   UNDERDOG: 6, // ranked 10-13 overall finishing top 2
   MATCH_DOMINATION: 5, // win by 100+ Dream11 points difference
   BOUNTY: 3, // beating the bounty holder
+  RIVALRY: 3, // winning a 1v1 rivalry challenge for the match
 } as const;
 
 export const MAX_BONUS_PER_MATCH = 10;

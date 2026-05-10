@@ -411,6 +411,29 @@ export async function fetchContestPointsAction(payload: unknown) {
   }
 }
 
+/** Admin/superadmin: regenerate storyline facts for the most recently scored
+ * match. Useful to preview/refresh the dashboard storyline card without
+ * waiting for the next match to be scored. */
+export async function regenerateLatestFactsAction() {
+  await requireRole("admin", "superadmin");
+  await connectDB();
+  const latest = await Match.findOne({ resultsEntered: true })
+    .sort({ startTime: -1 })
+    .select("_id teamA teamB")
+    .lean();
+  if (!latest) {
+    return { ok: false as const, error: "No scored match found yet" };
+  }
+  const { generateFactsForMatch } = await import("@/services/facts");
+  const facts = await generateFactsForMatch(String(latest._id));
+  revalidatePath("/dashboard");
+  return {
+    ok: true as const,
+    matchLabel: `${latest.teamA} vs ${latest.teamB}`,
+    count: facts.length,
+  };
+}
+
 /** Super-admin only. Fires a sample reminder to themselves through both
  * channels (in-app notification + WhatsApp if configured). Used to verify
  * the WhatsApp Cloud API is wired correctly without waiting for cron. */

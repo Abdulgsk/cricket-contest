@@ -24,6 +24,8 @@ export interface IMatch {
   startTime: Date;
   status: MatchStatus;
   matchWinner?: string;
+  predictionTopBatter?: string;
+  predictionTopBowler?: string;
   scoreSummary?: string;
   squadA?: string[];
   squadB?: string[];
@@ -61,6 +63,8 @@ const MatchSchema = new Schema<IMatch>(
     startTime: { type: Date, required: true, index: true },
     status: { type: String, enum: ["upcoming", "live", "completed"], default: "upcoming", index: true },
     matchWinner: { type: String },
+    predictionTopBatter: { type: String },
+    predictionTopBowler: { type: String },
     scoreSummary: { type: String },
     squadA: { type: [String], default: [] },
     squadB: { type: [String], default: [] },

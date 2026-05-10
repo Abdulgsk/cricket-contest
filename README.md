@@ -125,7 +125,7 @@ to be auto-promoted to super-admin. All other users start as `user`.
 - Comeback `+5` · climb 4+ leaderboard positions
 - Risk `+8` · C+VC both <30% own AND finish Top 3
 - Underdog `+6` · ranked 10–13 and finish Top 2
-- Match Domination `+5` · win by 100+ Dream11 points
+- Match Domination `+5` · win by 300+ Dream11 points
 - Bounty `+3` · beat the bounty holder
 
 **Predictions**:

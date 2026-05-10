@@ -44,7 +44,7 @@ export default function RulesPage() {
           <li className="flex justify-between"><span>Comeback · climb 4+ positions</span><span className="text-success">+{BONUSES.COMEBACK}</span></li>
 
           <li className="flex justify-between"><span>Underdog · ranked 10–13 finish Top 2</span><span className="text-success">+{BONUSES.UNDERDOG}</span></li>
-          <li className="flex justify-between"><span>Match Domination · win by 100+ FP</span><span className="text-success">+{BONUSES.MATCH_DOMINATION}</span></li>
+          <li className="flex justify-between"><span>Match Domination · win by 300+ FP</span><span className="text-success">+{BONUSES.MATCH_DOMINATION}</span></li>
         </ul>
       </Card>
 
@@ -55,6 +55,51 @@ export default function RulesPage() {
           Any non-missed player who finishes above the selected bounty holder gets <span className="text-success">+{BONUSES.BOUNTY}</span> bounty points.
           These points are added to final score, but they are tracked separately from bonus points.
         </p>
+      </Card>
+
+      <Card>
+        <h2 className="font-semibold mb-3">⚔️ Rivalry (1v1 challenges)</h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          The <strong>Rivalry</strong> tab lets you challenge another player head-to-head for a
+          specific match. Simple rules in plain language:
+        </p>
+        <ul className="text-sm space-y-2 list-disc pl-5">
+          <li>
+            You pick today’s match, pick a player and hit <strong>Challenge</strong>. They get a
+            notification and must accept before the match starts.
+          </li>
+          <li>
+            Each player can only be in <strong>one</strong> challenge per match (as challenger or
+            opponent). The dropdown automatically hides players who already have a challenge for
+            that match. ⭐ Recommended players are the ones with no rivalry yet today.
+          </li>
+          <li>
+            If multiple people challenge the same opponent, the moment they accept one challenge
+            the others are auto-declined and those challengers get a notification to try someone
+            else.
+          </li>
+          <li>
+            <strong>Win condition:</strong> if your challenge was accepted, whoever finishes with a
+            better rank in that match wins <span className="text-success">+{BONUSES.RIVALRY}</span>{" "}
+            rivalry points. If both miss or finish at the same rank, it’s a tie — no points
+            awarded.
+          </li>
+          <li>
+            <strong>Withdrawing:</strong> either player can cancel a pending or accepted challenge
+            <em> any time before the match starts</em>. Withdrawing costs the canceller{" "}
+            <span className="text-danger">−2</span> points and the other player is notified. You
+            will be asked to confirm before withdrawal.
+          </li>
+          <li>
+            <strong>Locking:</strong> once the match starts, the rivalry is locked — no
+            withdrawals, no new challenges for that match. The result is settled automatically
+            when match results are entered.
+          </li>
+          <li>
+            All rivalry points and any −2 withdrawal penalties are reflected on the leaderboard and
+            on each player’s profile breakdown.
+          </li>
+        </ul>
       </Card>
 
       <Card>

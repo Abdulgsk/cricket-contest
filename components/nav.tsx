@@ -11,11 +11,18 @@ const NAV = [
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/matches", label: "Matches" },
   { href: "/predictions", label: "Predictions" },
+  { href: "/rivalry", label: "Rivalry" },
   { href: "/rules", label: "Rules" },
   { href: "/profile", label: "Profile" },
 ];
 
-export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
+export function Nav({
+  role,
+  rivalryUnseen = 0,
+}: {
+  role: "user" | "admin" | "superadmin";
+  rivalryUnseen?: number;
+}) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [showMenuButton, setShowMenuButton] = useState(true);
@@ -63,13 +70,21 @@ export function Nav({ role }: { role: "user" | "admin" | "superadmin" }) {
         href={it.href}
         onClick={onClick}
         className={cn(
-          "px-3 py-2 rounded-xl text-sm transition",
+          "px-3 py-2 rounded-xl text-sm transition flex items-center justify-between gap-2",
           path === it.href || path.startsWith(it.href + "/")
             ? "bg-primary/15 text-primary font-medium"
             : "text-muted-foreground hover:bg-muted hover:text-foreground"
         )}
       >
-        {it.label}
+        <span>{it.label}</span>
+        {it.href === "/rivalry" && rivalryUnseen > 0 && (
+          <span
+            aria-label={`${rivalryUnseen} new rivalry update${rivalryUnseen === 1 ? "" : "s"}`}
+            className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-danger text-white text-[10px] font-semibold"
+          >
+            {rivalryUnseen > 9 ? "9+" : rivalryUnseen}
+          </span>
+        )}
       </Link>
     ));
 

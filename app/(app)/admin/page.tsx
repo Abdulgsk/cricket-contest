@@ -4,6 +4,7 @@ import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { Card, Badge } from "@/components/ui/card";
 import { AutomationTools } from "@/components/admin/automation-tools";
+import { RegenerateFactsButton } from "@/components/admin/regenerate-facts-button";
 import { formatDate } from "@/lib/utils";
 import { requireRole } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
@@ -98,6 +99,19 @@ export default async function AdminHome() {
       </Card>
 
       <AutomationTools />
+
+      <Card>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold">📰 Dashboard storylines</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Regenerate the &ldquo;Today&apos;s storylines&rdquo; card from the most recently
+              scored match.
+            </p>
+          </div>
+          <RegenerateFactsButton />
+        </div>
+      </Card>
 
       <Card>
         <h2 className="font-semibold mb-3">How Automations Work</h2>
