@@ -81,7 +81,7 @@ export function ResultEntryForm({
   const [rows, setRows] = useState(
     users.map((u) => ({
       ...u,
-      fp: u.existing?.fp ?? 0,
+      fp: 0, // Always start with 0, only populate after explicit Fetch click
     }))
   );
 
