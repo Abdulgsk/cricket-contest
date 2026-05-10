@@ -101,22 +101,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Add the contest link first" }, { status: 400 });
     }
 
-    // Get or create settings
-    let settings = await Settings.findOne().select("+my11sessionCookie my11cookieExpiresAt");
-    if (!settings) {
-      settings = await Settings.create({});
-    }
-
-    // Check if cookie exists and is still valid
     const now = new Date();
-    let sessionCookie = settings.my11sessionCookie;
-    let isFreshCookie = false;
+    let sessionCookie: string | undefined;
 
-    if (sessionCookie && settings.my11cookieExpiresAt && settings.my11cookieExpiresAt > now) {
-      // Cookie is still valid, use it
-      isFreshCookie = true;
-    } else {
-      if (process.env.VERCEL) {
+    if (process.env.VERCEL) {
+      const settings = await Settings.findOne().select("+my11sessionCookie my11cookieExpiresAt");
+      if (!settings?.my11sessionCookie || !settings.my11cookieExpiresAt || settings.my11cookieExpiresAt <= now) {
         return NextResponse.json(
           {
             ok: false,
@@ -127,19 +117,10 @@ export async function POST(req: NextRequest) {
           { status: 401 }
         );
       }
-
-      // Cookie expired or missing, need to login
+      sessionCookie = settings.my11sessionCookie;
+    } else {
       const loginResult = await loginToMy11Circle();
       sessionCookie = loginResult.cookie;
-
-      // Save cookie to database
-      await Settings.updateOne(
-        { _id: settings._id },
-        {
-          my11sessionCookie: sessionCookie,
-          my11cookieExpiresAt: loginResult.expiresAt,
-        }
-      );
     }
 
     // Fetch leaderboard with the cookie
@@ -164,13 +145,6 @@ export async function POST(req: NextRequest) {
       const resolvedUrl = `https://www.my11circle.com/lobby/contests/leaderboard/${captured.matchId}/${captured.contestId}`;
       if (captured.sessionCookie) {
         sessionCookie = captured.sessionCookie;
-        await Settings.updateOne(
-          { _id: settings._id },
-          {
-            my11sessionCookie: sessionCookie,
-            my11cookieExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          }
-        );
       }
       await Match.updateOne({ _id: matchId }, { contestUrl: resolvedUrl });
       leaderboard = await fetchContestLeaderboard(resolvedUrl, sessionCookie);
@@ -228,7 +202,6 @@ export async function POST(req: NextRequest) {
       entries,
       suggestedMappings,
       unmappedLeaderboardNames,
-      usedCachedCookie: isFreshCookie,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
