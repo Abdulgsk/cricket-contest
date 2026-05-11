@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { createRivalryAction, requestRivalryWithdrawalAction, respondRivalryAction, cancelRivalryAction } from "@/actions/rivalry";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type Opponent = {
   id: string;
@@ -43,6 +44,10 @@ export function RivalryMatchPanel({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [confirming, setConfirming] = useState<{
+    rivalryId: string;
+    message: string;
+  } | null>(null);
 
   const selected = useMemo(
     () => eligibleOpponents.find((u) => u.id === opponentId) ?? null,
@@ -80,10 +85,16 @@ export function RivalryMatchPanel({
   }
 
   function cancel(rivalryId: string) {
-    const ok = window.confirm(
-      "Withdraw this rivalry now?\n\nYou will lose -2 points and the other player will be notified."
-    );
-    if (!ok) return;
+    setConfirming({
+      rivalryId,
+      message: "Withdraw this rivalry now?\n\nYou will lose -2 points and the other player will be notified.",
+    });
+  }
+
+  function confirmCancel() {
+    if (!confirming) return;
+    const { rivalryId } = confirming;
+    setConfirming(null);
     clear();
     startTransition(async () => {
       const res = await cancelRivalryAction({ rivalryId });
@@ -235,6 +246,17 @@ export function RivalryMatchPanel({
           </ul>
         </details>
       )}
+
+      <ConfirmDialog
+        open={!!confirming}
+        title="Confirm withdraw"
+        description={confirming?.message ?? "Are you sure?"}
+        confirmLabel="Withdraw"
+        cancelLabel="Cancel"
+        loading={pending}
+        onConfirm={confirmCancel}
+        onCancel={() => setConfirming(null)}
+      />
     </div>
   );
 }

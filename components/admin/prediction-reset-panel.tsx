@@ -1,9 +1,10 @@
 "use client";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { resetPredictionAction } from "@/actions/admin";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface UserPred {
   id: string;
@@ -22,9 +23,17 @@ export function PredictionResetPanel({
   canReset: boolean;
 }) {
   const [pending, start] = useTransition();
+  const [confirmUser, setConfirmUser] = useState<UserPred | null>(null);
 
-  const reset = (userId: string, name: string) => {
-    if (!confirm(`Reset ${name}'s prediction? They'll be able to re-submit.`)) return;
+  const reset = (user: UserPred) => {
+    setConfirmUser(user);
+  };
+
+  const confirmReset = () => {
+    if (!confirmUser) return;
+    const userId = confirmUser.id;
+    const name = confirmUser.username;
+    setConfirmUser(null);
     start(async () => {
       try {
         await resetPredictionAction(matchId, userId);
@@ -33,7 +42,8 @@ export function PredictionResetPanel({
         toast.error(e instanceof Error ? e.message : "Failed");
       }
     });
-  };
+  }
+;
 
   return (
     <Card>
@@ -64,7 +74,7 @@ export function PredictionResetPanel({
             </div>
             <Button
               variant="outline"
-              onClick={() => reset(u.id, u.username)}
+              onClick={() => reset(u)}
               disabled={pending || !canReset || !u.hasPrediction}
             >
               Reset
@@ -72,6 +82,20 @@ export function PredictionResetPanel({
           </div>
         ))}
       </div>
+      <ConfirmDialog
+        open={!!confirmUser}
+        title="Confirm reset"
+        description={
+          confirmUser
+            ? `Reset ${confirmUser.username}'s prediction? They'll be able to re-submit.`
+            : "Are you sure you want to reset this prediction?"
+        }
+        confirmLabel="Reset"
+        cancelLabel="Cancel"
+        loading={pending}
+        onConfirm={confirmReset}
+        onCancel={() => setConfirmUser(null)}
+      />
     </Card>
   );
 }

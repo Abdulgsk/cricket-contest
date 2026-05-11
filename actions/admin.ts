@@ -132,15 +132,34 @@ export async function updateMatchLockExtensionsAction(payload: unknown) {
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
   const { matchId, predictionLockExtensionMinutes, rivalryLockExtensionMinutes } = parsed.data;
-  await Match.updateOne(
-    { _id: matchId },
-    {
-      predictionLockExtensionMinutes,
-      rivalryLockExtensionMinutes,
-      predictionLockExtensionAppliedAt: new Date(),
-      rivalryLockExtensionAppliedAt: new Date(),
-    }
-  );
+
+  const current = await Match.findById(matchId)
+    .select(
+      "predictionLockExtensionMinutes rivalryLockExtensionMinutes predictionsLocked"
+    )
+    .lean();
+  if (!current) return { ok: false as const, error: "Match not found" };
+
+  const now = new Date();
+  const predictionChanged =
+    (current.predictionLockExtensionMinutes ?? 0) !== predictionLockExtensionMinutes;
+  const rivalryChanged =
+    (current.rivalryLockExtensionMinutes ?? 0) !== rivalryLockExtensionMinutes;
+
+  const set: Record<string, unknown> = {
+    predictionLockExtensionMinutes,
+    rivalryLockExtensionMinutes,
+  };
+  if (predictionChanged) {
+    set.predictionLockExtensionAppliedAt = now;
+    // Re-opening predictions also clears any manual lock the admin set earlier.
+    set.predictionsLocked = false;
+  }
+  if (rivalryChanged) {
+    set.rivalryLockExtensionAppliedAt = now;
+  }
+
+  await Match.updateOne({ _id: matchId }, set);
   await AuditLog.create({
     actorId: me._id,
     action: "match.lockExtensions",
