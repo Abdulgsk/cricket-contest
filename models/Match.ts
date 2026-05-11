@@ -36,6 +36,8 @@ export interface IMatch {
   chaosMatch?: boolean;
   noBonus?: boolean;
   predictionMadness?: boolean;
+  predictionLockExtensionMinutes?: number;
+  rivalryLockExtensionMinutes?: number;
   bountyUserId?: mongoose.Types.ObjectId;
   bountyReason?: string;
   predictionsLocked: boolean;
@@ -89,6 +91,8 @@ const MatchSchema = new Schema<IMatch>(
     chaosMatch: { type: Boolean, default: false },
     noBonus: { type: Boolean, default: false },
     predictionMadness: { type: Boolean, default: false },
+    predictionLockExtensionMinutes: { type: Number, default: 0, min: 0 },
+    rivalryLockExtensionMinutes: { type: Number, default: 0, min: 0 },
     bountyUserId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     bountyReason: { type: String, trim: true },
     predictionsLocked: { type: Boolean, default: false },

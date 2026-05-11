@@ -13,9 +13,11 @@ import { MatchModesPanel } from "@/components/admin/match-modes-panel";
 import { PredictionResetPanel } from "@/components/admin/prediction-reset-panel";
 import { ContestUrlForm } from "@/components/admin/contest-url-form";
 import { MatchBountyPanel } from "@/components/admin/match-bounty-panel";
+import { MatchLockExtensionsPanel } from "@/components/admin/match-lock-extensions-panel";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
 import { requireRole } from "@/lib/rbac";
+import { isModuleLocked } from "@/lib/match-locks";
 
 export default async function AdminMatchResultPage({
   params,
@@ -54,7 +56,7 @@ export default async function AdminMatchResultPage({
     inferred.topBowler = preds.find((p) => p.correctBowler)?.topBowler ?? "";
   }
 
-  const matchStarted = new Date(match.startTime) <= new Date();
+  const predictionLocked = isModuleLocked(match, "predictions");
 
   return (
     <div className="space-y-4">
@@ -94,6 +96,16 @@ export default async function AdminMatchResultPage({
         }}
       />
 
+      {isSuperadmin && (
+        <MatchLockExtensionsPanel
+          matchId={id}
+          initial={{
+            predictionLockExtensionMinutes: match.predictionLockExtensionMinutes,
+            rivalryLockExtensionMinutes: match.rivalryLockExtensionMinutes,
+          }}
+        />
+      )}
+
       <ContestUrlForm matchId={id} initial={match.contestUrl} />
 
       <MatchBountyPanel
@@ -107,10 +119,10 @@ export default async function AdminMatchResultPage({
         }))}
       />
 
-      {!matchStarted && (
+      {!predictionLocked && (
         <PredictionResetPanel
           matchId={id}
-          matchStarted={matchStarted}
+          canReset
           users={users.map((u) => ({
             id: String(u._id),
             username: u.username,

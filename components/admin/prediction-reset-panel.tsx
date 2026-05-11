@@ -15,11 +15,11 @@ interface UserPred {
 export function PredictionResetPanel({
   matchId,
   users,
-  matchStarted,
+  canReset,
 }: {
   matchId: string;
   users: UserPred[];
-  matchStarted: boolean;
+  canReset: boolean;
 }) {
   const [pending, start] = useTransition();
 
@@ -40,7 +40,7 @@ export function PredictionResetPanel({
       <div className="flex items-center justify-between mb-2">
         <h2 className="font-semibold">🔓 Reset predictions</h2>
         <span className="text-xs text-muted-foreground">
-          Allowed only before match starts
+          Allowed only before the prediction window closes
         </span>
       </div>
       <p className="text-xs text-muted-foreground mb-3">
@@ -65,7 +65,7 @@ export function PredictionResetPanel({
             <Button
               variant="outline"
               onClick={() => reset(u.id, u.username)}
-              disabled={pending || matchStarted || !u.hasPrediction}
+              disabled={pending || !canReset || !u.hasPrediction}
             >
               Reset
             </Button>

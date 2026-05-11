@@ -1,12 +1,8 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { createRivalryAction, requestRivalryWithdrawalAction, respondRivalryAction, cancelRivalryAction } from "@/actions/rivalry";
 import { Button } from "@/components/ui/button";
-import {
-  createRivalryAction,
-  respondRivalryAction,
-  cancelRivalryAction,
-} from "@/actions/rivalry";
 
 type Opponent = {
   id: string;
@@ -14,23 +10,23 @@ type Opponent = {
   handle?: string;
   isRevenge?: boolean;
 };
-type BusyPlayer = { id: string; username: string };
-type ActiveRivalry = {
-  id?: string;
-  role?: "challenger" | "opponent";
-  opponent?: { username?: string } | null | undefined;
-  status: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+
+type MyRivalry = {
+  id: string;
+  role: "challenger" | "opponent";
+  opponent: { username: string };
+  status: string;
+  withdrawalRequestedAt?: string | Date | null;
+  withdrawalRequestedBy?: string | null;
 };
 
 interface Props {
   matchId: string;
-  meId: string;
   rivalryLocked: boolean;
   rivalryLockReason?: "waiting_prior" | "started" | null;
   unfinishedPriors?: { teamA: string; teamB: string }[];
   eligibleOpponents: Opponent[];
-  busyPlayers: BusyPlayer[];
-  myActive: ActiveRivalry | null;
+  myRivalries: MyRivalry[];
   all: { id: string; challenger: string; opponent: string; status: string }[];
 }
 
@@ -40,8 +36,7 @@ export function RivalryMatchPanel({
   rivalryLockReason,
   unfinishedPriors,
   eligibleOpponents,
-  busyPlayers,
-  myActive,
+  myRivalries,
   all,
 }: Props) {
   const [opponentId, setOpponentId] = useState("");
@@ -75,29 +70,34 @@ export function RivalryMatchPanel({
     });
   }
 
-  function respond(accept: boolean) {
-    if (!myActive?.id) return;
+  function respond(rivalryId: string, accept: boolean) {
     clear();
     startTransition(async () => {
-      const res = await respondRivalryAction({ rivalryId: myActive.id!, accept });
+      const res = await respondRivalryAction({ rivalryId, accept });
       if (!res.ok) setError(res.error);
       else setMessage(accept ? "Accepted!" : "Declined");
     });
   }
 
-  function cancel() {
-    if (!myActive?.id) return;
+  function cancel(rivalryId: string) {
     const ok = window.confirm(
-      myActive.status === "accepted"
-        ? "Withdraw this accepted challenge?\n\nYou will lose -2 points and your rival will be notified."
-        : "Cancel this pending challenge?\n\nYou will lose -2 points and the other player will be notified."
+      "Withdraw this rivalry now?\n\nYou will lose -2 points and the other player will be notified."
     );
     if (!ok) return;
     clear();
     startTransition(async () => {
-      const res = await cancelRivalryAction({ rivalryId: myActive.id! });
+      const res = await cancelRivalryAction({ rivalryId });
       if (!res.ok) setError(res.error);
       else setMessage("Challenge withdrawn (-2)");
+    });
+  }
+
+  function requestWithdraw(rivalryId: string) {
+    clear();
+    startTransition(async () => {
+      const res = await requestRivalryWithdrawalAction({ rivalryId });
+      if (!res.ok) setError(res.error);
+      else setMessage("Withdrawal request sent to admin");
     });
   }
 
@@ -113,8 +113,7 @@ export function RivalryMatchPanel({
                   ? `${unfinishedPriors[0].teamA} vs ${unfinishedPriors[0].teamB}`
                   : "the earlier match"}
               </strong>{" "}
-              results are entered. Check back then — you’ll see the table
-              toppers to target.
+              results are entered. Check back then — you’ll see the table toppers to target.
             </>
           ) : (
             <>🔒 Rivalries are locked for this match. No new challenges and no withdrawals.</>
@@ -122,77 +121,72 @@ export function RivalryMatchPanel({
         </div>
       )}
 
-      {myActive ? (
-        <div className="rounded-lg border border-border p-3 bg-muted/40 space-y-2">
-          {myActive.status === "pending" && myActive.role === "challenger" && (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <p className="text-sm break-words">
-                You challenged <strong>{myActive.opponent?.username}</strong> — waiting for them to
-                accept.
-              </p>
-              {!rivalryLocked && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={cancel}
-                  loading={pending}
-                  className="w-full sm:w-auto"
-                >
-                  Withdraw (−2)
-                </Button>
-              )}
-            </div>
-          )}
-          {myActive.status === "pending" && myActive.role === "opponent" && (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <p className="text-sm break-words">
-                <strong>{myActive.opponent?.username}</strong> challenged you ⚔️
-              </p>
-              {!rivalryLocked && (
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <Button
-                    size="sm"
-                    onClick={() => respond(true)}
-                    loading={pending}
-                    className="flex-1 sm:flex-none"
-                  >
-                    Accept
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => respond(false)}
-                    loading={pending}
-                    className="flex-1 sm:flex-none"
-                  >
-                    Decline
-                  </Button>
+      {!rivalryLocked && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm font-medium">Your active challenges: {myRivalries.length}</p>
+            <p className="text-[11px] text-muted-foreground">You can open more than one challenge in the same match.</p>
+          </div>
+
+          {myRivalries.length > 0 && (
+            <div className="space-y-2">
+              {myRivalries.map((r) => (
+                <div key={r.id} className="rounded-lg bg-muted/40 p-3 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <p className="text-sm break-words">
+                      {r.role === "challenger" ? (
+                        <>
+                          You challenged <strong>{r.opponent.username}</strong>
+                        </>
+                      ) : (
+                        <>
+                          <strong>{r.opponent.username}</strong> challenged you ⚔️
+                        </>
+                      )}
+                    </p>
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                      {r.status === "pending" && r.role === "challenger" && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => requestWithdraw(r.id)} loading={pending} className="flex-1 sm:flex-none">
+                            Request admin withdraw
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => cancel(r.id)} loading={pending} className="flex-1 sm:flex-none">
+                            Withdraw (−2)
+                          </Button>
+                        </>
+                      )}
+                      {r.status === "pending" && r.role === "opponent" && (
+                        <>
+                          <Button size="sm" onClick={() => respond(r.id, true)} loading={pending} className="flex-1 sm:flex-none">
+                            Accept
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => respond(r.id, false)} loading={pending} className="flex-1 sm:flex-none">
+                            Decline
+                          </Button>
+                        </>
+                      )}
+                      {r.status === "accepted" && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => requestWithdraw(r.id)} loading={pending} className="flex-1 sm:flex-none">
+                            Request admin withdraw
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => cancel(r.id)} loading={pending} className="flex-1 sm:flex-none">
+                            Withdraw (−2)
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {r.withdrawalRequestedAt && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Withdrawal request pending admin approval.
+                    </p>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
           )}
-          {myActive.status === "accepted" && (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <p className="text-sm break-words">
-                ⚔️ Active rivalry with <strong>{myActive.opponent?.username}</strong>. Finish above
-                them to earn <span className="text-success">+3</span>.
-              </p>
-              {!rivalryLocked && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={cancel}
-                  loading={pending}
-                  className="w-full sm:w-auto"
-                >
-                  Withdraw (−2)
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      ) : rivalryLocked ? null : (
-        <div className="space-y-2">
+
           <div className="flex flex-col sm:flex-row gap-2">
             <select
               className="h-11 px-3 rounded-xl border border-border bg-background text-sm flex-1 min-w-0"
@@ -201,9 +195,7 @@ export function RivalryMatchPanel({
               disabled={pending || eligibleOpponents.length === 0}
             >
               <option value="">
-                {eligibleOpponents.length === 0
-                  ? "No players available"
-                  : "Select a player to challenge..."}
+                {eligibleOpponents.length === 0 ? "No players available" : "Select a player to challenge..."}
               </option>
               {eligibleOpponents.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -213,19 +205,13 @@ export function RivalryMatchPanel({
                 </option>
               ))}
             </select>
-            <Button
-              onClick={challenge}
-              loading={pending}
-              disabled={!opponentId}
-              className="w-full sm:w-auto"
-            >
+            <Button onClick={challenge} loading={pending} disabled={!opponentId} className="w-full sm:w-auto">
               {selected?.isRevenge ? "Revenge" : "Challenge"}
             </Button>
           </div>
           {selected?.isRevenge && (
             <p className="text-[11px] text-muted-foreground">
-              ⚠️ This is your revenge match against {selected.username}. Win it for{" "}
-              <span className="text-success">+3 + 1 bonus</span> point.
+              ⚠️ This is your revenge match against {selected.username}. Win it for <span className="text-success">+3 + 1 bonus</span> point.
             </p>
           )}
         </div>
@@ -234,23 +220,12 @@ export function RivalryMatchPanel({
       {error && <p className="text-xs text-danger break-words">{error}</p>}
       {message && <p className="text-xs text-success break-words">{message}</p>}
 
-      {busyPlayers.length > 0 && !myActive && !rivalryLocked && (
-        <p className="text-[11px] text-muted-foreground break-words">
-          Already in a challenge for this match: {busyPlayers.map((u) => u.username).join(", ")}
-        </p>
-      )}
-
       {all.length > 0 && (
         <details className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground">
-            All rivalries for this match ({all.length})
-          </summary>
+          <summary className="cursor-pointer text-muted-foreground">All rivalries for this match ({all.length})</summary>
           <ul className="mt-2 space-y-1">
             {all.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-wrap gap-x-2 gap-y-0.5 items-baseline"
-              >
+              <li key={r.id} className="flex flex-wrap gap-x-2 gap-y-0.5 items-baseline">
                 <span className="break-words">
                   {r.challenger} <span className="text-muted-foreground">vs</span> {r.opponent}
                 </span>

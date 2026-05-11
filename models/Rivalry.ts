@@ -18,6 +18,10 @@ export interface IRivalry {
   pointsAwarded: number; // 3 if settled with a winner
   cancelledBy?: mongoose.Types.ObjectId | null;
   pointsPenalty: number; // 1 if cancelled before match start (applied to cancelledBy)
+  withdrawalRequestedBy?: mongoose.Types.ObjectId | null;
+  withdrawalRequestedAt?: Date | null;
+  withdrawalApprovedBy?: mongoose.Types.ObjectId | null;
+  withdrawalApprovedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +42,10 @@ const RivalrySchema = new Schema<IRivalry>(
     pointsAwarded: { type: Number, default: 0 },
     cancelledBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
     pointsPenalty: { type: Number, default: 0 },
+    withdrawalRequestedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    withdrawalRequestedAt: { type: Date, default: null },
+    withdrawalApprovedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    withdrawalApprovedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

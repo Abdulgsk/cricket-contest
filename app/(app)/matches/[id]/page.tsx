@@ -15,6 +15,7 @@ import { CustomPoolsList } from "@/components/custom-pools-list";
 import { MatchPlayers } from "@/components/match/match-players";
 import { FetchPlayersButton } from "@/components/match/fetch-players-button";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
+import { isModuleLocked } from "@/lib/match-locks";
 
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -42,7 +43,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         .lean()
     : [];
 
-  const matchStarted = new Date(match.startTime) <= new Date();
+  const predictionLocked = isModuleLocked(match, "predictions");
   const isAdmin = me.role === "admin" || me.role === "superadmin";
 
   return (
@@ -85,10 +86,10 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       <div className="grid md:grid-cols-2 gap-4">
         <Card>
           <h2 className="font-semibold mb-3">Your Prediction</h2>
-          {matchStarted ? (
+          {predictionLocked ? (
             myPred ? (
               <div className="space-y-2 text-sm">
-                <p className="text-success text-xs">🔒 LOCKED — match has started.</p>
+                <p className="text-success text-xs">🔒 LOCKED — prediction window has closed.</p>
                 <Field label="Winner" value={myPred.winner} />
                 <Field label="Top batter" value={myPred.topBatter} />
                 <Field label="Top bowler" value={myPred.topBowler} />
@@ -182,7 +183,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         </Card>
       </div>
 
-      <CustomPoolsList pools={pools} canPredict={!matchStarted} />
+      <CustomPoolsList pools={pools} canPredict={!predictionLocked} />
 
       <MatchPlayers
         players={match.players}

@@ -5,13 +5,14 @@ import { Prediction } from "@/models/Prediction";
 import { requireUser } from "@/lib/rbac";
 import { Card, Badge } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils";
+import { isModuleLocked } from "@/lib/match-locks";
 
 export default async function PredictionsPage() {
   const me = await requireUser();
   await connectDB();
-  const upcoming = await Match.find({ status: "upcoming", startTime: { $gte: new Date() } })
+  const upcoming = (await Match.find({ status: { $in: ["upcoming", "live"] } })
     .sort({ startTime: 1 })
-    .lean();
+    .lean()).filter((match) => !isModuleLocked(match, "predictions"));
   const myPredictions = await Prediction.find({ userId: me._id }).lean();
   const submitted = new Set(myPredictions.map((p) => String(p.matchId)));
   const past = await Prediction.find({ userId: me._id, scored: true })

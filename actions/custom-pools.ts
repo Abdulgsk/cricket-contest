@@ -8,6 +8,7 @@ import { Match } from "@/models/Match";
 import { CustomPool } from "@/models/CustomPool";
 import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
 import { requireRole, requireUser } from "@/lib/rbac";
+import { isModuleLocked } from "@/lib/match-locks";
 
 const CreatePoolSchema = z.object({
   matchId: z.string().min(1),
@@ -23,7 +24,7 @@ export async function createCustomPoolAction(payload: unknown) {
   await connectDB();
   const match = await Match.findById(parsed.data.matchId);
   if (!match) return { ok: false as const, error: "Match not found" };
-  if (match.startTime <= new Date()) {
+  if (isModuleLocked(match, "predictions")) {
     return { ok: false as const, error: "Cannot add pool after match started" };
   }
   await CustomPool.create({
@@ -60,7 +61,7 @@ export async function submitCustomPoolPredictionAction(formData: FormData) {
   if (!pool) return { ok: false as const, error: "Pool not found" };
   const match = await Match.findById(pool.matchId);
   if (!match) return { ok: false as const, error: "Match not found" };
-  if (match.startTime <= new Date()) {
+  if (isModuleLocked(match, "predictions")) {
     return { ok: false as const, error: "Pool is locked" };
   }
   if (!pool.options.includes(choice)) {

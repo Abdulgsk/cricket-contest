@@ -3,6 +3,7 @@ import { Match } from "@/models/Match";
 import { Prediction } from "@/models/Prediction";
 import { PredictionAuditLog } from "@/models/PredictionAuditLog";
 import mongoose from "mongoose";
+import { isModuleLocked } from "@/lib/match-locks";
 
 /** Submit or update a prediction. Editable until the match starts (or admin lock). */
 export async function submitPrediction(args: {
@@ -15,7 +16,7 @@ export async function submitPrediction(args: {
   await connectDB();
   const match = await Match.findById(args.matchId);
   if (!match) throw new Error("Match not found");
-  if (match.predictionsLocked || match.startTime <= new Date()) {
+  if (match.predictionsLocked || isModuleLocked(match, "predictions")) {
     throw new Error("Predictions are locked for this match");
   }
 
@@ -59,7 +60,7 @@ export async function adminResetPrediction(args: {
   await connectDB();
   const match = await Match.findById(args.matchId);
   if (!match) throw new Error("Match not found");
-  if (match.startTime <= new Date()) {
+  if (isModuleLocked(match, "predictions")) {
     throw new Error("Cannot reset predictions after match has started");
   }
   await Prediction.deleteOne({ matchId: args.matchId, userId: args.userId });

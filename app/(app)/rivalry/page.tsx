@@ -48,13 +48,11 @@ export default async function RivalryPage() {
           </div>
           <RivalryMatchPanel
             matchId={m.id}
-            meId={view.meId}
             rivalryLocked={m.rivalryLocked}
             rivalryLockReason={m.rivalryLockReason}
             unfinishedPriors={m.unfinishedPriors}
             eligibleOpponents={m.eligibleOpponents}
-            busyPlayers={m.busyPlayers}
-            myActive={m.myActive}
+            myRivalries={m.myRivalries}
             all={m.all}
           />
         </Card>

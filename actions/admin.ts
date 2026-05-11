@@ -120,6 +120,34 @@ export async function updateMatchModesAction(payload: unknown) {
   return { ok: true };
 }
 
+const MatchLockExtensionsSchema = z.object({
+  matchId: z.string().min(1),
+  predictionLockExtensionMinutes: z.number().int().min(0).max(1440),
+  rivalryLockExtensionMinutes: z.number().int().min(0).max(1440),
+});
+
+export async function updateMatchLockExtensionsAction(payload: unknown) {
+  const me = await requireRole("superadmin");
+  const parsed = MatchLockExtensionsSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  await connectDB();
+  const { matchId, predictionLockExtensionMinutes, rivalryLockExtensionMinutes } = parsed.data;
+  await Match.updateOne(
+    { _id: matchId },
+    { predictionLockExtensionMinutes, rivalryLockExtensionMinutes }
+  );
+  await AuditLog.create({
+    actorId: me._id,
+    action: "match.lockExtensions",
+    meta: { matchId, predictionLockExtensionMinutes, rivalryLockExtensionMinutes },
+  });
+  revalidatePath(`/admin/matches/${matchId}/result`);
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath("/rivalry");
+  revalidatePath("/predictions");
+  return { ok: true as const };
+}
+
 const ResultSchema = z.object({
   matchId: z.string().min(1),
   predictionWinner: z.string().min(1),

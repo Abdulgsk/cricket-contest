@@ -9,6 +9,7 @@ import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { Rivalry } from "@/models/Rivalry";
 import { Notification } from "@/models/Notification";
+import { isModuleLocked } from "@/lib/match-locks";
 
 const CreateSchema = z.object({
   matchId: z.string().min(1),
@@ -23,7 +24,8 @@ type LockReason = "waiting_prior" | "started" | null;
  *  - If any earlier match on the same calendar day has NOT had results entered
  *    yet, this match's rivalries are locked (reason: "waiting_prior") — the
  *    next match "hasn't started" until the previous one is resolved.
- *  - Otherwise the rivalry window stays open until the match's own startTime,
+ *  - Otherwise the rivalry window stays open until the match's own startTime +
+ *    rivalry extension,
  *    then locks (reason: "started").
  */
 async function getMatchLockInfo(matchId: string): Promise<{
@@ -56,7 +58,7 @@ async function getMatchLockInfo(matchId: string): Promise<{
   if (unfinishedPriors.length > 0) {
     return { match, locked: true, reason: "waiting_prior", unfinishedPriors };
   }
-  if (Date.now() >= start.getTime()) {
+  if (isModuleLocked(match, "rivalry")) {
     return { match, locked: true, reason: "started", unfinishedPriors: [] };
   }
   return { match, locked: false, reason: null, unfinishedPriors: [] };
@@ -76,13 +78,28 @@ async function countActiveRivalriesBetween(a: string, b: string): Promise<number
   });
 }
 
-/** Check if a user already has any pending/accepted rivalry for a match. */
-async function userBusyOnMatch(matchId: string, userId: string) {
-  return Rivalry.findOne({
-    matchId,
-    status: { $in: ["pending", "accepted"] },
-    $or: [{ challengerId: userId }, { opponentId: userId }],
-  }).lean();
+async function withdrawRivalryNoPenalty(riv: {
+  _id: mongoose.Types.ObjectId;
+  matchId: mongoose.Types.ObjectId;
+  challengerId: mongoose.Types.ObjectId;
+  opponentId: mongoose.Types.ObjectId;
+  status: string;
+  withdrawalRequestedBy?: mongoose.Types.ObjectId | null;
+  withdrawalRequestedAt?: Date | null;
+  withdrawalApprovedBy?: mongoose.Types.ObjectId | null;
+  withdrawalApprovedAt?: Date | null;
+  cancelledBy?: mongoose.Types.ObjectId | null;
+  pointsPenalty?: number;
+  save: () => Promise<unknown>;
+}) {
+  riv.status = "cancelled";
+  riv.pointsPenalty = 0;
+  riv.cancelledBy = null;
+  riv.withdrawalRequestedBy = null;
+  riv.withdrawalRequestedAt = null;
+  riv.withdrawalApprovedBy = null;
+  riv.withdrawalApprovedAt = null;
+  await riv.save();
 }
 
 export async function createRivalryAction(payload: unknown) {
@@ -119,18 +136,6 @@ export async function createRivalryAction(payload: unknown) {
     return {
       ok: false as const,
       error: `You’ve already used your challenge and revenge against ${opponent.username}.`,
-    };
-  }
-
-  const myExisting = await userBusyOnMatch(matchId, String(me._id));
-  if (myExisting) {
-    return { ok: false as const, error: "You are already in a challenge for this match" };
-  }
-  const theirs = await userBusyOnMatch(matchId, opponentId);
-  if (theirs) {
-    return {
-      ok: false as const,
-      error: `${opponent.username} is already in a challenge for this match`,
     };
   }
 
@@ -197,22 +202,26 @@ export async function respondRivalryAction(payload: unknown) {
       : `${me.username} declined your challenge for ${match.teamA} vs ${match.teamB}.`,
   });
 
-  // If accepted, auto-decline any OTHER pending challenges sent to this opponent
-  // for the same match, and notify each challenger so they can try someone else.
+  // If accepted, auto-withdraw any OTHER pending challenges involving either of
+  // these players for the same match, without a penalty.
   if (accept) {
     const others = await Rivalry.find({
       _id: { $ne: riv._id },
       matchId: riv.matchId,
-      opponentId: me._id,
+      $or: [
+        { challengerId: riv.challengerId },
+        { opponentId: riv.challengerId },
+        { challengerId: riv.opponentId },
+        { opponentId: riv.opponentId },
+      ],
       status: "pending",
     });
     for (const o of others) {
-      o.status = "declined";
-      await o.save();
+      await withdrawRivalryNoPenalty(o);
       await Notification.create({
         userId: o.challengerId,
-        title: "Rivalry unavailable",
-        body: `${me.username} accepted another challenge for ${match.teamA} vs ${match.teamB}. Try challenging someone else.`,
+        title: "Rivalry withdrawn",
+        body: `${me.username} accepted a challenge for ${match.teamA} vs ${match.teamB}. Your other challenge was withdrawn without penalty.`,
       });
     }
   }
@@ -244,7 +253,7 @@ export async function cancelRivalryAction(payload: unknown) {
   const info = await getMatchLockInfo(String(riv.matchId));
   if (!info) return { ok: false as const, error: "Match not found" };
   const { match, locked, reason } = info;
-  if (locked && reason === "started") {
+  if (locked) {
     return { ok: false as const, error: "Match locked \u2014 challenges can no longer be withdrawn" };
   }
 
@@ -270,6 +279,104 @@ export async function cancelRivalryAction(payload: unknown) {
   });
 
   revalidatePath("/rivalry");
+  return { ok: true as const };
+}
+
+const RequestWithdrawSchema = z.object({ rivalryId: z.string().min(1) });
+
+export async function requestRivalryWithdrawalAction(payload: unknown) {
+  const me = await requireUser();
+  const parsed = RequestWithdrawSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  await connectDB();
+  const riv = await Rivalry.findById(parsed.data.rivalryId);
+  if (!riv) return { ok: false as const, error: "Challenge not found" };
+  const meId = String(me._id);
+  if (String(riv.challengerId) !== meId && String(riv.opponentId) !== meId) {
+    return { ok: false as const, error: "You are not part of this challenge" };
+  }
+  const info = await getMatchLockInfo(String(riv.matchId));
+  if (!info) return { ok: false as const, error: "Match not found" };
+  const { locked, reason } = info;
+  if (locked) {
+    return { ok: false as const, error: "Match locked — withdrawal requests are closed" };
+  }
+  if (riv.status !== "pending" && riv.status !== "accepted") {
+    return { ok: false as const, error: "This challenge can no longer be withdrawn" };
+  }
+  riv.withdrawalRequestedBy = me._id as unknown as typeof riv.withdrawalRequestedBy;
+  riv.withdrawalRequestedAt = new Date();
+  riv.withdrawalApprovedBy = null;
+  riv.withdrawalApprovedAt = null;
+  await riv.save();
+
+  await Notification.create({
+    userId: riv.challengerId,
+    title: "Withdrawal requested",
+    body: `${me.username} asked for admin approval to withdraw a rivalry for this match.`,
+  });
+  await Notification.create({
+    userId: riv.opponentId,
+    title: "Withdrawal requested",
+    body: `${me.username} asked for admin approval to withdraw a rivalry for this match.`,
+  });
+  revalidatePath("/rivalry");
+  revalidatePath("/admin");
+  return { ok: true as const };
+}
+
+const AdminWithdrawSchema = z.object({
+  rivalryId: z.string().min(1),
+  approve: z.boolean(),
+});
+
+export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
+  const admin = await requireUser();
+  if (admin.role !== "admin" && admin.role !== "superadmin") {
+    return { ok: false as const, error: "Admin access required" };
+  }
+  const parsed = AdminWithdrawSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  await connectDB();
+  const riv = await Rivalry.findById(parsed.data.rivalryId);
+  if (!riv) return { ok: false as const, error: "Challenge not found" };
+  const requesterId = riv.withdrawalRequestedBy;
+  if (!riv.withdrawalRequestedAt || !requesterId) {
+    return { ok: false as const, error: "No withdrawal request to review" };
+  }
+  if (!parsed.data.approve) {
+    riv.withdrawalRequestedBy = null;
+    riv.withdrawalRequestedAt = null;
+    await riv.save();
+    await Notification.create({
+      userId: requesterId,
+      title: "Withdrawal denied",
+      body: "An admin did not approve your rivalry withdrawal request.",
+    });
+    revalidatePath("/admin");
+    revalidatePath("/rivalry");
+    return { ok: true as const };
+  }
+
+  await withdrawRivalryNoPenalty(riv);
+  riv.withdrawalApprovedBy = admin._id as unknown as typeof riv.withdrawalApprovedBy;
+  riv.withdrawalApprovedAt = new Date();
+  riv.cancelledBy = requesterId;
+  await riv.save();
+
+  await Notification.create({
+    userId: riv.challengerId,
+    title: "Withdrawal approved",
+    body: "An admin approved the rivalry withdrawal. No penalty was applied.",
+  });
+  await Notification.create({
+    userId: riv.opponentId,
+    title: "Withdrawal approved",
+    body: "An admin approved the rivalry withdrawal. No penalty was applied.",
+  });
+  revalidatePath("/admin");
+  revalidatePath("/rivalry");
+  revalidatePath("/leaderboard");
   return { ok: true as const };
 }
 
@@ -363,46 +470,26 @@ export async function getRivalryView() {
       const matchRivalries = rivalries.filter(
         (r) => String(r.matchId) === String(m._id)
       );
-      const busyIds = new Set<string>();
-      for (const r of matchRivalries) {
-        if (r.status === "pending" || r.status === "accepted") {
-          busyIds.add(String(r.challengerId));
-          busyIds.add(String(r.opponentId));
-        }
-      }
-      const mine = matchRivalries.find(
-        (r) =>
-          (String(r.challengerId) === meId || String(r.opponentId) === meId) &&
-          (r.status === "pending" || r.status === "accepted")
-      );
-      const minePending =
-        mine && mine.status === "pending"
-            ? {
-              id: String(mine._id),
-              role:
-                String(mine.challengerId) === meId
-                  ? ("challenger" as const)
-                  : ("opponent" as const),
-              opponent: {
-                username:
-                  String(mine.challengerId) === meId
-                    ? userMap.get(String(mine.opponentId))?.username ?? ""
-                    : userMap.get(String(mine.challengerId))?.username ?? "",
-              },
-            }
-          : null;
-      const mineAccepted =
-        mine && mine.status === "accepted"
-          ? {
-              id: String(mine._id),
-              opponent: {
-                username:
-                  String(mine.challengerId) === meId
-                    ? userMap.get(String(mine.opponentId))?.username ?? ""
-                    : userMap.get(String(mine.challengerId))?.username ?? "",
-              },
-            }
-          : null;
+      const myRivalries = matchRivalries
+        .filter(
+          (r) =>
+            (String(r.challengerId) === meId || String(r.opponentId) === meId) &&
+            (r.status === "pending" || r.status === "accepted")
+        )
+        .map((r) => ({
+          id: String(r._id),
+          status: r.status,
+          role:
+            String(r.challengerId) === meId ? ("challenger" as const) : ("opponent" as const),
+          opponent: {
+            username:
+              String(r.challengerId) === meId
+                ? userMap.get(String(r.opponentId))?.username ?? ""
+                : userMap.get(String(r.challengerId))?.username ?? "",
+          },
+          withdrawalRequestedAt: r.withdrawalRequestedAt ?? null,
+          withdrawalRequestedBy: r.withdrawalRequestedBy ? String(r.withdrawalRequestedBy) : null,
+        }));
       return {
         id: String(m._id),
         teamA: m.teamA,
@@ -445,7 +532,6 @@ export async function getRivalryView() {
           .filter((u) => {
             const uid = String(u._id);
             if (uid === meId) return false;
-            if (busyIds.has(uid)) return false;
             // Hide opponents we’ve already maxed (challenge + revenge done).
             if ((pairCount.get(uid) ?? 0) >= MAX_RIVALRIES_PER_PAIR) return false;
             return true;
@@ -460,16 +546,8 @@ export async function getRivalryView() {
               isRevenge: prior === 1,
             };
           }),
-        // Players in a challenge already (for display)
-        busyPlayers: users
-          .filter((u) => busyIds.has(String(u._id)))
-          .map((u) => ({ id: String(u._id), username: u.username })),
-        myActive: mine
-          ? {
-              ...(minePending ?? mineAccepted ?? {}),
-              status: mine.status,
-            }
-          : null,
+        // All of my active challenges for this match (may be multiple now)
+        myRivalries,
         all: matchRivalries.map((r) => ({
           id: String(r._id),
           challenger: userMap.get(String(r.challengerId))?.username ?? "—",

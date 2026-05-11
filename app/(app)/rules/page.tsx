@@ -63,67 +63,18 @@ export default function RulesPage() {
         <p className="text-sm text-muted-foreground">
           Bounty is selected per match by admin. If no player is selected, that match has no bounty.
           Any non-missed player who finishes above the selected bounty holder gets <span className="text-success">+{BONUSES.BOUNTY}</span> bounty points.
-          These points are added to final score, but they are tracked separately from bonus points.
         </p>
       </Card>
 
       <Card>
-        <h2 className="font-semibold mb-3">⚔️ Rivalry (1v1 challenges)</h2>
-        <p className="text-sm text-muted-foreground mb-3">
-          The <strong>Rivalry</strong> tab lets you challenge another player head-to-head for a
-          specific match. Simple rules in plain language:
-        </p>
+        <h2 className="font-semibold mb-3">⚔️ Rivalry challenges</h2>
         <ul className="text-sm space-y-2 list-disc pl-5">
-          <li>
-            You pick today’s match, pick a player and hit <strong>Challenge</strong>. They get a
-            notification and must accept before the rivalry locks.
-          </li>
-          <li>
-            Each player can only be in <strong>one</strong> challenge per match (as challenger or
-            opponent). The dropdown automatically hides players who already have a challenge for
-            that match.
-          </li>
-          <li>
-            <strong>Challenge + Revenge:</strong> you can challenge the same player at most{" "}
-            <strong>twice in your lifetime</strong> — the first challenge and one revenge match.
-            After that, the dropdown won’t show their name anymore.
-          </li>
-          <li>
-            <strong>Revenge bonus:</strong> if you lost the first rivalry against a player and you
-            win the revenge match, you earn an extra{" "}
-            <span className="text-success">+1</span> on top of the normal{" "}
-            <span className="text-success">+{BONUSES.RIVALRY}</span>.
-          </li>
-          <li>
-            If multiple people challenge the same opponent, the moment they accept one challenge
-            the others are auto-declined and those challengers get a notification to try someone
-            else.
-          </li>
-          <li>
-            <strong>Win condition:</strong> if your challenge was accepted, whoever finishes with a
-            better rank in that match wins <span className="text-success">+{BONUSES.RIVALRY}</span>{" "}
-            rivalry points (plus the +1 revenge bonus, if applicable). If both miss or finish at
-            the same rank, it’s a tie — no points awarded.
-          </li>
-          <li>
-            <strong>When rivalries lock:</strong> normally at match start. On a day with{" "}
-            <strong>two matches</strong>, the second match&rsquo;s rivalry dropdown stays{" "}
-            <em>locked</em> until results for the first match are entered &mdash; since the second
-            match effectively starts only after the first one ends. Once the admin submits the
-            first result, the dashboard shows the current table toppers and the second
-            match&rsquo;s rivalry challenges open up until its own start time.
-          </li>
-          <li>
-            <strong>Withdrawing:</strong> either player can cancel a pending or accepted challenge
-            <em> any time before the lock</em>. Withdrawing costs the canceller{" "}
-            <span className="text-danger">−2</span> points and the other player is notified. You
-            will be asked to confirm before withdrawal.
-          </li>
-          <li>
-            All rivalry points and any −2 withdrawal penalties are reflected on the leaderboard,
-            on each player’s profile breakdown, and as a <strong>Rivalries this match</strong>{" "}
-            section on the match results page.
-          </li>
+          <li>You can challenge another player for a specific match.</li>
+          <li>You can keep multiple challenges open in the same match.</li>
+          <li>When one challenge is accepted, the others for that same match are withdrawn without penalty.</li>
+          <li>You can challenge the same player at most twice in your lifetime: the first challenge and one revenge match.</li>
+          <li>If you win a revenge match, you get an extra <span className="text-success">+1</span> on top of <span className="text-success">+{BONUSES.RIVALRY}</span>.</li>
+          <li>Withdrawals before lock cost <span className="text-danger">−2</span>; a separate admin approval request is available for no-penalty withdrawals.</li>
         </ul>
       </Card>
 
@@ -144,10 +95,7 @@ export default function RulesPage() {
           </li>
         </ul>
         <p className="text-xs text-muted-foreground mt-3">
-          ✏️ Predictions are editable until match start (and while admin has not manually locked the
-          match). Choices stay hidden — even from admins — until the match is completed. Admins can only
-          reset predictions before match start; they still cannot view hidden choices. The all-3 bonus is
-          added on top of the 11-point subtotal.
+          The full prediction total is 12 when all three picks are correct.
         </p>
       </Card>
 

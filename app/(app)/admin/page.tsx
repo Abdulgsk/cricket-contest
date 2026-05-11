@@ -2,9 +2,11 @@ import Link from "next/link";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
+import { Rivalry } from "@/models/Rivalry";
 import { Card, Badge } from "@/components/ui/card";
 import { AutomationTools } from "@/components/admin/automation-tools";
 import { RegenerateFactsButton } from "@/components/admin/regenerate-facts-button";
+import { RivalryWithdrawalQueue } from "@/components/admin/rivalry-withdrawal-queue";
 import { formatDate } from "@/lib/utils";
 import { requireRole } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
@@ -15,7 +17,7 @@ export default async function AdminHome() {
   
   // Auto-update match statuses on page load
   await autoUpdateMatchStatuses();
-  const [total, users, pending, upcoming, live, completed, next3] = await Promise.all([
+  const [total, users, pending, upcoming, live, completed, next3, withdrawalRequests] = await Promise.all([
     Match.countDocuments(),
     User.countDocuments(),
     Match.countDocuments({ resultsEntered: false, status: { $ne: "upcoming" } }),
@@ -26,7 +28,34 @@ export default async function AdminHome() {
       .sort({ startTime: 1 })
       .limit(3)
       .lean(),
+    Rivalry.find({
+      withdrawalRequestedAt: { $ne: null },
+      status: { $in: ["pending", "accepted"] },
+    })
+      .populate("matchId", "teamA teamB startTime")
+      .populate("challengerId", "username")
+      .populate("opponentId", "username")
+      .populate("withdrawalRequestedBy", "username")
+      .sort({ withdrawalRequestedAt: -1 })
+      .limit(10)
+      .lean(),
   ]);
+
+  const withdrawalRows = withdrawalRequests.map((r) => {
+    const match = r.matchId as unknown as { teamA?: string; teamB?: string; startTime?: Date };
+    const challenger = r.challengerId as unknown as { username?: string };
+    const opponent = r.opponentId as unknown as { username?: string };
+    const requester = r.withdrawalRequestedBy as unknown as { username?: string };
+    return {
+      rivalryId: String(r._id),
+      matchLabel: match?.teamA && match?.teamB ? `${match.teamA} vs ${match.teamB}` : "Unknown match",
+      challenger: challenger?.username ?? "—",
+      opponent: opponent?.username ?? "—",
+      requestedBy: requester?.username ?? "—",
+      requestedAt: r.withdrawalRequestedAt ? String(r.withdrawalRequestedAt) : new Date().toISOString(),
+      status: r.status,
+    };
+  });
 
   return (
     <div className="space-y-4">
@@ -99,6 +128,8 @@ export default async function AdminHome() {
       </Card>
 
       <AutomationTools />
+
+      <RivalryWithdrawalQueue rows={withdrawalRows} />
 
       <Card>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

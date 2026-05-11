@@ -83,7 +83,7 @@ export function PredictionForm({
     >
       <input type="hidden" name="matchId" value={matchId} />
       <p className="text-xs text-muted-foreground">
-        ✏️ You can update your prediction anytime until the match starts.
+        ✏️ You can update your prediction until the prediction window closes.
       </p>
 
       <div>
