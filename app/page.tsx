@@ -37,39 +37,54 @@ export default async function Landing() {
           <Link href="/rules"><Button variant="outline" size="lg">View Rules</Button></Link>
         </div>
 
-        <div className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
-          {[
-            ["Live", "Leaderboard"],
-            ["6", "Bonus Types"],
-            ["Editable", "Predictions till start"],
-            ["+3", "Per-match Bounty"],
-          ].map(([k, v]) => (
-            <div key={v} className="glass rounded-2xl p-4">
-              <div className="text-2xl font-bold text-primary">{k}</div>
-              <div className="text-xs text-muted-foreground mt-1">{v}</div>
+        <div className="mt-14 w-full">
+          <div className="glass relative overflow-hidden rounded-3xl p-6 sm:p-8">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-primary/20 blur-3xl"
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-accent/20 blur-3xl"
+            />
+            <div className="relative grid gap-6 sm:grid-cols-2 sm:items-center">
+              <div className="text-left">
+                <div className="inline-flex items-center gap-2 rounded-full bg-primary/15 px-3 py-1 text-[11px] font-semibold text-primary">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                  </span>
+                  Season Live
+                </div>
+                <h2 className="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight">
+                  Predict. Battle. <span className="bg-gradient-to-r from-pink-400 to-sky-400 bg-clip-text text-transparent">Banter.</span>
+                </h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Lock in your call before toss. Pick a rival. Watch the leaderboard flip after every match.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-background/60 p-3 ring-1 ring-border/60">
+                  <div className="text-xl font-bold text-primary">+3</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">Win a rivalry</div>
+                </div>
+                <div className="rounded-2xl bg-background/60 p-3 ring-1 ring-border/60">
+                  <div className="text-xl font-bold text-accent">2×</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">Special match modes</div>
+                </div>
+                <div className="rounded-2xl bg-background/60 p-3 ring-1 ring-border/60">
+                  <div className="text-xl font-bold text-warning">🎯</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">Per-match bounty</div>
+                </div>
+                <div className="rounded-2xl bg-background/60 p-3 ring-1 ring-border/60">
+                  <div className="text-xl font-bold text-success">🔒</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">Fair reveal at toss</div>
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
-
-        <div className="mt-6 grid sm:grid-cols-3 gap-3 w-full text-left">
-          <div className="glass rounded-xl p-3">
-            <div className="text-sm font-semibold">⚡ Special Match Modes</div>
-            <div className="text-xs text-muted-foreground mt-1">2× Points, No Bonus, Chaos and Prediction Madness.</div>
-          </div>
-          <div className="glass rounded-xl p-3">
-            <div className="text-sm font-semibold">🎯 Per-match Bounty</div>
-            <div className="text-xs text-muted-foreground mt-1">Admin can set target + reason for each match, or no bounty.</div>
-          </div>
-          <div className="glass rounded-xl p-3">
-            <div className="text-sm font-semibold">🔒 Fair Reveal</div>
-            <div className="text-xs text-muted-foreground mt-1">Predictions stay hidden from everyone until match start.</div>
           </div>
         </div>
       </section>
-
-      <footer className="text-center text-xs text-muted-foreground py-8">
-        Built for 13 friends · MongoDB · Next.js · Vercel
-      </footer>
     </main>
   );
 }
