@@ -12,7 +12,7 @@ type Opponent = {
   id: string;
   username: string;
   handle?: string;
-  recommended?: boolean;
+  isRevenge?: boolean;
 };
 type BusyPlayer = { id: string; username: string };
 type ActiveRivalry = {
@@ -25,7 +25,9 @@ type ActiveRivalry = {
 interface Props {
   matchId: string;
   meId: string;
-  matchStarted: boolean;
+  rivalryLocked: boolean;
+  rivalryLockReason?: "waiting_prior" | "started" | null;
+  unfinishedPriors?: { teamA: string; teamB: string }[];
   eligibleOpponents: Opponent[];
   busyPlayers: BusyPlayer[];
   myActive: ActiveRivalry | null;
@@ -34,7 +36,9 @@ interface Props {
 
 export function RivalryMatchPanel({
   matchId,
-  matchStarted,
+  rivalryLocked,
+  rivalryLockReason,
+  unfinishedPriors,
   eligibleOpponents,
   busyPlayers,
   myActive,
@@ -45,11 +49,10 @@ export function RivalryMatchPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const { recommended, others } = useMemo(() => {
-    const rec = eligibleOpponents.filter((u) => u.recommended);
-    const oth = eligibleOpponents.filter((u) => !u.recommended);
-    return { recommended: rec, others: oth };
-  }, [eligibleOpponents]);
+  const selected = useMemo(
+    () => eligibleOpponents.find((u) => u.id === opponentId) ?? null,
+    [opponentId, eligibleOpponents]
+  );
 
   function clear() {
     setError(null);
@@ -100,9 +103,22 @@ export function RivalryMatchPanel({
 
   return (
     <div className="space-y-3">
-      {matchStarted && (
+      {rivalryLocked && (
         <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-          🔒 Match has started — rivalries are locked. No new challenges and no withdrawals.
+          {rivalryLockReason === "waiting_prior" ? (
+            <>
+              ⏳ Rivalry challenges open once{" "}
+              <strong>
+                {unfinishedPriors && unfinishedPriors.length > 0
+                  ? `${unfinishedPriors[0].teamA} vs ${unfinishedPriors[0].teamB}`
+                  : "the earlier match"}
+              </strong>{" "}
+              results are entered. Check back then — you’ll see the table
+              toppers to target.
+            </>
+          ) : (
+            <>🔒 Rivalries are locked for this match. No new challenges and no withdrawals.</>
+          )}
         </div>
       )}
 
@@ -114,7 +130,7 @@ export function RivalryMatchPanel({
                 You challenged <strong>{myActive.opponent?.username}</strong> — waiting for them to
                 accept.
               </p>
-              {!matchStarted && (
+              {!rivalryLocked && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -132,7 +148,7 @@ export function RivalryMatchPanel({
               <p className="text-sm break-words">
                 <strong>{myActive.opponent?.username}</strong> challenged you ⚔️
               </p>
-              {!matchStarted && (
+              {!rivalryLocked && (
                 <div className="flex gap-2 w-full sm:w-auto">
                   <Button
                     size="sm"
@@ -161,7 +177,7 @@ export function RivalryMatchPanel({
                 ⚔️ Active rivalry with <strong>{myActive.opponent?.username}</strong>. Finish above
                 them to earn <span className="text-success">+3</span>.
               </p>
-              {!matchStarted && (
+              {!rivalryLocked && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -175,7 +191,7 @@ export function RivalryMatchPanel({
             </div>
           )}
         </div>
-      ) : matchStarted ? null : (
+      ) : rivalryLocked ? null : (
         <div className="space-y-2">
           <div className="flex flex-col sm:flex-row gap-2">
             <select
@@ -189,26 +205,13 @@ export function RivalryMatchPanel({
                   ? "No players available"
                   : "Select a player to challenge..."}
               </option>
-              {recommended.length > 0 && (
-                <optgroup label="⭐ Recommended (no rivalry yet today)">
-                  {recommended.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.username}
-                      {u.handle ? ` (${u.handle})` : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {others.length > 0 && (
-                <optgroup label="Other players">
-                  {others.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.username}
-                      {u.handle ? ` (${u.handle})` : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
+              {eligibleOpponents.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.username}
+                  {u.handle ? ` (${u.handle})` : ""}
+                  {u.isRevenge ? " — revenge" : ""}
+                </option>
+              ))}
             </select>
             <Button
               onClick={challenge}
@@ -216,12 +219,13 @@ export function RivalryMatchPanel({
               disabled={!opponentId}
               className="w-full sm:w-auto"
             >
-              Challenge
+              {selected?.isRevenge ? "Revenge" : "Challenge"}
             </Button>
           </div>
-          {recommended.length > 0 && (
+          {selected?.isRevenge && (
             <p className="text-[11px] text-muted-foreground">
-              💡 Recommended players have no active rivalry yet today.
+              ⚠️ This is your revenge match against {selected.username}. Win it for{" "}
+              <span className="text-success">+3 + 1 bonus</span> point.
             </p>
           )}
         </div>
@@ -230,7 +234,7 @@ export function RivalryMatchPanel({
       {error && <p className="text-xs text-danger break-words">{error}</p>}
       {message && <p className="text-xs text-success break-words">{message}</p>}
 
-      {busyPlayers.length > 0 && !myActive && !matchStarted && (
+      {busyPlayers.length > 0 && !myActive && !rivalryLocked && (
         <p className="text-[11px] text-muted-foreground break-words">
           Already in a challenge for this match: {busyPlayers.map((u) => u.username).join(", ")}
         </p>

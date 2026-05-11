@@ -39,14 +39,19 @@ export default async function RivalryPage() {
               </div>
               <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">
                 {formatDate(m.startTime)} · {m.status}
-                {m.matchStarted && " · 🔒 locked"}
+                {m.rivalryLocked &&
+                  (m.rivalryLockReason === "waiting_prior"
+                    ? " · ⏳ waiting for earlier match"
+                    : " · 🔒 locked")}
               </p>
             </div>
           </div>
           <RivalryMatchPanel
             matchId={m.id}
             meId={view.meId}
-            matchStarted={m.matchStarted}
+            rivalryLocked={m.rivalryLocked}
+            rivalryLockReason={m.rivalryLockReason}
+            unfinishedPriors={m.unfinishedPriors}
             eligibleOpponents={m.eligibleOpponents}
             busyPlayers={m.busyPlayers}
             myActive={m.myActive}

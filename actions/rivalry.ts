@@ -15,6 +15,67 @@ const CreateSchema = z.object({
   opponentId: z.string().min(1),
 });
 
+type LockReason = "waiting_prior" | "started" | null;
+
+/**
+ * Compute rivalry lock state for a match.
+ * Rules:
+ *  - If any earlier match on the same calendar day has NOT had results entered
+ *    yet, this match's rivalries are locked (reason: "waiting_prior") — the
+ *    next match "hasn't started" until the previous one is resolved.
+ *  - Otherwise the rivalry window stays open until the match's own startTime,
+ *    then locks (reason: "started").
+ */
+async function getMatchLockInfo(matchId: string): Promise<{
+  match: { startTime: Date; status: string; teamA: string; teamB: string };
+  locked: boolean;
+  reason: LockReason;
+  unfinishedPriors: { teamA: string; teamB: string }[];
+} | null> {
+  const match = await Match.findById(matchId)
+    .select("startTime status teamA teamB")
+    .lean();
+  if (!match) return null;
+  const start = new Date(match.startTime);
+  const dayStart = new Date(start);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(start);
+  dayEnd.setHours(23, 59, 59, 999);
+  const sameDay = await Match.find({
+    _id: { $ne: match._id },
+    startTime: { $gte: dayStart, $lte: dayEnd },
+  })
+    .select("startTime teamA teamB resultsEntered")
+    .lean();
+  const unfinishedPriors = sameDay
+    .filter(
+      (m) =>
+        new Date(m.startTime).getTime() < start.getTime() && !m.resultsEntered
+    )
+    .map((m) => ({ teamA: m.teamA, teamB: m.teamB }));
+  if (unfinishedPriors.length > 0) {
+    return { match, locked: true, reason: "waiting_prior", unfinishedPriors };
+  }
+  if (Date.now() >= start.getTime()) {
+    return { match, locked: true, reason: "started", unfinishedPriors: [] };
+  }
+  return { match, locked: false, reason: null, unfinishedPriors: [] };
+}
+
+/** Maximum lifetime rivalries between any two players (challenge + revenge). */
+const MAX_RIVALRIES_PER_PAIR = 2;
+
+/** Count rivalries between a pair that consumed a slot (anything not declined/cancelled). */
+async function countActiveRivalriesBetween(a: string, b: string): Promise<number> {
+  return Rivalry.countDocuments({
+    status: { $nin: ["declined", "cancelled"] },
+    $or: [
+      { challengerId: a, opponentId: b },
+      { challengerId: b, opponentId: a },
+    ],
+  });
+}
+
 /** Check if a user already has any pending/accepted rivalry for a match. */
 async function userBusyOnMatch(matchId: string, userId: string) {
   return Rivalry.findOne({
@@ -34,13 +95,32 @@ export async function createRivalryAction(payload: unknown) {
   }
 
   await connectDB();
-  const match = await Match.findById(matchId).select("startTime status teamA teamB").lean();
-  if (!match) return { ok: false as const, error: "Match not found" };
-  if (match.status !== "upcoming" || new Date(match.startTime) <= new Date()) {
-    return { ok: false as const, error: "Match has already started" };
+  const info = await getMatchLockInfo(matchId);
+  if (!info) return { ok: false as const, error: "Match not found" };
+  const { match, locked, reason, unfinishedPriors } = info;
+  if (match.status === "completed" || locked) {
+    if (reason === "waiting_prior") {
+      const p = unfinishedPriors[0];
+      return {
+        ok: false as const,
+        error: p
+          ? `Wait for ${p.teamA} vs ${p.teamB} results before challenging for this match.`
+          : "Wait for the earlier match's results before challenging.",
+      };
+    }
+    return { ok: false as const, error: "Rivalries are locked for this match" };
   }
   const opponent = await User.findById(opponentId).select("username").lean();
   if (!opponent) return { ok: false as const, error: "Opponent not found" };
+
+  // Enforce “challenge + revenge” cap (max 2 lifetime rivalries between this pair).
+  const priorCount = await countActiveRivalriesBetween(String(me._id), opponentId);
+  if (priorCount >= MAX_RIVALRIES_PER_PAIR) {
+    return {
+      ok: false as const,
+      error: `You’ve already used your challenge and revenge against ${opponent.username}.`,
+    };
+  }
 
   const myExisting = await userBusyOnMatch(matchId, String(me._id));
   if (myExisting) {
@@ -61,10 +141,13 @@ export async function createRivalryAction(payload: unknown) {
     status: "pending",
   });
 
+  const isRevenge = priorCount === 1;
   await Notification.create({
     userId: opponentId,
-    title: "Rivalry challenge ⚔️",
-    body: `${me.username} challenged you for ${match.teamA} vs ${match.teamB}. Open Rivalry tab to accept or decline.`,
+    title: isRevenge ? "Revenge challenge \u2694\ufe0f" : "Rivalry challenge \u2694\ufe0f",
+    body: `${me.username} ${
+      isRevenge ? "wants revenge" : "challenged you"
+    } for ${match.teamA} vs ${match.teamB}. Open Rivalry tab to accept or decline.`,
   });
 
   revalidatePath("/rivalry");
@@ -90,12 +173,17 @@ export async function respondRivalryAction(payload: unknown) {
   if (riv.status !== "pending") {
     return { ok: false as const, error: "This challenge is no longer pending" };
   }
-  const match = await Match.findById(riv.matchId).select("startTime status teamA teamB").lean();
-  if (!match) return { ok: false as const, error: "Match not found" };
-  if (new Date(match.startTime) <= new Date()) {
-    riv.status = "expired";
-    await riv.save();
-    return { ok: false as const, error: "Match already started" };
+  const info = await getMatchLockInfo(String(riv.matchId));
+  if (!info) return { ok: false as const, error: "Match not found" };
+  const { match, locked, reason } = info;
+  if (locked) {
+    // Only mark expired if the match itself has started — not when waiting
+    // for a prior match's results (challenges shouldn't even exist yet then).
+    if (reason === "started") {
+      riv.status = "expired";
+      await riv.save();
+    }
+    return { ok: false as const, error: "Rivalries are locked for this match" };
   }
 
   riv.status = accept ? "accepted" : "declined";
@@ -153,10 +241,11 @@ export async function cancelRivalryAction(payload: unknown) {
     return { ok: false as const, error: "This challenge can no longer be withdrawn" };
   }
 
-  const match = await Match.findById(riv.matchId).select("startTime teamA teamB").lean();
-  if (!match) return { ok: false as const, error: "Match not found" };
-  if (new Date(match.startTime) <= new Date()) {
-    return { ok: false as const, error: "Match already started \u2014 challenges are locked" };
+  const info = await getMatchLockInfo(String(riv.matchId));
+  if (!info) return { ok: false as const, error: "Match not found" };
+  const { match, locked, reason } = info;
+  if (locked && reason === "started") {
+    return { ok: false as const, error: "Match locked \u2014 challenges can no longer be withdrawn" };
   }
 
   const wasAccepted = riv.status === "accepted";
@@ -207,9 +296,47 @@ export async function getRivalryView() {
     .lean();
 
   const matchIds = matches.map((m) => new mongoose.Types.ObjectId(String(m._id)));
-  const [rivalries, users] = await Promise.all([
+
+  // For lock detection we also need same-day matches that are ALREADY completed
+  // (so we can tell whether priors are done). Build a wider day window covering
+  // all visible matches and pull every match in that range.
+  let dayMatches: {
+    _id: mongoose.Types.ObjectId;
+    startTime: Date;
+    teamA: string;
+    teamB: string;
+    resultsEntered: boolean;
+  }[] = [];
+  if (matches.length) {
+    const minDayStart = new Date(matches[0].startTime);
+    minDayStart.setHours(0, 0, 0, 0);
+    const maxDayEnd = new Date(matches[matches.length - 1].startTime);
+    maxDayEnd.setHours(23, 59, 59, 999);
+    dayMatches = await Match.find({
+      startTime: { $gte: minDayStart, $lte: maxDayEnd },
+    })
+      .select("startTime teamA teamB resultsEntered")
+      .lean();
+  }
+  const dayMap = new Map<string, typeof dayMatches>();
+  for (const dm of dayMatches) {
+    const s = new Date(dm.startTime);
+    const k = `${s.getFullYear()}-${s.getMonth()}-${s.getDate()}`;
+    const arr = dayMap.get(k) ?? [];
+    arr.push(dm);
+    dayMap.set(k, arr);
+  }
+  const [rivalries, allHistoric, users] = await Promise.all([
     Rivalry.find({ matchId: { $in: matchIds } })
       .sort({ createdAt: -1 })
+      .lean(),
+    // All lifetime rivalries involving me that consumed a slot — used to
+    // enforce the “max 2 challenges per pair” rule (challenge + revenge).
+    Rivalry.find({
+      status: { $nin: ["declined", "cancelled"] },
+      $or: [{ challengerId: me._id }, { opponentId: me._id }],
+    })
+      .select("challengerId opponentId")
       .lean(),
     User.find().select("username userId").sort({ username: 1 }).lean(),
   ]);
@@ -217,15 +344,18 @@ export async function getRivalryView() {
   const userMap = new Map(users.map((u) => [String(u._id), u]));
   const meId = String(me._id);
 
-  // Users who already have any active (pending/accepted) rivalry across today's
-  // listed matches — used to recommend "fresh" opponents in the dropdown.
-  const globallyBusyIds = new Set<string>();
-  for (const r of rivalries) {
-    if (r.status === "pending" || r.status === "accepted") {
-      globallyBusyIds.add(String(r.challengerId));
-      globallyBusyIds.add(String(r.opponentId));
-    }
+  // Count of historic rivalries between me and each other user.
+  const pairCount = new Map<string, number>();
+  for (const r of allHistoric) {
+    const other =
+      String(r.challengerId) === meId
+        ? String(r.opponentId)
+        : String(r.challengerId);
+    pairCount.set(other, (pairCount.get(other) ?? 0) + 1);
   }
+
+  // For computing lock state per match (need siblings on the same calendar day).
+  // (dayMap built above already covers this.)
 
   return {
     meId,
@@ -279,16 +409,57 @@ export async function getRivalryView() {
         teamB: m.teamB,
         startTime: m.startTime,
         status: m.status,
-        matchStarted: new Date(m.startTime) <= new Date(),
+        ...(() => {
+          const start = new Date(m.startTime);
+          const dayKey = `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}`;
+          const siblings = dayMap.get(dayKey) ?? [];
+          const unfinishedPriors = siblings
+            .filter(
+              (s) =>
+                String(s._id) !== String(m._id) &&
+                new Date(s.startTime).getTime() < start.getTime() &&
+                !s.resultsEntered
+            )
+            .map((s) => ({ teamA: s.teamA, teamB: s.teamB }));
+          if (unfinishedPriors.length > 0) {
+            return {
+              rivalryLocked: true,
+              rivalryLockReason: "waiting_prior" as const,
+              unfinishedPriors,
+            };
+          }
+          if (Date.now() >= start.getTime()) {
+            return {
+              rivalryLocked: true,
+              rivalryLockReason: "started" as const,
+              unfinishedPriors: [],
+            };
+          }
+          return {
+            rivalryLocked: false,
+            rivalryLockReason: null,
+            unfinishedPriors: [],
+          };
+        })(),
         eligibleOpponents: users
-          .filter((u) => String(u._id) !== meId && !busyIds.has(String(u._id)))
-          .map((u) => ({
-            id: String(u._id),
-            username: u.username,
-            handle: u.userId,
-            // Recommended = no active rivalry across ANY of today's listed matches.
-            recommended: !globallyBusyIds.has(String(u._id)),
-          })),
+          .filter((u) => {
+            const uid = String(u._id);
+            if (uid === meId) return false;
+            if (busyIds.has(uid)) return false;
+            // Hide opponents we’ve already maxed (challenge + revenge done).
+            if ((pairCount.get(uid) ?? 0) >= MAX_RIVALRIES_PER_PAIR) return false;
+            return true;
+          })
+          .map((u) => {
+            const uid = String(u._id);
+            const prior = pairCount.get(uid) ?? 0;
+            return {
+              id: uid,
+              username: u.username,
+              handle: u.userId,
+              isRevenge: prior === 1,
+            };
+          }),
         // Players in a challenge already (for display)
         busyPlayers: users
           .filter((u) => busyIds.has(String(u._id)))

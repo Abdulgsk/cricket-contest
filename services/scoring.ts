@@ -14,6 +14,7 @@ import {
   PREDICTION_POINTS,
 } from "@/lib/constants";
 import mongoose from "mongoose";
+import { revalidatePath } from "next/cache";
 
 interface AdminResultEntry {
   userId: string; // mongo id
@@ -164,6 +165,17 @@ export async function processMatchResults(
     await generateFactsForMatch(matchId);
   } catch {
     // facts are non-critical; ignore failures
+  }
+
+  // Unlock the rivalry dropdown for any later same-day match that was waiting
+  // on this result, and refresh the dashboard so the new storylines show up.
+  try {
+    revalidatePath("/rivalry");
+    revalidatePath("/dashboard");
+    revalidatePath("/leaderboard");
+    revalidatePath(`/matches/${matchId}`);
+  } catch {
+    // revalidation is best-effort
   }
 }
 
@@ -351,6 +363,7 @@ async function applyBountyPoints(args: {
 }
 
 const RIVALRY_POINTS = 3;
+const RIVALRY_REVENGE_BONUS = 1;
 
 async function settleRivalries(args: {
   matchId: string;
@@ -402,19 +415,47 @@ async function settleRivalries(args: {
     }
     riv.settled = true;
     riv.winnerId = winnerId ?? null;
-    riv.pointsAwarded = winnerId ? RIVALRY_POINTS : 0;
+
+    // Revenge bonus: if the current winner is the LOSER of a previously-settled
+    // accepted rivalry between the same pair, award +1 extra point.
+    let revengeBonus = 0;
+    if (winnerId) {
+      const priorLoss = await Rivalry.findOne({
+        _id: { $ne: riv._id },
+        status: "accepted",
+        settled: true,
+        $or: [
+          { challengerId: riv.challengerId, opponentId: riv.opponentId },
+          { challengerId: riv.opponentId, opponentId: riv.challengerId },
+        ],
+        winnerId: {
+          $ne: null,
+          // Previous winner must be the player who lost this time
+          $eq:
+            String(winnerId) === String(riv.challengerId)
+              ? riv.opponentId
+              : riv.challengerId,
+        },
+      }).lean();
+      if (priorLoss) revengeBonus = RIVALRY_REVENGE_BONUS;
+    }
+
+    riv.pointsAwarded = winnerId ? RIVALRY_POINTS + revengeBonus : 0;
     await riv.save();
 
     if (winnerId) {
       const winnerRes = resByUser.get(String(winnerId));
       if (winnerRes) {
-        winnerRes.rivalryPoints = (winnerRes.rivalryPoints ?? 0) + RIVALRY_POINTS;
+        winnerRes.rivalryPoints =
+          (winnerRes.rivalryPoints ?? 0) + RIVALRY_POINTS + revengeBonus;
         await BonusAuditLog.create({
           userId: winnerId,
           matchId,
-          bonusType: "rivalry_win",
-          points: RIVALRY_POINTS,
-          explanation: "Won a 1v1 rivalry challenge for this match",
+          bonusType: revengeBonus ? "rivalry_revenge_win" : "rivalry_win",
+          points: RIVALRY_POINTS + revengeBonus,
+          explanation: revengeBonus
+            ? `Won the revenge rivalry (+${RIVALRY_POINTS} +${revengeBonus} bonus)`
+            : "Won a 1v1 rivalry challenge for this match",
         });
       }
       // Notify both players
@@ -422,13 +463,17 @@ async function settleRivalries(args: {
         String(winnerId) === String(riv.challengerId) ? riv.opponentId : riv.challengerId;
       await Notification.create({
         userId: winnerId,
-        title: "Rivalry won \ud83c\udfc6",
-        body: `You beat your rival this match (+${RIVALRY_POINTS} points).`,
+        title: revengeBonus ? "Revenge won \ud83c\udfc6" : "Rivalry won \ud83c\udfc6",
+        body: revengeBonus
+          ? `You won the revenge match (+${RIVALRY_POINTS + revengeBonus} points).`
+          : `You beat your rival this match (+${RIVALRY_POINTS} points).`,
       });
       await Notification.create({
         userId: loserId,
         title: "Rivalry lost",
-        body: "Your rival finished above you this match.",
+        body: revengeBonus
+          ? "Your rival took the revenge match."
+          : "Your rival finished above you this match.",
       });
     } else {
       // No winner (tie or both missed) - notify both as a draw

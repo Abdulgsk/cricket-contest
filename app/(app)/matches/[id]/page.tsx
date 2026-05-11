@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { MatchResult } from "@/models/MatchResult";
 import { Prediction } from "@/models/Prediction";
+import { Rivalry } from "@/models/Rivalry";
 import { requireUser } from "@/lib/rbac";
 import { getPredictionSuspense } from "@/services/prediction-engine";
 import { getCustomPoolsForMatch } from "@/actions/custom-pools";
@@ -31,6 +32,14 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
   const pools = await getCustomPoolsForMatch(id, String(me._id));
   const results = match.status === "completed"
     ? await MatchResult.find({ matchId: id }).populate("userId", "username userId").sort({ rank: 1 }).lean()
+    : [];
+
+  const rivalries = match.status === "completed"
+    ? await Rivalry.find({ matchId: id, status: "accepted", settled: true })
+        .populate("challengerId", "username")
+        .populate("opponentId", "username")
+        .populate("winnerId", "username")
+        .lean()
     : [];
 
   const matchStarted = new Date(match.startTime) <= new Date();
@@ -239,6 +248,46 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
                   </span>
                 </div>
               ))}
+          </div>
+        </Card>
+      )}
+
+      {rivalries.length > 0 && (
+        <Card>
+          <h2 className="font-semibold mb-3">⚔️ Rivalries this match</h2>
+          <div className="space-y-2">
+            {rivalries.map((r) => {
+              const c = r.challengerId as unknown as { username: string } | null;
+              const o = r.opponentId as unknown as { username: string } | null;
+              const w = r.winnerId as unknown as { username: string } | null;
+              const isRevenge = r.pointsAwarded > 3;
+              return (
+                <div
+                  key={String(r._id)}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg bg-muted/30 px-3 py-2 text-sm"
+                >
+                  <div className="break-words">
+                    <span className="font-semibold">{c?.username ?? "—"}</span>
+                    <span className="text-muted-foreground"> vs </span>
+                    <span className="font-semibold">{o?.username ?? "—"}</span>
+                    {isRevenge && (
+                      <span className="ml-2 text-[10px] uppercase tracking-wider text-warning">
+                        revenge
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs">
+                    {w ? (
+                      <span className="text-success">
+                        🏆 {w.username} +{r.pointsAwarded}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Tied — no points</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}

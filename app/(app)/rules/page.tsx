@@ -66,12 +66,23 @@ export default function RulesPage() {
         <ul className="text-sm space-y-2 list-disc pl-5">
           <li>
             You pick today’s match, pick a player and hit <strong>Challenge</strong>. They get a
-            notification and must accept before the match starts.
+            notification and must accept before the rivalry locks.
           </li>
           <li>
             Each player can only be in <strong>one</strong> challenge per match (as challenger or
             opponent). The dropdown automatically hides players who already have a challenge for
-            that match. ⭐ Recommended players are the ones with no rivalry yet today.
+            that match.
+          </li>
+          <li>
+            <strong>Challenge + Revenge:</strong> you can challenge the same player at most{" "}
+            <strong>twice in your lifetime</strong> — the first challenge and one revenge match.
+            After that, the dropdown won’t show their name anymore.
+          </li>
+          <li>
+            <strong>Revenge bonus:</strong> if you lost the first rivalry against a player and you
+            win the revenge match, you earn an extra{" "}
+            <span className="text-success">+1</span> on top of the normal{" "}
+            <span className="text-success">+{BONUSES.RIVALRY}</span>.
           </li>
           <li>
             If multiple people challenge the same opponent, the moment they accept one challenge
@@ -81,23 +92,27 @@ export default function RulesPage() {
           <li>
             <strong>Win condition:</strong> if your challenge was accepted, whoever finishes with a
             better rank in that match wins <span className="text-success">+{BONUSES.RIVALRY}</span>{" "}
-            rivalry points. If both miss or finish at the same rank, it’s a tie — no points
-            awarded.
+            rivalry points (plus the +1 revenge bonus, if applicable). If both miss or finish at
+            the same rank, it’s a tie — no points awarded.
+          </li>
+          <li>
+            <strong>When rivalries lock:</strong> normally at match start. On a day with{" "}
+            <strong>two matches</strong>, the second match&rsquo;s rivalry dropdown stays{" "}
+            <em>locked</em> until results for the first match are entered &mdash; since the second
+            match effectively starts only after the first one ends. Once the admin submits the
+            first result, the dashboard shows the current table toppers and the second
+            match&rsquo;s rivalry challenges open up until its own start time.
           </li>
           <li>
             <strong>Withdrawing:</strong> either player can cancel a pending or accepted challenge
-            <em> any time before the match starts</em>. Withdrawing costs the canceller{" "}
+            <em> any time before the lock</em>. Withdrawing costs the canceller{" "}
             <span className="text-danger">−2</span> points and the other player is notified. You
             will be asked to confirm before withdrawal.
           </li>
           <li>
-            <strong>Locking:</strong> once the match starts, the rivalry is locked — no
-            withdrawals, no new challenges for that match. The result is settled automatically
-            when match results are entered.
-          </li>
-          <li>
-            All rivalry points and any −2 withdrawal penalties are reflected on the leaderboard and
-            on each player’s profile breakdown.
+            All rivalry points and any −2 withdrawal penalties are reflected on the leaderboard,
+            on each player’s profile breakdown, and as a <strong>Rivalries this match</strong>{" "}
+            section on the match results page.
           </li>
         </ul>
       </Card>

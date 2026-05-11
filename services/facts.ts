@@ -3,6 +3,7 @@ import { Match } from "@/models/Match";
 import { MatchResult } from "@/models/MatchResult";
 import { Prediction } from "@/models/Prediction";
 import { DailyFact } from "@/models/DailyFact";
+import { Rivalry } from "@/models/Rivalry";
 import { User } from "@/models/User";
 import { computeLeaderboard, type LeaderboardRow } from "@/services/scoring";
 import { ordinal } from "@/lib/utils";
@@ -225,6 +226,84 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
     }
   }
 
+  // ---- Rivalry storylines ----
+  const settledRivalries = await Rivalry.find({
+    matchId,
+    status: "accepted",
+    settled: true,
+  }).lean();
+  const withdrawn = await Rivalry.find({
+    matchId,
+    status: "cancelled",
+    cancelledBy: { $ne: null },
+  }).lean();
+
+  // Ensure we have names for everyone involved in rivalries (challenger,
+  // opponent, withdrawer) even if they aren\u2019t in MatchResult yet.
+  const rivalryUserIds = new Set<string>();
+  for (const r of settledRivalries) {
+    rivalryUserIds.add(String(r.challengerId));
+    rivalryUserIds.add(String(r.opponentId));
+    if (r.winnerId) rivalryUserIds.add(String(r.winnerId));
+  }
+  for (const r of withdrawn) {
+    rivalryUserIds.add(String(r.challengerId));
+    rivalryUserIds.add(String(r.opponentId));
+    if (r.cancelledBy) rivalryUserIds.add(String(r.cancelledBy));
+  }
+  const missingIds = [...rivalryUserIds].filter((id) => !nameMap.has(id));
+  if (missingIds.length) {
+    const extraUsers = await User.find({ _id: { $in: missingIds } })
+      .select("username")
+      .lean();
+    for (const u of extraUsers) nameMap.set(String(u._id), u.username);
+  }
+
+  for (const riv of settledRivalries) {
+    const cName = nameMap.get(String(riv.challengerId));
+    const oName = nameMap.get(String(riv.opponentId));
+    if (!cName || !oName) continue;
+    const isRevenge = riv.pointsAwarded > 3;
+    if (riv.winnerId) {
+      const winName = nameMap.get(String(riv.winnerId));
+      const loseName =
+        String(riv.winnerId) === String(riv.challengerId) ? oName : cName;
+      if (!winName) continue;
+      facts.push({
+        text: isRevenge
+          ? `Revenge served \u2014 ${winName} beat ${loseName} in the rematch and pocketed +${riv.pointsAwarded} (rivalry + revenge bonus).`
+          : `${winName} won the 1v1 rivalry against ${loseName} this match (+${riv.pointsAwarded}).`,
+        type: isRevenge ? "rivalry_revenge" : "rivalry_win",
+        score: isRevenge ? 80 : 65,
+        userId: String(riv.winnerId),
+      });
+    } else {
+      facts.push({
+        text: `${cName} vs ${oName} rivalry ended in a dead heat \u2014 no rivalry points awarded.`,
+        type: "rivalry_tie",
+        score: 45,
+      });
+    }
+  }
+
+  // Withdrawals (cancelled by someone) for this match \u2014 highlight if anyone bailed.
+  for (const riv of withdrawn) {
+    const byId = String(riv.cancelledBy);
+    const byName = nameMap.get(byId);
+    const otherId =
+      String(riv.challengerId) === byId
+        ? String(riv.opponentId)
+        : String(riv.challengerId);
+    const otherName = nameMap.get(otherId);
+    if (!byName || !otherName) continue;
+    facts.push({
+      text: `${byName} chickened out of the rivalry with ${otherName} this match \u2014 \u22122 point penalty applied.`,
+      type: "rivalry_withdraw",
+      score: 50,
+      userId: byId,
+    });
+  }
+
   // ---- New leader / leadership change ----
   const prevLeader = prevLb[0];
   const currLeader = currLb[0];
@@ -240,6 +319,38 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
       type: "leader_change",
       score: 95,
       userId: String(currLeader.userId),
+    });
+  }
+
+  // ---- Table toppers heading into the NEXT match on the same day ----
+  // The rivalry dropdown for any later same-day match unlocks the moment this
+  // result is entered \u2014 so surface the current top of the table so people
+  // know who to target.
+  const matchStart = new Date(match.startTime);
+  const dayStart = new Date(matchStart);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(matchStart);
+  dayEnd.setHours(23, 59, 59, 999);
+  const nextSameDay = await Match.findOne({
+    _id: { $ne: match._id },
+    startTime: { $gt: matchStart, $lte: dayEnd },
+    resultsEntered: { $ne: true },
+  })
+    .sort({ startTime: 1 })
+    .select("teamA teamB startTime")
+    .lean();
+  if (nextSameDay && currLb.length) {
+    const topThree = currLb.slice(0, 3);
+    const list = topThree
+      .map(
+        (r, i) =>
+          `${i + 1}. ${nameMap.get(String(r.userId)) ?? r.username} (${r.totalPoints})`
+      )
+      .join(", ");
+    facts.push({
+      text: `Heading into ${nextSameDay.teamA} vs ${nextSameDay.teamB}: ${list}. Rivalry challenges are now open \u2014 pick your target.`,
+      type: "next_match_toppers",
+      score: 88,
     });
   }
 
