@@ -295,14 +295,16 @@ export async function requestRivalryWithdrawalAction(payload: unknown) {
   if (String(riv.challengerId) !== meId && String(riv.opponentId) !== meId) {
     return { ok: false as const, error: "You are not part of this challenge" };
   }
+  // Admin-approved withdrawal requests are allowed even after rivalry lock —
+  // the admin makes the final call, so players can ask at any time while the
+  // challenge is still active.
   const info = await getMatchLockInfo(String(riv.matchId));
   if (!info) return { ok: false as const, error: "Match not found" };
-  const { locked, reason } = info;
-  if (locked) {
-    return { ok: false as const, error: "Match locked — withdrawal requests are closed" };
-  }
   if (riv.status !== "pending" && riv.status !== "accepted") {
     return { ok: false as const, error: "This challenge can no longer be withdrawn" };
+  }
+  if (riv.withdrawalRequestedBy && !riv.withdrawalApprovedAt) {
+    return { ok: false as const, error: "Withdrawal already requested — waiting for admin" };
   }
   riv.withdrawalRequestedBy = me._id as unknown as typeof riv.withdrawalRequestedBy;
   riv.withdrawalRequestedAt = new Date();

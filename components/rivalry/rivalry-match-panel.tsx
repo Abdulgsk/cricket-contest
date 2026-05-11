@@ -46,7 +46,10 @@ export function RivalryMatchPanel({
   const [pending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState<{
     rivalryId: string;
+    kind: "cancel" | "request";
+    title: string;
     message: string;
+    confirmLabel: string;
   } | null>(null);
 
   const selected = useMemo(
@@ -87,28 +90,38 @@ export function RivalryMatchPanel({
   function cancel(rivalryId: string) {
     setConfirming({
       rivalryId,
+      kind: "cancel",
+      title: "Confirm withdraw",
       message: "Withdraw this rivalry now?\n\nYou will lose -2 points and the other player will be notified.",
-    });
-  }
-
-  function confirmCancel() {
-    if (!confirming) return;
-    const { rivalryId } = confirming;
-    setConfirming(null);
-    clear();
-    startTransition(async () => {
-      const res = await cancelRivalryAction({ rivalryId });
-      if (!res.ok) setError(res.error);
-      else setMessage("Challenge withdrawn (-2)");
+      confirmLabel: "Withdraw",
     });
   }
 
   function requestWithdraw(rivalryId: string) {
+    setConfirming({
+      rivalryId,
+      kind: "request",
+      title: "Request admin withdrawal",
+      message: "Send a withdrawal request to the admin?\n\nThe other player will be notified and an admin will approve or reject it. No points are deducted unless approved with a penalty.",
+      confirmLabel: "Send request",
+    });
+  }
+
+  function confirmAction() {
+    if (!confirming) return;
+    const { rivalryId, kind } = confirming;
+    setConfirming(null);
     clear();
     startTransition(async () => {
-      const res = await requestRivalryWithdrawalAction({ rivalryId });
-      if (!res.ok) setError(res.error);
-      else setMessage("Withdrawal request sent to admin");
+      if (kind === "cancel") {
+        const res = await cancelRivalryAction({ rivalryId });
+        if (!res.ok) setError(res.error);
+        else setMessage("Challenge withdrawn (-2)");
+      } else {
+        const res = await requestRivalryWithdrawalAction({ rivalryId });
+        if (!res.ok) setError(res.error);
+        else setMessage("Withdrawal request sent to admin");
+      }
     });
   }
 
@@ -127,21 +140,24 @@ export function RivalryMatchPanel({
               results are entered. Check back then — you’ll see the table toppers to target.
             </>
           ) : (
-            <>🔒 Rivalries are locked for this match. No new challenges and no withdrawals.</>
+            <>🔒 Rivalries are locked for this match. No new challenges — you can still request an admin withdrawal on existing ones.</>
           )}
         </div>
       )}
 
-      {!rivalryLocked && (
+      {myRivalries.length > 0 && (
         <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-sm font-medium">Your active challenges: {myRivalries.length}</p>
-            <p className="text-[11px] text-muted-foreground">You can open more than one challenge in the same match.</p>
+            {!rivalryLocked && (
+              <p className="text-[11px] text-muted-foreground">You can open more than one challenge in the same match.</p>
+            )}
           </div>
 
-          {myRivalries.length > 0 && (
-            <div className="space-y-2">
-              {myRivalries.map((r) => (
+          <div className="space-y-2">
+            {myRivalries.map((r) => {
+              const hasPendingRequest = !!r.withdrawalRequestedAt;
+              return (
                 <div key={r.id} className="rounded-lg bg-muted/40 p-3 space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <p className="text-sm break-words">
@@ -156,17 +172,17 @@ export function RivalryMatchPanel({
                       )}
                     </p>
                     <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                      {r.status === "pending" && r.role === "challenger" && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => requestWithdraw(r.id)} loading={pending} className="flex-1 sm:flex-none">
-                            Request admin withdraw
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => cancel(r.id)} loading={pending} className="flex-1 sm:flex-none">
-                            Withdraw (−2)
-                          </Button>
-                        </>
+                      {(r.status === "pending" || r.status === "accepted") && !hasPendingRequest && (
+                        <Button size="sm" variant="outline" onClick={() => requestWithdraw(r.id)} loading={pending} className="flex-1 sm:flex-none">
+                          Request admin withdraw
+                        </Button>
                       )}
-                      {r.status === "pending" && r.role === "opponent" && (
+                      {!rivalryLocked && (r.status === "pending" || r.status === "accepted") && (
+                        <Button size="sm" variant="outline" onClick={() => cancel(r.id)} loading={pending} className="flex-1 sm:flex-none">
+                          Withdraw (−2)
+                        </Button>
+                      )}
+                      {!rivalryLocked && r.status === "pending" && r.role === "opponent" && (
                         <>
                           <Button size="sm" onClick={() => respond(r.id, true)} loading={pending} className="flex-1 sm:flex-none">
                             Accept
@@ -176,27 +192,22 @@ export function RivalryMatchPanel({
                           </Button>
                         </>
                       )}
-                      {r.status === "accepted" && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => requestWithdraw(r.id)} loading={pending} className="flex-1 sm:flex-none">
-                            Request admin withdraw
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => cancel(r.id)} loading={pending} className="flex-1 sm:flex-none">
-                            Withdraw (−2)
-                          </Button>
-                        </>
-                      )}
                     </div>
                   </div>
-                  {r.withdrawalRequestedAt && (
+                  {hasPendingRequest && (
                     <p className="text-[11px] text-muted-foreground">
                       Withdrawal request pending admin approval.
                     </p>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!rivalryLocked && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
 
           <div className="flex flex-col sm:flex-row gap-2">
             <select
@@ -249,12 +260,12 @@ export function RivalryMatchPanel({
 
       <ConfirmDialog
         open={!!confirming}
-        title="Confirm withdraw"
+        title={confirming?.title ?? "Confirm"}
         description={confirming?.message ?? "Are you sure?"}
-        confirmLabel="Withdraw"
+        confirmLabel={confirming?.confirmLabel ?? "Confirm"}
         cancelLabel="Cancel"
         loading={pending}
-        onConfirm={confirmCancel}
+        onConfirm={confirmAction}
         onCancel={() => setConfirming(null)}
       />
     </div>
