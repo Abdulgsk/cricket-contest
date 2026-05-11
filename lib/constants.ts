@@ -32,7 +32,7 @@ export const PREDICTION_POINTS = {
   WINNER: 3,
   TOP_BATTER: 4,
   TOP_BOWLER: 4,
-  ALL_THREE_BONUS: 20,
+  ALL_THREE_BONUS: 1,
 } as const;
 
 export const MATCH_STATUS = ["upcoming", "live", "completed"] as const;

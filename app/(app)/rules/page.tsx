@@ -2,6 +2,16 @@ import { Card } from "@/components/ui/card";
 import { RANK_POINTS, PENALTIES, BONUSES, MAX_BONUS_PER_MATCH, PREDICTION_POINTS } from "@/lib/constants";
 
 export default function RulesPage() {
+  const allThreeSubtotal =
+    PREDICTION_POINTS.WINNER +
+    PREDICTION_POINTS.TOP_BATTER +
+    PREDICTION_POINTS.TOP_BOWLER;
+  const perfectPredictionPoints =
+    PREDICTION_POINTS.WINNER +
+    PREDICTION_POINTS.TOP_BATTER +
+    PREDICTION_POINTS.TOP_BOWLER +
+    PREDICTION_POINTS.ALL_THREE_BONUS;
+
   return (
     <div className="space-y-6 max-w-3xl">
       <header>
@@ -123,12 +133,21 @@ export default function RulesPage() {
           <li className="flex justify-between"><span>Correct Match Winner</span><span className="text-success">+{PREDICTION_POINTS.WINNER}</span></li>
           <li className="flex justify-between"><span>Correct Top Batter</span><span className="text-success">+{PREDICTION_POINTS.TOP_BATTER}</span></li>
           <li className="flex justify-between"><span>Correct Top Bowler</span><span className="text-success">+{PREDICTION_POINTS.TOP_BOWLER}</span></li>
-          <li className="flex justify-between font-semibold"><span>All three correct (bonus)</span><span className="text-success">+{PREDICTION_POINTS.ALL_THREE_BONUS}</span></li>
+          <li className="flex justify-between border-t border-border/40 pt-2">
+            <span>All 3 correct picks subtotal</span>
+            <span className="text-success">+{allThreeSubtotal}</span>
+          </li>
+          <li className="flex justify-between font-semibold"><span>All 3 correct bonus (extra)</span><span className="text-success">+{PREDICTION_POINTS.ALL_THREE_BONUS}</span></li>
+          <li className="flex justify-between border-t border-border/40 pt-2 font-semibold">
+            <span>Perfect prediction total</span>
+            <span className="text-success">+{perfectPredictionPoints}</span>
+          </li>
         </ul>
         <p className="text-xs text-muted-foreground mt-3">
           ✏️ Predictions are editable until match start (and while admin has not manually locked the
           match). Choices stay hidden — even from admins — until the match is completed. Admins can only
-          reset predictions before match start; they still cannot view hidden choices.
+          reset predictions before match start; they still cannot view hidden choices. The all-3 bonus is
+          added on top of the 11-point subtotal.
         </p>
       </Card>
 
