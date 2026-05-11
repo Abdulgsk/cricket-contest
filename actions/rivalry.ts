@@ -360,11 +360,26 @@ export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
     return { ok: true as const };
   }
 
+  const participantIds = [String(riv.challengerId), String(riv.opponentId)];
+  const related = await Rivalry.find({
+    _id: { $ne: riv._id },
+    matchId: riv.matchId,
+    status: { $in: ["pending", "accepted"] },
+    $or: [
+      { challengerId: { $in: participantIds } },
+      { opponentId: { $in: participantIds } },
+    ],
+  });
+
   await withdrawRivalryNoPenalty(riv);
   riv.withdrawalApprovedBy = admin._id as unknown as typeof riv.withdrawalApprovedBy;
   riv.withdrawalApprovedAt = new Date();
   riv.cancelledBy = requesterId;
   await riv.save();
+
+  for (const other of related) {
+    await withdrawRivalryNoPenalty(other);
+  }
 
   await Notification.create({
     userId: riv.challengerId,
@@ -376,6 +391,20 @@ export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
     title: "Withdrawal approved",
     body: "An admin approved the rivalry withdrawal. No penalty was applied.",
   });
+
+  for (const other of related) {
+    await Notification.create({
+      userId: other.challengerId,
+      title: "Rivalry withdrawn",
+      body: "A related rivalry withdrawal was approved by admin. Your pending/active challenge for this match was withdrawn without penalty.",
+    });
+    await Notification.create({
+      userId: other.opponentId,
+      title: "Rivalry withdrawn",
+      body: "A related rivalry withdrawal was approved by admin. Your pending/active challenge for this match was withdrawn without penalty.",
+    });
+  }
+
   revalidatePath("/admin");
   revalidatePath("/rivalry");
   revalidatePath("/leaderboard");
