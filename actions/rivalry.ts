@@ -202,26 +202,23 @@ export async function respondRivalryAction(payload: unknown) {
       : `${me.username} declined your challenge for ${match.teamA} vs ${match.teamB}.`,
   });
 
-  // If accepted, auto-withdraw any OTHER pending challenges involving either of
-  // these players for the same match, without a penalty.
+  // If accepted, auto-withdraw any OTHER pending challenges from the same
+  // challenger in this match (so they don't have multiple active rivalries).
+  // Other players' challenges are unaffected, allowing multiple pending challenges
+  // to coexist as long as none are accepted and the match is unlocked.
   if (accept) {
     const others = await Rivalry.find({
       _id: { $ne: riv._id },
       matchId: riv.matchId,
-      $or: [
-        { challengerId: riv.challengerId },
-        { opponentId: riv.challengerId },
-        { challengerId: riv.opponentId },
-        { opponentId: riv.opponentId },
-      ],
+      challengerId: riv.challengerId,
       status: "pending",
     });
     for (const o of others) {
       await withdrawRivalryNoPenalty(o);
       await Notification.create({
-        userId: o.challengerId,
+        userId: o.opponentId,
         title: "Rivalry withdrawn",
-        body: `${me.username} accepted a challenge for ${match.teamA} vs ${match.teamB}. Your other challenge was withdrawn without penalty.`,
+        body: `${riv.challengerId === me._id ? me.username : "Your challenger"} accepted a different challenge for ${match.teamA} vs ${match.teamB}. Your pending challenge was withdrawn without penalty.`,
       });
     }
   }
