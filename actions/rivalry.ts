@@ -35,7 +35,9 @@ async function getMatchLockInfo(matchId: string): Promise<{
   unfinishedPriors: { teamA: string; teamB: string }[];
 } | null> {
   const match = await Match.findById(matchId)
-    .select("startTime status teamA teamB")
+    .select(
+      "startTime status teamA teamB rivalryLockExtensionMinutes rivalryLockExtensionAppliedAt predictionLockExtensionMinutes predictionLockExtensionAppliedAt"
+    )
     .lean();
   if (!match) return null;
   const start = new Date(match.startTime);

@@ -99,9 +99,12 @@ export default async function AdminMatchResultPage({
       {isSuperadmin && (
         <MatchLockExtensionsPanel
           matchId={id}
+          startTime={match.startTime}
           initial={{
             predictionLockExtensionMinutes: match.predictionLockExtensionMinutes,
             rivalryLockExtensionMinutes: match.rivalryLockExtensionMinutes,
+            predictionLockExtensionAppliedAt: match.predictionLockExtensionAppliedAt ?? null,
+            rivalryLockExtensionAppliedAt: match.rivalryLockExtensionAppliedAt ?? null,
           }}
         />
       )}

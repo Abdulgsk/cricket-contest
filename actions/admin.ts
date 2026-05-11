@@ -133,33 +133,20 @@ export async function updateMatchLockExtensionsAction(payload: unknown) {
   await connectDB();
   const { matchId, predictionLockExtensionMinutes, rivalryLockExtensionMinutes } = parsed.data;
 
-  const current = await Match.findById(matchId)
-    .select(
-      "predictionLockExtensionMinutes rivalryLockExtensionMinutes predictionsLocked"
-    )
-    .lean();
-  if (!current) return { ok: false as const, error: "Match not found" };
-
   const now = new Date();
-  const predictionChanged =
-    (current.predictionLockExtensionMinutes ?? 0) !== predictionLockExtensionMinutes;
-  const rivalryChanged =
-    (current.rivalryLockExtensionMinutes ?? 0) !== rivalryLockExtensionMinutes;
-
-  const set: Record<string, unknown> = {
-    predictionLockExtensionMinutes,
-    rivalryLockExtensionMinutes,
-  };
-  if (predictionChanged) {
-    set.predictionLockExtensionAppliedAt = now;
-    // Re-opening predictions also clears any manual lock the admin set earlier.
-    set.predictionsLocked = false;
-  }
-  if (rivalryChanged) {
-    set.rivalryLockExtensionAppliedAt = now;
-  }
-
-  await Match.updateOne({ _id: matchId }, set);
+  // Saving always re-stamps appliedAt so the deadline becomes `now + minutes`
+  // (or `startTime + minutes` if the match hasn't started yet). This makes
+  // "Save" behave like "Re-open this module right now for everyone".
+  await Match.updateOne(
+    { _id: matchId },
+    {
+      predictionLockExtensionMinutes,
+      rivalryLockExtensionMinutes,
+      predictionLockExtensionAppliedAt: now,
+      rivalryLockExtensionAppliedAt: now,
+      predictionsLocked: false,
+    }
+  );
   await AuditLog.create({
     actorId: me._id,
     action: "match.lockExtensions",
