@@ -38,6 +38,8 @@ export interface IMatch {
   predictionMadness?: boolean;
   predictionLockExtensionMinutes?: number;
   rivalryLockExtensionMinutes?: number;
+  predictionLockExtensionAppliedAt?: Date;
+  rivalryLockExtensionAppliedAt?: Date;
   bountyUserId?: mongoose.Types.ObjectId;
   bountyReason?: string;
   predictionsLocked: boolean;
@@ -93,6 +95,8 @@ const MatchSchema = new Schema<IMatch>(
     predictionMadness: { type: Boolean, default: false },
     predictionLockExtensionMinutes: { type: Number, default: 0, min: 0 },
     rivalryLockExtensionMinutes: { type: Number, default: 0, min: 0 },
+    predictionLockExtensionAppliedAt: { type: Date, default: null },
+    rivalryLockExtensionAppliedAt: { type: Date, default: null },
     bountyUserId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     bountyReason: { type: String, trim: true },
     predictionsLocked: { type: Boolean, default: false },

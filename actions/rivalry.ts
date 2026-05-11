@@ -515,7 +515,7 @@ export async function getRivalryView() {
               unfinishedPriors,
             };
           }
-          if (Date.now() >= start.getTime()) {
+          if (isModuleLocked(m, "rivalry")) {
             return {
               rivalryLocked: true,
               rivalryLockReason: "started" as const,

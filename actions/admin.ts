@@ -134,7 +134,12 @@ export async function updateMatchLockExtensionsAction(payload: unknown) {
   const { matchId, predictionLockExtensionMinutes, rivalryLockExtensionMinutes } = parsed.data;
   await Match.updateOne(
     { _id: matchId },
-    { predictionLockExtensionMinutes, rivalryLockExtensionMinutes }
+    {
+      predictionLockExtensionMinutes,
+      rivalryLockExtensionMinutes,
+      predictionLockExtensionAppliedAt: new Date(),
+      rivalryLockExtensionAppliedAt: new Date(),
+    }
   );
   await AuditLog.create({
     actorId: me._id,
