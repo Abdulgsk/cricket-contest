@@ -2,6 +2,7 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { Prediction } from "@/models/Prediction";
 import { PredictionAuditLog } from "@/models/PredictionAuditLog";
+import { User } from "@/models/User";
 import mongoose from "mongoose";
 import { isModuleLocked } from "@/lib/match-locks";
 
@@ -60,7 +61,9 @@ export async function adminResetPrediction(args: {
   await connectDB();
   const match = await Match.findById(args.matchId);
   if (!match) throw new Error("Match not found");
-  if (isModuleLocked(match, "predictions")) {
+  const admin = await User.findById(args.adminId);
+  if (!admin) throw new Error("Admin not found");
+  if (isModuleLocked(match, "predictions") && admin.role !== "superadmin") {
     throw new Error("Cannot reset predictions after match has started");
   }
   await Prediction.deleteOne({ matchId: args.matchId, userId: args.userId });

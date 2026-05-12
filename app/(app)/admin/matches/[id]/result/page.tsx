@@ -131,10 +131,11 @@ export default async function AdminMatchResultPage({
         />
       )}
 
-      {!predictionLocked && canManageResults && (
+      {canManageResults && (!predictionLocked || isSuperadmin) && (
         <PredictionResetPanel
           matchId={id}
           canReset
+          isSuperadmin={isSuperadmin}
           users={users.map((u) => ({
             id: String(u._id),
             username: u.username,

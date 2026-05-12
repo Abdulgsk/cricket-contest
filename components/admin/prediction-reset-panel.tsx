@@ -17,10 +17,12 @@ export function PredictionResetPanel({
   matchId,
   users,
   canReset,
+  isSuperadmin = false,
 }: {
   matchId: string;
   users: UserPred[];
   canReset: boolean;
+  isSuperadmin?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [confirmUser, setConfirmUser] = useState<UserPred | null>(null);
@@ -48,9 +50,11 @@ export function PredictionResetPanel({
   return (
     <Card>
       <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold">🔓 Reset predictions</h2>
+        <h2 className="font-semibold">
+          {isSuperadmin ? "👑 Superadmin: Reset predictions" : "🔓 Reset predictions"}
+        </h2>
         <span className="text-xs text-muted-foreground">
-          Allowed only before the prediction window closes
+          {isSuperadmin ? "Always allowed for superadmins" : "Allowed only before the prediction window closes"}
         </span>
       </div>
       <p className="text-xs text-muted-foreground mb-3">
