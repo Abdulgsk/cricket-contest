@@ -51,15 +51,15 @@ export default function RulesPage() {
         <ul className="text-sm space-y-2">
           <li className="flex justify-between">
             <span>
-              Get <strong>top-5 by fantasy points</strong> for 3 matches in a row
-              <span className="text-muted-foreground"> (based on fantasy points in each match)</span>
+              Finish in top 5 by fantasy points for 3 matches in a row
+              <span className="text-muted-foreground"> (based only on fantasy points in each match)</span>
             </span>
             <span className="text-success">+{BONUSES.CONSISTENCY}</span>
           </li>
           <li className="flex justify-between">
             <span>
-              Finish above the player who was overall #1 before this match
-              <span className="text-muted-foreground"> (based on leaderboard rank before match + this match rank)</span>
+              Score more fantasy points than the player who was #1 on leaderboard before this match
+              <span className="text-muted-foreground"> (based on leaderboard #1 before match + fantasy points in this match)</span>
             </span>
             <span className="text-success">+{BONUSES.KING_SLAYER}</span>
           </li>

@@ -17,8 +17,8 @@ export const PENALTIES = {
 } as const;
 
 export const BONUSES = {
-  CONSISTENCY: 7, // 3 consecutive top-5 finishes
-  KING_SLAYER: 5, // finish above current overall #1
+  CONSISTENCY: 3, // 3 consecutive matches in top-5 fantasy points
+  KING_SLAYER: 4, // beat current overall #1 by fantasy points in the same match
   COMEBACK: 5, // gain 4+ leaderboard positions after a match
   UNDERDOG: 6, // ranked 10-13 overall finishing top 2
   MATCH_DOMINATION: 5, // win by 100+ Dream11 points difference

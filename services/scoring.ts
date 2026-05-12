@@ -227,7 +227,6 @@ async function applyBonuses(args: {
   const ranked = [...results].filter((r) => !r.missed && r.rank > 0).sort((a, b) => a.rank - b.rank);
   const top1 = ranked[0];
   const top2 = ranked[1];
-  const top5 = new Set(ranked.slice(0, 5).map((r) => String(r.userId)));
 
   // Match domination: top1 wins by >= 300 fp over top2
   const dominationApplies =
@@ -247,13 +246,16 @@ async function applyBonuses(args: {
       total += adj;
     };
 
-    // King Slayer: finished above current overall #1
+    // Bonus: beat current overall #1 by fantasy points in this match.
     if (prevLeaderId && uid !== prevLeaderId && !r.missed) {
-      const slayer = ranked.find((x) => String(x.userId) === uid);
-      const leaderRes = ranked.find((x) => String(x.userId) === prevLeaderId);
-      if (slayer && (!leaderRes || slayer.rank < leaderRes.rank)) {
-        add("king_slayer", BONUSES.KING_SLAYER, "Finished above the current overall leader");
-      }
+        const leaderRes = results.find((x) => String(x.userId) === prevLeaderId);
+        if (leaderRes && !leaderRes.missed && r.fantasyPoints > leaderRes.fantasyPoints) {
+          add(
+            "king_slayer",
+            BONUSES.KING_SLAYER,
+            "Scored more fantasy points than the player who was overall #1 before this match"
+          );
+        }
     }
 
     // Comeback: gained 4+ positions in overall leaderboard
