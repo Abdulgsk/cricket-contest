@@ -1,28 +1,12 @@
 "use client";
-import { useTransition, useState, useEffect, useCallback, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useTransition, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Label } from "@/components/ui/input";
+import { PlayerCombobox } from "@/components/ui/player-combobox";
 import { submitPredictionAction, loadMatchPlayersAction } from "@/actions/predictions";
 
 export type PlayerInfo = { name: string; role?: string; keeper?: boolean };
-
-function PlayerIcon({ role, keeper }: { role?: string; keeper?: boolean }) {
-  return (
-    <span className="inline-flex items-center gap-0.5 text-xs shrink-0">
-      {keeper && <span title="Wicket-keeper">🧤</span>}
-      {role === "BOWL" && <span title="Bowler">⚾</span>}
-      {role === "BAT" && <span title="Batsman">🏏</span>}
-      {role === "AR" && (
-        <>
-          <span title="All-rounder (bat)">🏏</span>
-          <span title="All-rounder (bowl)">⚾</span>
-        </>
-      )}
-    </span>
-  );
-}
 
 export function PredictionForm({
   matchId,
@@ -41,6 +25,8 @@ export function PredictionForm({
 }) {
   const [pending, start] = useTransition();
   const [winner, setWinner] = useState<string>(initial?.winner ?? teamA);
+  const [topBatter, setTopBatter] = useState<string>(initial?.topBatter ?? "");
+  const [topBowler, setTopBowler] = useState<string>(initial?.topBowler ?? "");
   const [players, setPlayers] = useState<string[]>(initialPlayers ?? []);
   const [playerInfo, setPlayerInfo] = useState<PlayerInfo[]>(initialPlayerInfo ?? []);
   const [loading, setLoading] = useState(false);
@@ -61,7 +47,6 @@ export function PredictionForm({
     }
   }, [matchId]);
 
-  // Auto-load on first mount if not already provided.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!players.length) void fetchPlayers();
@@ -95,7 +80,13 @@ export function PredictionForm({
   return (
     <form
       action={(fd) => {
+        if (!topBatter || !topBowler) {
+          toast.error("Please pick top batter and top bowler");
+          return;
+        }
         fd.set("winner", winner);
+        fd.set("topBatter", topBatter);
+        fd.set("topBowler", topBowler);
         start(async () => {
           const r = await submitPredictionAction(fd);
           if (r.ok) toast.success(isEditing ? "Prediction updated 📝" : "Prediction submitted 🎯");
@@ -130,135 +121,33 @@ export function PredictionForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="topBatter">Top Batter</Label>
-        <PlayerSelect name="topBatter" players={players} playerInfo={playerInfo} initial={initial?.topBatter} />
+        <Label>Top Batter</Label>
+        <PlayerCombobox
+          value={topBatter}
+          onChange={setTopBatter}
+          players={players}
+          playerInfo={playerInfo}
+        />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="topBowler">Top Bowler</Label>
-        <PlayerSelect name="topBowler" players={players} playerInfo={playerInfo} initial={initial?.topBowler} />
+        <Label>Top Bowler</Label>
+        <PlayerCombobox
+          value={topBowler}
+          onChange={setTopBowler}
+          players={players}
+          playerInfo={playerInfo}
+        />
       </div>
 
       <Button variant="glow" className="w-full h-12 md:h-11" loading={pending}>
         {pending
-          ? isEditing ? "Updating…" : "Locking…"
-          : isEditing ? "📝 Update prediction" : "🎯 Submit prediction"}
+          ? isEditing
+            ? "Updating…"
+            : "Locking…"
+          : isEditing
+            ? "📝 Update prediction"
+            : "🎯 Submit prediction"}
       </Button>
     </form>
-  );
-}
-
-function PlayerSelect({ name, players, playerInfo, initial }: { name: string; players: string[]; playerInfo?: PlayerInfo[]; initial?: string }) {
-  const [v, setV] = useState(initial ?? "");
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const infoMap = new Map((playerInfo ?? []).map((p) => [p.name, p]));
-  const getInfo = (name: string) => infoMap.get(name);
-  const sortedPlayers = [...players].sort((a, b) => a.localeCompare(b));
-  const filteredPlayers = query.trim()
-    ? sortedPlayers.filter((p) => p.toLowerCase().includes(query.trim().toLowerCase()))
-    : sortedPlayers;
-
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (!wrapperRef.current) return;
-      if (!wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      setDropdownRect(null);
-      return;
-    }
-    const updateRect = () => {
-      if (wrapperRef.current) {
-        setDropdownRect(wrapperRef.current.getBoundingClientRect());
-      }
-    };
-    updateRect();
-    const onScroll = (e: Event) => {
-      // Ignore scrolls inside the dropdown itself (e.g., scrolling the player list)
-      if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", updateRect);
-    return () => {
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", updateRect);
-    };
-  }, [open]);
-
-  const dropdownContent = open && dropdownRect ? (
-    <div
-      ref={dropdownRef}
-      className="fixed z-[9999] rounded-xl border border-border bg-card p-2 shadow-xl space-y-2"
-      style={{
-        top: dropdownRect.bottom,
-        left: dropdownRect.left,
-        width: dropdownRect.width,
-      }}
-    >
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search player"
-        className="h-9"
-        autoFocus
-      />
-      <div className="max-h-52 overflow-auto space-y-1">
-        {filteredPlayers.length ? (
-          filteredPlayers.map((p) => {
-            const info = getInfo(p);
-            return (
-              <button
-                key={p}
-                type="button"
-                onClick={() => {
-                  setV(p);
-                  setOpen(false);
-                  setQuery("");
-                }}
-                className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition flex items-center gap-2 ${
-                  v === p ? "bg-primary/15 text-primary" : "hover:bg-muted"
-                } ${info?.keeper ? "ring-1 ring-warning/40" : ""}`}
-              >
-                <PlayerIcon role={info?.role} keeper={info?.keeper} />
-                <span className="flex-1 truncate">{p}</span>
-              </button>
-            );
-          })
-        ) : (
-          <div className="px-2 py-1.5 text-xs text-muted-foreground">No players found.</div>
-        )}
-      </div>
-    </div>
-  ) : null;
-
-  return (
-    <>
-      <input type="hidden" name={name} value={v} required />
-      <div ref={wrapperRef} className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((s) => !s)}
-          className="h-12 md:h-11 w-full rounded-xl border border-border bg-card px-3 text-sm text-left flex items-center justify-between gap-2"
-        >
-          <span className={`flex items-center gap-2 min-w-0 ${v ? "text-foreground" : "text-muted-foreground"}`}>
-            {v && <PlayerIcon role={getInfo(v)?.role} keeper={getInfo(v)?.keeper} />}
-            <span className="truncate">{v || "— pick a player —"}</span>
-          </span>
-          <span className="text-muted-foreground">▾</span>
-        </button>
-      </div>
-      {createPortal(dropdownContent, document.body)}
-    </>
   );
 }

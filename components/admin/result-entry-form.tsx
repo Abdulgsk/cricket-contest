@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { PlayerCombobox } from "@/components/ui/player-combobox";
 import {
   submitResultsAction,
   checkMy11SessionAction,
@@ -481,22 +482,24 @@ export function ResultEntryForm({
           </div>
           <div className="space-y-1.5">
             <Label>Top Batter</Label>
-            <PlayerPicker
+            <PlayerCombobox
               value={predBatter}
               onChange={setPredBatter}
               players={sortedPlayers}
               playerInfo={playerInfo}
               disabled={!hasPlayers}
+              placeholder={hasPlayers ? "— pick a player —" : "Players not fetched yet"}
             />
           </div>
           <div className="space-y-1.5">
             <Label>Top Bowler</Label>
-            <PlayerPicker
+            <PlayerCombobox
               value={predBowler}
               onChange={setPredBowler}
               players={sortedPlayers}
               playerInfo={playerInfo}
               disabled={!hasPlayers}
+              placeholder={hasPlayers ? "— pick a player —" : "Players not fetched yet"}
             />
           </div>
         </div>
@@ -733,106 +736,6 @@ export function ResultEntryForm({
           </Button>
         </div>
       </Card>
-    </div>
-  );
-}
-
-function PlayerPicker({
-  value,
-  onChange,
-  players,
-  playerInfo,
-  disabled,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  players: string[];
-  playerInfo?: Array<{ name: string; role?: string; keeper?: boolean }>;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const infoMap = new Map((playerInfo ?? []).map((p) => [p.name, p]));
-  const getInfo = (name: string) => infoMap.get(name);
-  const filtered = query.trim()
-    ? players.filter((p) => p.toLowerCase().includes(query.trim().toLowerCase()))
-    : players;
-
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (!wrapperRef.current) return;
-      if (!wrapperRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  const renderIcons = (role?: string, keeper?: boolean) => (
-    <span className="inline-flex items-center gap-0.5 text-xs shrink-0">
-      {keeper && <span title="Wicket-keeper">🧤</span>}
-      {role === "BOWL" && <span title="Bowler">⚾</span>}
-      {role === "BAT" && <span title="Batsman">🏏</span>}
-      {role === "AR" && (
-        <>
-          <span title="All-rounder (bat)">🏏</span>
-          <span title="All-rounder (bowl)">⚾</span>
-        </>
-      )}
-    </span>
-  );
-
-  return (
-    <div ref={wrapperRef} className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((s) => !s)}
-        className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm text-left flex items-center justify-between gap-2 disabled:opacity-60"
-      >
-        <span className={`flex items-center gap-2 min-w-0 ${value ? "text-foreground" : "text-muted-foreground"}`}>
-          {value && renderIcons(getInfo(value)?.role, getInfo(value)?.keeper)}
-          <span className="truncate">{value || (disabled ? "Players not fetched yet" : "— pick a player —")}</span>
-        </span>
-        <span className="text-muted-foreground">▾</span>
-      </button>
-      {open && !disabled && (
-        <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-card p-2 shadow-xl space-y-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search player"
-            className="h-9"
-            autoFocus
-          />
-          <div className="max-h-52 overflow-auto space-y-1">
-            {filtered.length ? (
-              filtered.map((p) => {
-                const info = getInfo(p);
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => {
-                      onChange(p);
-                      setOpen(false);
-                      setQuery("");
-                    }}
-                    className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition flex items-center gap-2 ${
-                      value === p ? "bg-primary/15 text-primary" : "hover:bg-muted"
-                    } ${info?.keeper ? "ring-1 ring-warning/40" : ""}`}
-                  >
-                    {renderIcons(info?.role, info?.keeper)}
-                    <span className="flex-1 truncate">{p}</span>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">No players found.</div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
