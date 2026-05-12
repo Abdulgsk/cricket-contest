@@ -1,5 +1,6 @@
 "use client";
 import { useTransition, useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -129,6 +130,7 @@ function PlayerSelect({ name, players, initial }: { name: string; players: strin
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
   const sortedPlayers = [...players].sort((a, b) => a.localeCompare(b));
   const filteredPlayers = query.trim()
     ? sortedPlayers.filter((p) => p.toLowerCase().includes(query.trim().toLowerCase()))
@@ -145,6 +147,56 @@ function PlayerSelect({ name, players, initial }: { name: string; players: strin
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
+  useEffect(() => {
+    if (open && wrapperRef.current) {
+      const rect = wrapperRef.current.getBoundingClientRect();
+      setDropdownRect(rect);
+    } else {
+      setDropdownRect(null);
+    }
+  }, [open]);
+
+  const dropdownContent = open && dropdownRect ? (
+    <div
+      className="fixed z-[9999] rounded-xl border border-border bg-card p-2 shadow-xl space-y-2"
+      style={{
+        top: dropdownRect.bottom + window.scrollY,
+        left: dropdownRect.left + window.scrollX,
+        width: dropdownRect.width,
+      }}
+    >
+      <Input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search player"
+        className="h-9"
+        autoFocus
+      />
+      <div className="max-h-52 overflow-auto space-y-1">
+        {filteredPlayers.length ? (
+          filteredPlayers.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => {
+                setV(p);
+                setOpen(false);
+                setQuery("");
+              }}
+              className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition ${
+                v === p ? "bg-primary/15 text-primary" : "hover:bg-muted"
+              }`}
+            >
+              {p}
+            </button>
+          ))
+        ) : (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">No players found.</div>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <input type="hidden" name={name} value={v} required />
@@ -157,41 +209,8 @@ function PlayerSelect({ name, players, initial }: { name: string; players: strin
           <span className={v ? "text-foreground" : "text-muted-foreground"}>{v || "— pick a player —"}</span>
           <span className="text-muted-foreground">▾</span>
         </button>
-
-        {open && (
-          <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-card p-2 shadow-xl space-y-2">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search player"
-              className="h-9"
-              autoFocus
-            />
-            <div className="max-h-52 overflow-auto space-y-1">
-              {filteredPlayers.length ? (
-                filteredPlayers.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => {
-                      setV(p);
-                      setOpen(false);
-                      setQuery("");
-                    }}
-                    className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition ${
-                      v === p ? "bg-primary/15 text-primary" : "hover:bg-muted"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))
-              ) : (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">No players found.</div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
+      {createPortal(dropdownContent, document.body)}
     </>
   );
 }
