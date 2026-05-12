@@ -58,10 +58,12 @@ export async function loadMatchPlayersAction(matchId: string) {
   }
   try {
     const r = await refreshMatchPlayers(matchId);
+    const refreshed = await Match.findById(matchId).select("players").lean();
+    const refreshedPlayers = refreshed?.players ?? [];
     return {
       ok: true as const,
-      players: r.names,
-      playerInfo: (r.players ?? []).map((p) => ({
+      players: refreshedPlayers.length ? refreshedPlayers.map((p) => p.name) : r.names,
+      playerInfo: refreshedPlayers.map((p) => ({
         name: p.name,
         role: p.role,
         keeper: p.keeper,
