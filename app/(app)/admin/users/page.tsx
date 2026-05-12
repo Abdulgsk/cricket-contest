@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/rbac";
 import { Card, Badge } from "@/components/ui/card";
 import { UserRoleControls } from "@/components/admin/user-role-controls";
 import { UserFeatureControls } from "@/components/admin/user-feature-controls";
+import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import type { FeatureKey } from "@/lib/features";
 
 export default async function AdminUsers() {
@@ -53,6 +54,12 @@ export default async function AdminUsers() {
                     <UserFeatureControls
                       userId={String(u._id)}
                       initial={(u.enabledFeatures as FeatureKey[] | undefined) ?? []}
+                      self={String(u._id) === String(me._id)}
+                    />
+                    <DeleteUserButton
+                      userId={String(u._id)}
+                      username={u.username}
+                      handle={u.userId}
                       self={String(u._id) === String(me._id)}
                     />
                   </div>

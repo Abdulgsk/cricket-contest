@@ -153,6 +153,7 @@ function PlayerSelect({ name, players, playerInfo, initial }: { name: string; pl
   const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const infoMap = new Map((playerInfo ?? []).map((p) => [p.name, p]));
   const getInfo = (name: string) => infoMap.get(name);
   const sortedPlayers = [...players].sort((a, b) => a.localeCompare(b));
@@ -182,16 +183,22 @@ function PlayerSelect({ name, players, playerInfo, initial }: { name: string; pl
       }
     };
     updateRect();
-    window.addEventListener("scroll", updateRect, true);
+    const onScroll = (e: Event) => {
+      // Ignore scrolls inside the dropdown itself (e.g., scrolling the player list)
+      if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", updateRect);
     return () => {
-      window.removeEventListener("scroll", updateRect, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", updateRect);
     };
   }, [open]);
 
   const dropdownContent = open && dropdownRect ? (
     <div
+      ref={dropdownRef}
       className="fixed z-[9999] rounded-xl border border-border bg-card p-2 shadow-xl space-y-2"
       style={{
         top: dropdownRect.bottom,

@@ -7,6 +7,15 @@ import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { Settings, getSettings } from "@/models/Settings";
 import { AuditLog } from "@/models/AuditLog";
+import { Prediction } from "@/models/Prediction";
+import { MatchResult } from "@/models/MatchResult";
+import { Rivalry } from "@/models/Rivalry";
+import { Notification } from "@/models/Notification";
+import { CustomPool } from "@/models/CustomPool";
+import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
+import { BonusAuditLog } from "@/models/BonusAuditLog";
+import { PredictionAuditLog } from "@/models/PredictionAuditLog";
+import { DailyFact } from "@/models/DailyFact";
 import { processMatchResults } from "@/services/scoring";
 import { adminResetPrediction } from "@/services/prediction-engine";
 import { syncIplMatches, refreshSquads, refreshMatchPlayers } from "@/services/ipl-sync";
@@ -214,6 +223,81 @@ export async function setRoleAction(targetUserId: string, role: "user" | "admin"
   await User.updateOne({ _id: targetUserId }, { role });
   await AuditLog.create({ actorId: me._id, action: "user.role", meta: { targetUserId, role } });
   revalidatePath("/admin/users");
+}
+
+export async function deleteUserCascadeAction(targetUserId: string, confirmText: string) {
+  const me = await requireRole("superadmin");
+  if (confirmText !== "DELETE") {
+    return { ok: false as const, error: "Confirmation text must be exactly 'DELETE'" };
+  }
+  if (String(targetUserId) === String(me._id)) {
+    return { ok: false as const, error: "You cannot delete your own account" };
+  }
+  await connectDB();
+  const target = await User.findById(targetUserId).lean();
+  if (!target) return { ok: false as const, error: "User not found" };
+
+  const uid = target._id;
+  const summary = {
+    predictions: 0,
+    matchResults: 0,
+    rivalries: 0,
+    notifications: 0,
+    customPools: 0,
+    customPoolPredictions: 0,
+    bonusAuditLogs: 0,
+    predictionAuditLogs: 0,
+    dailyFacts: 0,
+  };
+
+  // Delete user's own data
+  summary.predictions = (await Prediction.deleteMany({ userId: uid })).deletedCount ?? 0;
+  summary.matchResults = (await MatchResult.deleteMany({ userId: uid })).deletedCount ?? 0;
+  summary.notifications = (await Notification.deleteMany({ userId: uid })).deletedCount ?? 0;
+  summary.customPoolPredictions = (await CustomPoolPrediction.deleteMany({ userId: uid })).deletedCount ?? 0;
+  summary.bonusAuditLogs = (await BonusAuditLog.deleteMany({ userId: uid })).deletedCount ?? 0;
+  summary.predictionAuditLogs = (await PredictionAuditLog.deleteMany({ userId: uid })).deletedCount ?? 0;
+  summary.dailyFacts = (await DailyFact.deleteMany({ userId: uid })).deletedCount ?? 0;
+
+  // Rivalries this user is part of (either side)
+  summary.rivalries = (await Rivalry.deleteMany({
+    $or: [{ challengerId: uid }, { opponentId: uid }],
+  })).deletedCount ?? 0;
+
+  // Custom pools created by this user (also remove their predictions)
+  const ownedPools = await CustomPool.find({ createdBy: uid }).select("_id").lean();
+  if (ownedPools.length) {
+    const poolIds = ownedPools.map((p) => p._id);
+    await CustomPoolPrediction.deleteMany({ poolId: { $in: poolIds } });
+    summary.customPools = (await CustomPool.deleteMany({ _id: { $in: poolIds } })).deletedCount ?? 0;
+  }
+
+  // Clear references on Match (bountyUserId) and Settings (bountyHolderUserId)
+  await Match.updateMany({ bountyUserId: uid }, { $unset: { bountyUserId: 1, bountyReason: 1 } });
+  const settings = await getSettings();
+  if (settings.bountyHolderUserId && String(settings.bountyHolderUserId) === String(uid)) {
+    settings.bountyHolderUserId = undefined;
+    await settings.save();
+  }
+
+  // Finally delete the user
+  await User.deleteOne({ _id: uid });
+
+  await AuditLog.create({
+    actorId: me._id,
+    action: "user.delete.cascade",
+    meta: {
+      targetUserId: String(uid),
+      targetUsername: target.username,
+      targetHandle: target.userId,
+      summary,
+    },
+  });
+
+  revalidatePath("/admin/users");
+  revalidatePath("/leaderboard");
+  revalidatePath("/dashboard");
+  return { ok: true as const, summary };
 }
 
 export async function resetPredictionAction(matchId: string, userId: string) {
