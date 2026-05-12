@@ -37,6 +37,7 @@ export function ResultEntryForm({
   teamA,
   teamB,
   players: initialPlayers = [],
+  playerInfo: initialPlayerInfo = [],
   contestLinked = false,
   resultsEntered = false,
   isSuperadmin = false,
@@ -49,6 +50,7 @@ export function ResultEntryForm({
   teamA: string;
   teamB: string;
   players?: string[];
+  playerInfo?: Array<{ name: string; role?: string; keeper?: boolean }>;
   contestLinked?: boolean;
   resultsEntered?: boolean;
   isSuperadmin?: boolean;
@@ -64,6 +66,7 @@ export function ResultEntryForm({
   const [pending, start] = useTransition();
   const router = useRouter();
   const [players, setPlayers] = useState<string[]>(initialPlayers);
+  const [playerInfo, setPlayerInfo] = useState<Array<{ name: string; role?: string; keeper?: boolean }>>(initialPlayerInfo);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [fetchingContestPoints, setFetchingContestPoints] = useState(false);
@@ -109,6 +112,7 @@ export function ResultEntryForm({
     setLoadingPlayers(false);
     if (r.ok) {
       setPlayers(r.players);
+      setPlayerInfo(r.playerInfo ?? []);
       if (!r.cached) toast.success(`Loaded ${r.players.length} players`);
     } else {
       setPlayersError(r.error);
@@ -481,6 +485,7 @@ export function ResultEntryForm({
               value={predBatter}
               onChange={setPredBatter}
               players={sortedPlayers}
+              playerInfo={playerInfo}
               disabled={!hasPlayers}
             />
           </div>
@@ -490,6 +495,7 @@ export function ResultEntryForm({
               value={predBowler}
               onChange={setPredBowler}
               players={sortedPlayers}
+              playerInfo={playerInfo}
               disabled={!hasPlayers}
             />
           </div>
@@ -735,16 +741,20 @@ function PlayerPicker({
   value,
   onChange,
   players,
+  playerInfo,
   disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   players: string[];
+  playerInfo?: Array<{ name: string; role?: string; keeper?: boolean }>;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const infoMap = new Map((playerInfo ?? []).map((p) => [p.name, p]));
+  const getInfo = (name: string) => infoMap.get(name);
   const filtered = query.trim()
     ? players.filter((p) => p.toLowerCase().includes(query.trim().toLowerCase()))
     : players;
@@ -758,16 +768,31 @@ function PlayerPicker({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
+  const renderIcons = (role?: string, keeper?: boolean) => (
+    <span className="inline-flex items-center gap-0.5 text-xs shrink-0">
+      {keeper && <span title="Wicket-keeper">🧤</span>}
+      {role === "BOWL" && <span title="Bowler">⚾</span>}
+      {role === "BAT" && <span title="Batsman">🏏</span>}
+      {role === "AR" && (
+        <>
+          <span title="All-rounder (bat)">🏏</span>
+          <span title="All-rounder (bowl)">⚾</span>
+        </>
+      )}
+    </span>
+  );
+
   return (
     <div ref={wrapperRef} className="relative">
       <button
         type="button"
         disabled={disabled}
         onClick={() => setOpen((s) => !s)}
-        className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm text-left flex items-center justify-between disabled:opacity-60"
+        className="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm text-left flex items-center justify-between gap-2 disabled:opacity-60"
       >
-        <span className={value ? "text-foreground" : "text-muted-foreground"}>
-          {value || (disabled ? "Players not fetched yet" : "— pick a player —")}
+        <span className={`flex items-center gap-2 min-w-0 ${value ? "text-foreground" : "text-muted-foreground"}`}>
+          {value && renderIcons(getInfo(value)?.role, getInfo(value)?.keeper)}
+          <span className="truncate">{value || (disabled ? "Players not fetched yet" : "— pick a player —")}</span>
         </span>
         <span className="text-muted-foreground">▾</span>
       </button>
@@ -782,22 +807,26 @@ function PlayerPicker({
           />
           <div className="max-h-52 overflow-auto space-y-1">
             {filtered.length ? (
-              filtered.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => {
-                    onChange(p);
-                    setOpen(false);
-                    setQuery("");
-                  }}
-                  className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition ${
-                    value === p ? "bg-primary/15 text-primary" : "hover:bg-muted"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))
+              filtered.map((p) => {
+                const info = getInfo(p);
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      onChange(p);
+                      setOpen(false);
+                      setQuery("");
+                    }}
+                    className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition flex items-center gap-2 ${
+                      value === p ? "bg-primary/15 text-primary" : "hover:bg-muted"
+                    } ${info?.keeper ? "ring-1 ring-warning/40" : ""}`}
+                  >
+                    {renderIcons(info?.role, info?.keeper)}
+                    <span className="flex-1 truncate">{p}</span>
+                  </button>
+                );
+              })
             ) : (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">No players found.</div>
             )}

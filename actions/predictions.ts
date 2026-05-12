@@ -45,13 +45,27 @@ export async function loadMatchPlayersAction(matchId: string) {
   await connectDB();
   const m = await Match.findById(matchId).select("players").lean();
   if (m?.players?.length) {
-    return { ok: true as const, players: m.players.map((p) => p.name), cached: true };
+    return {
+      ok: true as const,
+      players: m.players.map((p) => p.name),
+      playerInfo: m.players.map((p) => ({
+        name: p.name,
+        role: p.role,
+        keeper: p.keeper,
+      })),
+      cached: true,
+    };
   }
   try {
     const r = await refreshMatchPlayers(matchId);
     return {
       ok: true as const,
       players: r.names,
+      playerInfo: (r.players ?? []).map((p) => ({
+        name: p.name,
+        role: p.role,
+        keeper: p.keeper,
+      })),
       cached: false,
       fetched: r.players,
     };

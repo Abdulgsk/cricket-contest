@@ -108,6 +108,11 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
               teamA={match.teamA}
               teamB={match.teamB}
               players={(match.players ?? []).map((p) => p.name)}
+              playerInfo={(match.players ?? []).map((p) => ({
+                name: p.name,
+                role: p.role,
+                keeper: p.keeper,
+              }))}
               initial={
                 myPred
                   ? {

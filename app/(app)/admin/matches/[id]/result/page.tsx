@@ -164,6 +164,11 @@ export default async function AdminMatchResultPage({
           teamA={match.teamA}
           teamB={match.teamB}
           players={(match.players ?? []).map((p) => p.name)}
+          playerInfo={(match.players ?? []).map((p) => ({
+            name: p.name,
+            role: p.role,
+            keeper: p.keeper,
+          }))}
           contestLinked={!!match.contestUrl}
           resultsEntered={!!match.resultsEntered}
           isSuperadmin={isSuperadmin}
