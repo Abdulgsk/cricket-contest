@@ -13,8 +13,8 @@ const OUTCOME_LABEL: Record<string, string> = {
   B_decisive: "Decisive win",
   A_split: "Split win (more 1v1 wins)",
   B_split: "Split win (more 1v1 wins)",
-  A_fp_tiebreak: "Tiebreak win (fantasy points)",
-  B_fp_tiebreak: "Tiebreak win (fantasy points)",
+  A_fp_tiebreak: "FP tiebreak win",
+  B_fp_tiebreak: "FP tiebreak win",
   draw: "Draw — no points",
   not_eligible: "Cancelled — not enough rivalries",
 };

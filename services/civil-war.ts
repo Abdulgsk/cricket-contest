@@ -256,10 +256,12 @@ export async function settleCivilWar(args: {
     teamAPts = -cfg.splitLoss;
     teamBPts = cfg.splitWin;
   } else if (teamAFp > teamBFp) {
+    // Equal 1v1 wins, A has the FP edge — A wins.
     outcome = "A_fp_tiebreak";
     teamAPts = cfg.splitWin;
     teamBPts = -cfg.splitLoss;
   } else if (teamBFp > teamAFp) {
+    // Equal 1v1 wins, B has the FP edge — B wins.
     outcome = "B_fp_tiebreak";
     teamAPts = -cfg.splitLoss;
     teamBPts = cfg.splitWin;

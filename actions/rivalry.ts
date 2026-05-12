@@ -466,10 +466,20 @@ export async function getRivalryView() {
   // Mark rivalry tab as seen now (so the nav dot clears once the user opens it).
   await User.updateOne({ _id: me._id }, { $set: { lastSeenRivalryAt: new Date() } });
 
-  // Today window: from now until end of day local-server time.
-  const now = new Date();
-  const endOfDay = new Date(now);
-  endOfDay.setHours(23, 59, 59, 999);
+  // Day boundaries computed in IST (Asia/Kolkata) — server may be UTC in prod.
+  // IST = UTC+5:30, no DST. End of IST today (as a UTC Date) lets us include
+  // every match scheduled for the current IST calendar day regardless of
+  // server timezone.
+  const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+  const nowMs = Date.now();
+  // Shift "now" forward by IST offset so floor-to-day gives IST midnight in UTC ms.
+  const istMidnightUtcMs =
+    Math.floor((nowMs + IST_OFFSET_MS) / 86_400_000) * 86_400_000 - IST_OFFSET_MS;
+  const endOfDay = new Date(istMidnightUtcMs + 86_400_000 - 1);
+  const istDayKey = (d: Date) => {
+    const ms = d.getTime() + IST_OFFSET_MS;
+    return Math.floor(ms / 86_400_000);
+  };
 
   // Show all not-yet-started matches today + currently live ones that have no result yet.
   const matches = await Match.find({
@@ -493,10 +503,11 @@ export async function getRivalryView() {
     resultsEntered: boolean;
   }[] = [];
   if (matches.length) {
-    const minDayStart = new Date(matches[0].startTime);
-    minDayStart.setHours(0, 0, 0, 0);
-    const maxDayEnd = new Date(matches[matches.length - 1].startTime);
-    maxDayEnd.setHours(23, 59, 59, 999);
+    // IST midnight floor / ceil for the first and last visible match.
+    const firstIstDay = istDayKey(new Date(matches[0].startTime));
+    const lastIstDay = istDayKey(new Date(matches[matches.length - 1].startTime));
+    const minDayStart = new Date(firstIstDay * 86_400_000 - IST_OFFSET_MS);
+    const maxDayEnd = new Date((lastIstDay + 1) * 86_400_000 - IST_OFFSET_MS - 1);
     dayMatches = await Match.find({
       startTime: { $gte: minDayStart, $lte: maxDayEnd },
     })
@@ -505,8 +516,7 @@ export async function getRivalryView() {
   }
   const dayMap = new Map<string, typeof dayMatches>();
   for (const dm of dayMatches) {
-    const s = new Date(dm.startTime);
-    const k = `${s.getFullYear()}-${s.getMonth()}-${s.getDate()}`;
+    const k = String(istDayKey(new Date(dm.startTime)));
     const arr = dayMap.get(k) ?? [];
     arr.push(dm);
     dayMap.set(k, arr);
@@ -585,7 +595,7 @@ export async function getRivalryView() {
         status: m.status,
         ...(() => {
           const start = new Date(m.startTime);
-          const dayKey = `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}`;
+          const dayKey = String(istDayKey(start));
           const siblings = dayMap.get(dayKey) ?? [];
           const unfinishedPriors = siblings
             .filter(

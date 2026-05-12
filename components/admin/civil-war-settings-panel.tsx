@@ -12,6 +12,7 @@ type Cfg = {
   decisiveLoss: number;
   splitWin: number;
   splitLoss: number;
+  captainTeamWin: number;
 };
 
 export function CivilWarSettingsPanel({
@@ -70,6 +71,22 @@ export function CivilWarSettingsPanel({
           disabled={!canEdit}
           deductsLabel
         />
+      </div>
+      <div className="mt-4 pt-4 border-t border-border/60">
+        <h3 className="text-sm font-semibold mb-1">👑 Captain bonus</h3>
+        <p className="text-[11px] sm:text-xs text-muted-foreground mb-3">
+          Whichever captain scores more fantasy points this match, every member
+          of that team (captain too) earns this bonus. The losing team is{" "}
+          <em>not</em> deducted points for this rule.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Field
+            label="Captain's team wins"
+            value={cfg.captainTeamWin}
+            onChange={(v) => update("captainTeamWin", v)}
+            disabled={!canEdit}
+          />
+        </div>
       </div>
       {canEdit && (
         <div className="mt-3 flex justify-end">

@@ -270,10 +270,6 @@ export function BonusSettingsPanel({
           <Input type="number" min={0} value={bonusConfig.topperTopsMatch} onChange={(e) => setConfigField("topperTopsMatch", e.target.value)} disabled={!canEdit} />
         </div>
         <div className="space-y-1">
-          <Label>Captain&apos;s team wins (each member)</Label>
-          <Input type="number" min={0} value={bonusConfig.captainTeamWin} onChange={(e) => setConfigField("captainTeamWin", e.target.value)} disabled={!canEdit} />
-        </div>
-        <div className="space-y-1">
           <Label>Leader topper override (outsider beats both captains)</Label>
           <Input type="number" min={0} value={bonusConfig.leaderTopperBonus} onChange={(e) => setConfigField("leaderTopperBonus", e.target.value)} disabled={!canEdit} />
         </div>

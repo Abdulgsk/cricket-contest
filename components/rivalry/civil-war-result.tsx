@@ -37,10 +37,10 @@ function getVerdict(entry: CivilWarHistoryEntry): Verdict {
       (o === "A_fp_tiebreak" && mySide === "A") ||
       (o === "B_fp_tiebreak" && mySide === "B");
     return {
-      text: iWon ? "Tiebreak win" : "Tiebreak loss",
+      text: iWon ? "FP tiebreak win" : "FP tiebreak loss",
       detail: iWon
-        ? "Rivalries were tied — your team won on combined fantasy points."
-        : "Rivalries were tied — the other team won on combined fantasy points.",
+        ? "1v1 rivalries were tied — your team won on combined fantasy points."
+        : "1v1 rivalries were tied — the other team won on combined fantasy points.",
       tone: iWon ? "win" : "loss",
     };
   }

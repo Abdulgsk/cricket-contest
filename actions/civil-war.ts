@@ -261,6 +261,7 @@ const CivilWarSettingsSchema = z.object({
   decisiveLoss: z.number().int().min(0).max(50),
   splitWin: z.number().int().min(0).max(50),
   splitLoss: z.number().int().min(0).max(50),
+  captainTeamWin: z.number().int().min(0).max(50),
 });
 
 export async function updateCivilWarSettingsAction(payload: unknown) {
@@ -272,9 +273,15 @@ export async function updateCivilWarSettingsAction(payload: unknown) {
   const parsed = CivilWarSettingsSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
+  const { captainTeamWin, ...civilWarConfig } = parsed.data;
   await Settings.updateOne(
     {},
-    { $set: { civilWarConfig: parsed.data } },
+    {
+      $set: {
+        civilWarConfig,
+        "bonusConfig.captainTeamWin": captainTeamWin,
+      },
+    },
     { upsert: true }
   );
   await AuditLog.create({

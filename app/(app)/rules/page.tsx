@@ -225,16 +225,29 @@ export default async function RulesPage() {
             <span className="text-danger">−{civilWarConfig.decisiveLoss}</span> for the losers.
           </li>
           <li>
-            <strong>Split win</strong> — your team only won on 1v1s OR only on fantasy points:{" "}
-            <span className="text-success">+{civilWarConfig.splitWin}</span> for the winners,{" "}
+            <strong>Split win</strong> — your team won more 1v1s but the other team had more fantasy points:{" "}
+            <span className="text-success">+{civilWarConfig.splitWin}</span> for the 1v1 winners,{" "}
             <span className="text-danger">−{civilWarConfig.splitLoss}</span> for the losers.
+            <span className="block text-xs text-muted-foreground mt-1">
+              1v1 wins are the primary metric — a team that only leads on fantasy points doesn&apos;t win a split.
+            </span>
           </li>
           <li>
-            <strong>Tiebreak</strong> — 1v1 wins are tied, so fantasy points decide. Uses the
-            same split values above.
+            <strong>FP tiebreak</strong> — 1v1 wins are tied, so combined fantasy points decide:{" "}
+            <span className="text-success">+{civilWarConfig.splitWin}</span> for the FP leader,{" "}
+            <span className="text-danger">−{civilWarConfig.splitLoss}</span> for the other team.
           </li>
           <li>
-            <strong>Draw</strong> — everything tied. Nobody gains or loses points.
+            <strong>Draw</strong> — 1v1 wins AND fantasy points are both tied. Nobody gains or loses points (<span className="text-muted-foreground">0 / 0</span>).
+          </li>
+          <li>
+            <strong>Captain&apos;s team wins</strong> — every Civil War has two
+            captains: the highest-ranked leaderboard player on each side.
+            (Only captains can rename their team.) Whichever captain scores more
+            fantasy points this match, every member of that team (captain too)
+            gets{" "}
+            <span className="text-success">+{bonusConfig.captainTeamWin}</span>.
+            The losing team is <em>not</em> deducted points for this rule.
           </li>
         </ul>
         <p className="text-xs text-muted-foreground">
@@ -262,15 +275,6 @@ export default async function RulesPage() {
             <strong>Topper tops the match</strong> — if the pre-match
             leaderboard #1 also finishes #1 by fantasy points in this match:{" "}
             <span className="text-success">+{bonusConfig.topperTopsMatch}</span>.
-          </li>
-          <li>
-            <strong>Captain&apos;s team wins</strong> — every Civil War has two
-            captains: the highest-ranked leaderboard player on each side.
-            (Only captains can rename their team.) Whichever captain scores more
-            fantasy points this match, every member of that team (captain too)
-            gets{" "}
-            <span className="text-success">+{bonusConfig.captainTeamWin}</span>.
-            The losing team is <em>not</em> deducted points for this rule.
           </li>
           <li>
             <strong>Leader topper override</strong> — if the overall

@@ -263,6 +263,7 @@ export default async function AdminHome() {
                       decisiveLoss: settings.civilWarConfig?.decisiveLoss ?? CIVIL_WAR_DEFAULTS.decisiveLoss,
                       splitWin: settings.civilWarConfig?.splitWin ?? CIVIL_WAR_DEFAULTS.splitWin,
                       splitLoss: settings.civilWarConfig?.splitLoss ?? CIVIL_WAR_DEFAULTS.splitLoss,
+                      captainTeamWin: settings.bonusConfig?.captainTeamWin ?? BONUSES.CAPTAIN_TEAM_WIN,
                     }}
                   />
                 ),
