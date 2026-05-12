@@ -14,22 +14,27 @@ export function getModuleLockDeadline(match: MatchLockLike, module: MatchLockMod
     module === "predictions"
       ? match.predictionLockExtensionMinutes ?? 0
       : match.rivalryLockExtensionMinutes ?? 0;
-  const baseDeadline = new Date(startTime.getTime() + Math.max(0, extensionMinutes) * 60_000);
+  const minutesMs = Math.max(0, extensionMinutes) * 60_000;
 
   const appliedAt =
     module === "predictions"
       ? match.predictionLockExtensionAppliedAt
       : match.rivalryLockExtensionAppliedAt;
-  if (!appliedAt) return baseDeadline;
 
+  // No applied-at stamp → just delay the original start by the extension.
+  if (!appliedAt) return new Date(startTime.getTime() + minutesMs);
+
+  // If the extension was applied AFTER the scheduled start (i.e. match was
+  // already live when admin re-opened the window), the extension should run
+  // from the moment it was applied — not from the original start. Otherwise
+  // a live match with a small extension would re-lock almost immediately.
   const appliedAtDate = new Date(appliedAt);
-  // If the extension was applied after the standard base deadline, extend from
-  // that application time instead of the original match start.
-  if (appliedAtDate.getTime() > baseDeadline.getTime()) {
-    return new Date(appliedAtDate.getTime() + Math.max(0, extensionMinutes) * 60_000);
-  }
+  const effectiveStartMs =
+    appliedAtDate.getTime() > startTime.getTime()
+      ? appliedAtDate.getTime()
+      : startTime.getTime();
 
-  return baseDeadline;
+  return new Date(effectiveStartMs + minutesMs);
 }
 
 export function isModuleLocked(match: MatchLockLike, module: MatchLockModule, now = new Date()) {
