@@ -24,7 +24,7 @@ type MyRivalry = {
 interface Props {
   matchId: string;
   rivalryLocked: boolean;
-  rivalryLockReason?: "waiting_prior" | "started" | null;
+  rivalryLockReason?: "waiting_prior" | "started" | "accepted" | null;
   unfinishedPriors?: { teamA: string; teamB: string }[];
   eligibleOpponents: Opponent[];
   myRivalries: MyRivalry[];
@@ -137,8 +137,10 @@ export function RivalryMatchPanel({
                   ? `${unfinishedPriors[0].teamA} vs ${unfinishedPriors[0].teamB}`
                   : "the earlier match"}
               </strong>{" "}
-              results are entered. Check back then — you’ll see the table toppers to target.
+              results are entered.
             </>
+          ) : rivalryLockReason === "accepted" ? (
+            <>🔒 You already accepted a rivalry for this match. You cannot send or accept more challenges.</>
           ) : (
             <>🔒 Rivalries are locked for this match. No new challenges — you can still request an admin withdrawal on existing ones.</>
           )}

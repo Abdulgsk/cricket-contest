@@ -10,6 +10,7 @@ import { User } from "@/models/User";
 import { Rivalry } from "@/models/Rivalry";
 import { Notification } from "@/models/Notification";
 import { isModuleLocked } from "@/lib/match-locks";
+import { computeLeaderboard } from "@/services/scoring";
 
 const CreateSchema = z.object({
   matchId: z.string().min(1),
@@ -104,6 +105,19 @@ async function withdrawRivalryNoPenalty(riv: {
   await riv.save();
 }
 
+async function hasAcceptedRivalryForUser(matchId: string, userId: string, excludeRivalryId?: string): Promise<boolean> {
+  const query: Record<string, unknown> = {
+    matchId,
+    status: "accepted",
+    $or: [{ challengerId: userId }, { opponentId: userId }],
+  };
+  if (excludeRivalryId) {
+    query._id = { $ne: excludeRivalryId };
+  }
+  const count = await Rivalry.countDocuments(query);
+  return count > 0;
+}
+
 export async function createRivalryAction(payload: unknown) {
   const me = await requireUser();
   const parsed = CreateSchema.safeParse(payload);
@@ -131,6 +145,22 @@ export async function createRivalryAction(payload: unknown) {
   }
   const opponent = await User.findById(opponentId).select("username").lean();
   if (!opponent) return { ok: false as const, error: "Opponent not found" };
+
+  const meLockedByAccepted = await hasAcceptedRivalryForUser(matchId, String(me._id));
+  if (meLockedByAccepted) {
+    return {
+      ok: false as const,
+      error: "You already accepted a rivalry for this match. You are locked from new challenges.",
+    };
+  }
+
+  const opponentLockedByAccepted = await hasAcceptedRivalryForUser(matchId, opponentId);
+  if (opponentLockedByAccepted) {
+    return {
+      ok: false as const,
+      error: `${opponent.username} already accepted a rivalry for this match and is locked.`,
+    };
+  }
 
   // Enforce “challenge + revenge” cap (max 2 lifetime rivalries between this pair).
   const priorCount = await countActiveRivalriesBetween(String(me._id), opponentId);
@@ -193,6 +223,19 @@ export async function respondRivalryAction(payload: unknown) {
     return { ok: false as const, error: "Rivalries are locked for this match" };
   }
 
+  if (accept) {
+    const [challengerLocked, opponentLocked] = await Promise.all([
+      hasAcceptedRivalryForUser(String(riv.matchId), String(riv.challengerId), String(riv._id)),
+      hasAcceptedRivalryForUser(String(riv.matchId), String(riv.opponentId), String(riv._id)),
+    ]);
+    if (challengerLocked || opponentLocked) {
+      return {
+        ok: false as const,
+        error: "This challenge can no longer be accepted because one player is already locked in an accepted rivalry.",
+      };
+    }
+  }
+
   riv.status = accept ? "accepted" : "declined";
   await riv.save();
 
@@ -209,19 +252,31 @@ export async function respondRivalryAction(payload: unknown) {
   // Other players' challenges are unaffected, allowing multiple pending challenges
   // to coexist as long as none are accepted and the match is unlocked.
   if (accept) {
+    const participantIds = [String(riv.challengerId), String(riv.opponentId)];
     const others = await Rivalry.find({
       _id: { $ne: riv._id },
       matchId: riv.matchId,
-      challengerId: riv.challengerId,
       status: "pending",
+      $or: [
+        { challengerId: { $in: participantIds } },
+        { opponentId: { $in: participantIds } },
+      ],
     });
     for (const o of others) {
       await withdrawRivalryNoPenalty(o);
+      const body = `A rivalry was accepted for ${match.teamA} vs ${match.teamB}, so all other pending challenges for those players were closed without penalty.`;
       await Notification.create({
-        userId: o.opponentId,
-        title: "Rivalry withdrawn",
-        body: `${riv.challengerId === me._id ? me.username : "Your challenger"} accepted a different challenge for ${match.teamA} vs ${match.teamB}. Your pending challenge was withdrawn without penalty.`,
+        userId: o.challengerId,
+        title: "Rivalry locked",
+        body,
       });
+      if (String(o.opponentId) !== String(o.challengerId)) {
+        await Notification.create({
+          userId: o.opponentId,
+          title: "Rivalry locked",
+          body,
+        });
+      }
     }
   }
 
@@ -356,26 +411,11 @@ export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
     return { ok: true as const };
   }
 
-  const participantIds = [String(riv.challengerId), String(riv.opponentId)];
-  const related = await Rivalry.find({
-    _id: { $ne: riv._id },
-    matchId: riv.matchId,
-    status: { $in: ["pending", "accepted"] },
-    $or: [
-      { challengerId: { $in: participantIds } },
-      { opponentId: { $in: participantIds } },
-    ],
-  });
-
   await withdrawRivalryNoPenalty(riv);
   riv.withdrawalApprovedBy = admin._id as unknown as typeof riv.withdrawalApprovedBy;
   riv.withdrawalApprovedAt = new Date();
   riv.cancelledBy = requesterId;
   await riv.save();
-
-  for (const other of related) {
-    await withdrawRivalryNoPenalty(other);
-  }
 
   await Notification.create({
     userId: riv.challengerId,
@@ -387,19 +427,6 @@ export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
     title: "Withdrawal approved",
     body: "An admin approved the rivalry withdrawal. No penalty was applied.",
   });
-
-  for (const other of related) {
-    await Notification.create({
-      userId: other.challengerId,
-      title: "Rivalry withdrawn",
-      body: "A related rivalry withdrawal was approved by admin. Your pending/active challenge for this match was withdrawn without penalty.",
-    });
-    await Notification.create({
-      userId: other.opponentId,
-      title: "Rivalry withdrawn",
-      body: "A related rivalry withdrawal was approved by admin. Your pending/active challenge for this match was withdrawn without penalty.",
-    });
-  }
 
   revalidatePath("/admin");
   revalidatePath("/rivalry");
@@ -460,7 +487,7 @@ export async function getRivalryView() {
     arr.push(dm);
     dayMap.set(k, arr);
   }
-  const [rivalries, allHistoric, users] = await Promise.all([
+  const [rivalries, allHistoric, users, leaderboard] = await Promise.all([
     Rivalry.find({ matchId: { $in: matchIds } })
       .sort({ createdAt: -1 })
       .lean(),
@@ -473,6 +500,7 @@ export async function getRivalryView() {
       .select("challengerId opponentId")
       .lean(),
     User.find().select("username userId").sort({ username: 1 }).lean(),
+    computeLeaderboard(),
   ]);
 
   const userMap = new Map(users.map((u) => [String(u._id), u]));
@@ -490,6 +518,7 @@ export async function getRivalryView() {
 
   // For computing lock state per match (need siblings on the same calendar day).
   // (dayMap built above already covers this.)
+  const tableTopperId = leaderboard[0]?.userId ? String(leaderboard[0].userId) : null;
 
   return {
     meId,
@@ -497,6 +526,13 @@ export async function getRivalryView() {
       const matchRivalries = rivalries.filter(
         (r) => String(r.matchId) === String(m._id)
       );
+      const acceptedParticipants = new Set<string>();
+      for (const r of matchRivalries) {
+        if (r.status !== "accepted") continue;
+        acceptedParticipants.add(String(r.challengerId));
+        acceptedParticipants.add(String(r.opponentId));
+      }
+      const meAcceptedLocked = acceptedParticipants.has(meId);
       const myRivalries = matchRivalries
         .filter(
           (r) =>
@@ -549,6 +585,13 @@ export async function getRivalryView() {
               unfinishedPriors: [],
             };
           }
+          if (meAcceptedLocked) {
+            return {
+              rivalryLocked: true,
+              rivalryLockReason: "accepted" as const,
+              unfinishedPriors: [],
+            };
+          }
           return {
             rivalryLocked: false,
             rivalryLockReason: null,
@@ -559,6 +602,9 @@ export async function getRivalryView() {
           .filter((u) => {
             const uid = String(u._id);
             if (uid === meId) return false;
+            if (tableTopperId && uid === tableTopperId) return false;
+            if (acceptedParticipants.has(uid)) return false;
+            if (meAcceptedLocked) return false;
             // Hide opponents we’ve already maxed (challenge + revenge done).
             if ((pairCount.get(uid) ?? 0) >= MAX_RIVALRIES_PER_PAIR) return false;
             return true;

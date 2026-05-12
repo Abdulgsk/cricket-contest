@@ -13,8 +13,9 @@ export default async function RivalryPage() {
         <h1 className="text-2xl md:text-3xl font-bold">⚔️ Rivalry</h1>
         <p className="text-xs sm:text-sm text-muted-foreground">
           Challenge another player for a specific match. Finish above them and earn{" "}
-          <strong>+3</strong>. Withdraw before match start costs <strong>−2</strong>. One
-          challenge per player per match.
+          <strong>+3</strong>. Withdraw before match start costs <strong>−2</strong>. You can
+          keep multiple pending challenges, but once one is accepted both players are locked for
+          that match.
         </p>
       </header>
 
@@ -42,6 +43,8 @@ export default async function RivalryPage() {
                 {m.rivalryLocked &&
                   (m.rivalryLockReason === "waiting_prior"
                     ? " · ⏳ waiting for earlier match"
+                    : m.rivalryLockReason === "accepted"
+                      ? " · 🔒 accepted rivalry lock"
                     : " · 🔒 locked")}
               </p>
             </div>
