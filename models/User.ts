@@ -1,5 +1,6 @@
 import mongoose, { Schema, models, model } from "mongoose";
 import type { Role } from "@/lib/constants";
+import type { FeatureKey } from "@/lib/features";
 
 export interface IUser {
   _id: mongoose.Types.ObjectId;
@@ -9,6 +10,7 @@ export interface IUser {
   whatsapp?: string;
   my11circleName?: string;
   role: Role;
+  enabledFeatures?: FeatureKey[];
   avatarColor?: string;
   lastSeenRivalryAt?: Date;
   createdAt: Date;
@@ -23,6 +25,7 @@ const UserSchema = new Schema<IUser>(
     whatsapp: { type: String, trim: true },
     my11circleName: { type: String, trim: true },
     role: { type: String, enum: ["user", "admin", "superadmin"], default: "user", index: true },
+    enabledFeatures: { type: [String], default: [] },
     avatarColor: { type: String },
     lastSeenRivalryAt: { type: Date, default: null },
   },

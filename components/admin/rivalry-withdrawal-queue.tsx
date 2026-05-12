@@ -31,11 +31,11 @@ export function RivalryWithdrawalQueue({ rows }: { rows: Row[] }) {
     });
 
   return (
-    <Card>
-      <h2 className="font-semibold mb-2">⚔️ Rivalry withdrawal requests</h2>
+    <Card className="border-border/70">
+      <h2 className="font-semibold mb-2">Rivalry Withdrawal Approvals</h2>
       <p className="text-xs text-muted-foreground mb-3">
-        Requests here can be approved without the −2 penalty. All active challenges in that match
-        are withdrawn when approved.
+        Approve or deny withdrawal requests. Approval applies no penalty and clears related active
+        rivalry challenges in that match.
       </p>
 
       {rows.length === 0 ? (
@@ -43,7 +43,7 @@ export function RivalryWithdrawalQueue({ rows }: { rows: Row[] }) {
       ) : (
         <div className="space-y-2">
           {rows.map((row) => (
-            <div key={row.rivalryId} className="rounded-xl border border-border bg-muted/20 p-3">
+            <div key={row.rivalryId} className="rounded-xl border border-border/70 bg-card p-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1 min-w-0">
                   <div className="text-sm font-medium break-words">{row.matchLabel}</div>

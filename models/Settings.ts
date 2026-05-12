@@ -17,6 +17,13 @@ export interface ICustomBonusDefinition {
   name: string;
   points: number;
   basis: string;
+  conditionType:
+    | "fantasy_points_gte"
+    | "rank_lte"
+    | "leaderboard_climb_gte"
+    | "beat_pre_match_leader_fp"
+    | "top_n_by_fantasy_points";
+  conditionValue?: number;
   active: boolean;
 }
 
@@ -56,6 +63,8 @@ const SettingsSchema = new Schema<ISettings>(
         name: { type: String, required: true },
         points: { type: Number, required: true },
         basis: { type: String, required: true },
+        conditionType: { type: String, required: true },
+        conditionValue: { type: Number },
         active: { type: Boolean, default: true },
       },
     ],

@@ -11,11 +11,12 @@ import { processMatchResults } from "@/services/scoring";
 import { adminResetPrediction } from "@/services/prediction-engine";
 import { syncIplMatches, refreshSquads, refreshMatchPlayers } from "@/services/ipl-sync";
 import { scoreCustomPools } from "@/actions/custom-pools";
-import { requireRole } from "@/lib/rbac";
+import { requireAdminFeature, requireRole } from "@/lib/rbac";
 import { env } from "@/lib/env";
 import { normalizeMy11circleName } from "@/lib/my11circle";
 import { fetchLeaderboardFromContestUrl } from "@/lib/my11-api";
-import { BONUSES, MAX_BONUS_PER_MATCH } from "@/lib/constants";
+import { BONUSES } from "@/lib/constants";
+import { FEATURE_KEYS } from "@/lib/features";
 
 const MatchSchema = z.object({
   teamA: z.string().min(1),
@@ -29,7 +30,7 @@ const MatchSchema = z.object({
 });
 
 export async function createMatchAction(formData: FormData) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("matches.manage");
   const parsed = MatchSchema.safeParse({
     teamA: formData.get("teamA"),
     teamB: formData.get("teamB"),
@@ -54,7 +55,7 @@ export async function createMatchAction(formData: FormData) {
 }
 
 export async function deleteMatchAction(matchId: string) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("matches.manage");
   await connectDB();
   await Match.deleteOne({ _id: matchId });
   await AuditLog.create({ actorId: me._id, action: "match.delete", meta: { matchId } });
@@ -62,7 +63,7 @@ export async function deleteMatchAction(matchId: string) {
 }
 
 export async function lockMatchAction(matchId: string) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("matches.manage");
   await connectDB();
   await Match.updateOne({ _id: matchId }, { predictionsLocked: true, status: "live" });
   revalidatePath(`/matches/${matchId}`);
@@ -74,7 +75,7 @@ const ContestUrlSchema = z.object({
 });
 
 export async function updateContestUrlAction(payload: unknown) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("matches.manage");
   const parsed = ContestUrlSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Please enter a valid URL" };
   await connectDB();
@@ -103,7 +104,7 @@ const MatchModesSchema = z.object({
 });
 
 export async function updateMatchModesAction(payload: unknown) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("matches.manage");
   const parsed = MatchModesSchema.safeParse(payload);
   if (!parsed.success) return { ok: false, error: "Invalid payload" };
   await connectDB();
@@ -128,7 +129,7 @@ const MatchLockExtensionsSchema = z.object({
 });
 
 export async function updateMatchLockExtensionsAction(payload: unknown) {
-  const me = await requireRole("superadmin");
+  const me = await requireAdminFeature("match.lock.extend");
   const parsed = MatchLockExtensionsSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
@@ -181,7 +182,7 @@ const ResultSchema = z.object({
 });
 
 export async function submitResultsAction(payload: unknown) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("results.manage");
   const parsed = ResultSchema.safeParse(payload);
   if (!parsed.success) return { ok: false, error: "Invalid payload" };
   await processMatchResults(
@@ -216,7 +217,7 @@ export async function setRoleAction(targetUserId: string, role: "user" | "admin"
 }
 
 export async function resetPredictionAction(matchId: string, userId: string) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("results.manage");
   await adminResetPrediction({ adminId: String(me._id), matchId, userId });
   revalidatePath(`/matches/${matchId}`);
 }
@@ -228,7 +229,7 @@ const MatchBountySchema = z.object({
 });
 
 export async function updateMatchBountyAction(payload: unknown) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("bonus.manage");
   const parsed = MatchBountySchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
@@ -255,7 +256,7 @@ export async function updateMatchBountyAction(payload: unknown) {
 }
 
 export async function setBountyAction(userId: string | null) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("bonus.manage");
   await connectDB();
   const s = await getSettings();
   s.bountyHolderUserId = userId ? (userId as unknown as typeof s.bountyHolderUserId) : undefined;
@@ -282,7 +283,6 @@ const BonusSettingsSchema = z.object({
     bounty: z.number().int().min(0).max(50),
     rivalry: z.number().int().min(0).max(50),
     rivalryRevenge: z.number().int().min(0).max(50),
-    maxBonusPerMatch: z.number().int().min(0).max(200),
   }),
   customBonuses: z.array(
     z.object({
@@ -290,13 +290,21 @@ const BonusSettingsSchema = z.object({
       name: z.string().min(1).max(80),
       points: z.number().int().min(0).max(200),
       basis: z.string().min(1).max(240),
+      conditionType: z.enum([
+        "fantasy_points_gte",
+        "rank_lte",
+        "leaderboard_climb_gte",
+        "beat_pre_match_leader_fp",
+        "top_n_by_fantasy_points",
+      ]),
+      conditionValue: z.number().int().min(0).max(10000).optional(),
       active: z.boolean(),
     })
   ),
 });
 
 export async function updateBonusSettingsAction(payload: unknown) {
-  const me = await requireRole("superadmin");
+  const me = await requireAdminFeature("bonus.manage");
   const parsed = BonusSettingsSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid bonus settings" };
   await connectDB();
@@ -310,7 +318,6 @@ export async function updateBonusSettingsAction(payload: unknown) {
     bounty: BONUSES.BOUNTY,
     rivalry: BONUSES.RIVALRY,
     rivalryRevenge: 1,
-    maxBonusPerMatch: MAX_BONUS_PER_MATCH,
   };
 
   const bonusConfig = { ...defaults, ...parsed.data.bonusConfig };
@@ -339,6 +346,28 @@ export async function updateBonusSettingsAction(payload: unknown) {
   revalidatePath("/rules");
   revalidatePath("/leaderboard");
   revalidatePath("/dashboard");
+  return { ok: true as const };
+}
+
+const UserFeaturesSchema = z.object({
+  targetUserId: z.string().min(1),
+  features: z.array(z.enum(FEATURE_KEYS)).default([]),
+});
+
+export async function setUserFeaturesAction(payload: unknown) {
+  const me = await requireRole("superadmin");
+  const parsed = UserFeaturesSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+
+  const { targetUserId, features } = parsed.data;
+  await connectDB();
+  await User.updateOne({ _id: targetUserId }, { $set: { enabledFeatures: features } });
+  await AuditLog.create({
+    actorId: me._id,
+    action: "user.features",
+    meta: { targetUserId, features },
+  });
+  revalidatePath("/admin/users");
   return { ok: true as const };
 }
 

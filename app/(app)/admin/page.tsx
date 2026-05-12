@@ -8,16 +8,19 @@ import { AutomationTools } from "@/components/admin/automation-tools";
 import { RegenerateFactsButton } from "@/components/admin/regenerate-facts-button";
 import { RivalryWithdrawalQueue } from "@/components/admin/rivalry-withdrawal-queue";
 import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
+import { BonusSettingsPanel } from "@/components/admin/bonus-settings-panel";
 import { formatDate } from "@/lib/utils";
-import { requireRole } from "@/lib/rbac";
+import { requireRole, userHasFeature } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
+import { getSettings } from "@/models/Settings";
+import { BONUSES } from "@/lib/constants";
 
 export default async function AdminHome() {
-  await requireRole("admin", "superadmin");
+  const me = await requireRole("admin", "superadmin");
   await connectDB();
 
   await autoUpdateMatchStatuses();
-  const [total, users, pending, upcoming, live, completed, next3, withdrawalRequests] = await Promise.all([
+  const [total, users, pending, upcoming, live, completed, next3, withdrawalRequests, settings] = await Promise.all([
     Match.countDocuments(),
     User.countDocuments(),
     Match.countDocuments({ resultsEntered: false, status: { $ne: "upcoming" } }),
@@ -39,7 +42,43 @@ export default async function AdminHome() {
       .sort({ withdrawalRequestedAt: -1 })
       .limit(10)
       .lean(),
+    getSettings(),
   ]);
+
+  const canEditBonus = userHasFeature(me, "bonus.manage");
+  const canApproveRivalryWithdrawals = userHasFeature(me, "rivalry.withdraw.approve");
+  const canManageResults = userHasFeature(me, "results.manage");
+  const canSeeMatches =
+    userHasFeature(me, "matches.manage") ||
+    userHasFeature(me, "results.manage") ||
+    userHasFeature(me, "match.lock.extend");
+
+  const bonusTab = (
+    <BonusSettingsPanel
+      canEdit={canEditBonus}
+      initialBonusConfig={{
+        consistency: settings.bonusConfig?.consistency ?? BONUSES.CONSISTENCY,
+        kingSlayer: settings.bonusConfig?.kingSlayer ?? BONUSES.KING_SLAYER,
+        comeback: settings.bonusConfig?.comeback ?? BONUSES.COMEBACK,
+        underdog: settings.bonusConfig?.underdog ?? BONUSES.UNDERDOG,
+        matchDomination: settings.bonusConfig?.matchDomination ?? BONUSES.MATCH_DOMINATION,
+        bounty: settings.bonusConfig?.bounty ?? BONUSES.BOUNTY,
+        rivalry: settings.bonusConfig?.rivalry ?? BONUSES.RIVALRY,
+        rivalryRevenge: settings.bonusConfig?.rivalryRevenge ?? 1,
+      }}
+      initialCustomBonuses={
+        (settings.customBonuses ?? []).map((b) => ({
+          id: b.id,
+          name: b.name,
+          points: b.points,
+          basis: b.basis,
+          conditionType: b.conditionType,
+          conditionValue: b.conditionValue,
+          active: b.active,
+        }))
+      }
+    />
+  );
 
   const withdrawalRows = withdrawalRequests.map((r) => {
     const match = r.matchId as unknown as { teamA?: string; teamB?: string; startTime?: Date };
@@ -59,33 +98,53 @@ export default async function AdminHome() {
 
   const dashboardTab = (
     <div className="space-y-4">
+      <Card className="border-border/70">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Operations Overview</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Review league health, approvals, and upcoming matches from one place.
+            </p>
+          </div>
+          {canSeeMatches && (
+            <Link href="/admin/matches" className="text-xs font-medium text-primary hover:underline">
+              Open match operations
+            </Link>
+          )}
+        </div>
+      </Card>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="p-3 sm:p-4">
+        <Card className="p-3 sm:p-4 border-border/70">
           <div className="text-[10px] sm:text-xs uppercase text-muted-foreground tracking-wider">Matches</div>
           <div className="text-2xl sm:text-3xl font-bold mt-1">{total}</div>
           <div className="text-[10px] sm:text-xs text-muted-foreground mt-1 leading-tight">
             {upcoming} up · {live} live · {completed} done
           </div>
         </Card>
-        <Card className="p-3 sm:p-4">
+        <Card className="p-3 sm:p-4 border-border/70">
           <div className="text-[10px] sm:text-xs uppercase text-muted-foreground tracking-wider">Players</div>
           <div className="text-2xl sm:text-3xl font-bold mt-1">{users}</div>
         </Card>
-        <Card className="p-3 sm:p-4">
-          <div className="text-[10px] sm:text-xs uppercase text-muted-foreground tracking-wider">Pending results</div>
-          <div className="text-2xl sm:text-3xl font-bold mt-1 text-warning">{pending}</div>
-          <Link href="/admin/matches" className="text-[10px] sm:text-xs text-pink-400 hover:underline mt-1 inline-block">
-            Enter results →
-          </Link>
-        </Card>
-        <Card className="p-3 sm:p-4">
-          <div className="text-[10px] sm:text-xs uppercase text-muted-foreground tracking-wider">Withdrawals</div>
-          <div className="text-2xl sm:text-3xl font-bold mt-1 text-warning">{withdrawalRows.length}</div>
-          <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">awaiting review</div>
-        </Card>
+        {canManageResults && (
+          <Card className="p-3 sm:p-4 border-border/70">
+            <div className="text-[10px] sm:text-xs uppercase text-muted-foreground tracking-wider">Pending results</div>
+            <div className="text-2xl sm:text-3xl font-bold mt-1 text-warning">{pending}</div>
+            <Link href="/admin/matches" className="text-[10px] sm:text-xs text-pink-400 hover:underline mt-1 inline-block">
+              Enter results →
+            </Link>
+          </Card>
+        )}
+        {canApproveRivalryWithdrawals && (
+          <Card className="p-3 sm:p-4 border-border/70">
+            <div className="text-[10px] sm:text-xs uppercase text-muted-foreground tracking-wider">Withdrawals</div>
+            <div className="text-2xl sm:text-3xl font-bold mt-1 text-warning">{withdrawalRows.length}</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">awaiting review</div>
+          </Card>
+        )}
       </div>
 
-      <Card>
+      <Card className="border-border/70">
         <h2 className="font-semibold mb-3 text-sm sm:text-base">Next up</h2>
         {next3.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -122,11 +181,11 @@ export default async function AdminHome() {
 
   const toolsTab = (
     <div className="space-y-4">
-      <AutomationTools />
-      <Card>
+      <AutomationTools canForceComplete={me.role === "superadmin"} />
+      <Card className="border-border/70">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="font-semibold text-sm sm:text-base">📰 Dashboard storylines</h2>
+            <h2 className="font-semibold text-sm sm:text-base">Dashboard storylines</h2>
             <p className="text-xs text-muted-foreground mt-1">
               Regenerate &ldquo;Today&apos;s storylines&rdquo; from the most recently scored match.
             </p>
@@ -138,7 +197,7 @@ export default async function AdminHome() {
   );
 
   const helpTab = (
-    <Card>
+    <Card className="border-border/70">
       <h2 className="font-semibold mb-3 text-sm sm:text-base">How automations work</h2>
       <div className="space-y-3 text-sm text-muted-foreground">
         <div>
@@ -164,10 +223,13 @@ export default async function AdminHome() {
   return (
     <AdminOverviewTabs
       tabs={[
-        { id: "dashboard", label: "Dashboard", icon: "📊", content: dashboardTab },
-        { id: "requests", label: "Requests", icon: "⚔️", badge: withdrawalRows.length, content: requestsTab },
-        { id: "tools", label: "Tools", icon: "🛠", content: toolsTab },
-        { id: "help", label: "Help", icon: "❓", content: helpTab },
+        { id: "dashboard", label: "Overview", content: dashboardTab },
+        ...(canApproveRivalryWithdrawals
+          ? [{ id: "requests", label: "Rivalry Approvals", badge: withdrawalRows.length, content: requestsTab }]
+          : []),
+        ...(canEditBonus ? [{ id: "bonus", label: "Bonus Rules", content: bonusTab }] : []),
+        { id: "tools", label: "Operations", content: toolsTab },
+        { id: "help", label: "Docs", content: helpTab },
       ]}
     />
   );

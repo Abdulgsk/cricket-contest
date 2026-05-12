@@ -3,15 +3,22 @@ import { User } from "@/models/User";
 import { requireRole } from "@/lib/rbac";
 import { Card, Badge } from "@/components/ui/card";
 import { UserRoleControls } from "@/components/admin/user-role-controls";
+import { UserFeatureControls } from "@/components/admin/user-feature-controls";
+import type { FeatureKey } from "@/lib/features";
 
 export default async function AdminUsers() {
   const me = await requireRole("admin", "superadmin");
   await connectDB();
   const users = await User.find().sort({ createdAt: -1 }).lean();
   return (
-    <Card className="overflow-x-auto">
-      <h2 className="font-semibold mb-3">Users</h2>
-      <table className="w-full text-sm">
+    <Card className="border-border/70 overflow-x-auto">
+      <div className="mb-3">
+        <h2 className="font-semibold">Users & Access</h2>
+        <p className="text-xs text-muted-foreground mt-1">
+          Assign role and task permissions from one control area.
+        </p>
+      </div>
+      <table className="w-full text-sm min-w-[860px]">
         <thead className="text-xs uppercase text-muted-foreground">
           <tr className="text-left">
             <th className="p-2">User</th>
@@ -19,7 +26,7 @@ export default async function AdminUsers() {
             <th className="p-2 hidden md:table-cell">My11Circle</th>
             <th className="p-2 hidden sm:table-cell">WhatsApp</th>
             <th className="p-2 hidden md:table-cell">Joined</th>
-            {me.role === "superadmin" && <th className="p-2">Actions</th>}
+            {me.role === "superadmin" && <th className="p-2 w-[360px]">Role & Permissions</th>}
           </tr>
         </thead>
         <tbody>
@@ -41,7 +48,14 @@ export default async function AdminUsers() {
               <td className="p-2 text-muted-foreground text-xs hidden md:table-cell">{new Date(u.createdAt).toLocaleDateString()}</td>
               {me.role === "superadmin" && (
                 <td className="p-2">
-                  <UserRoleControls userId={String(u._id)} role={u.role} self={String(u._id) === String(me._id)} />
+                  <div className="space-y-2">
+                    <UserRoleControls userId={String(u._id)} role={u.role} self={String(u._id) === String(me._id)} />
+                    <UserFeatureControls
+                      userId={String(u._id)}
+                      initial={(u.enabledFeatures as FeatureKey[] | undefined) ?? []}
+                      self={String(u._id) === String(me._id)}
+                    />
+                  </div>
                 </td>
               )}
             </tr>

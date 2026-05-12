@@ -11,7 +11,6 @@ import {
   RANK_POINTS,
   PENALTIES,
   BONUSES,
-  MAX_BONUS_PER_MATCH,
   PREDICTION_POINTS,
 } from "@/lib/constants";
 import mongoose from "mongoose";
@@ -38,7 +37,20 @@ type BonusRuntimeConfig = {
   bounty: number;
   rivalry: number;
   rivalryRevenge: number;
-  maxBonusPerMatch: number;
+  customBonuses: Array<{
+    id: string;
+    name: string;
+    points: number;
+    basis: string;
+    conditionType:
+      | "fantasy_points_gte"
+      | "rank_lte"
+      | "leaderboard_climb_gte"
+      | "beat_pre_match_leader_fp"
+      | "top_n_by_fantasy_points";
+    conditionValue?: number;
+    active: boolean;
+  }>;
 };
 
 /**
@@ -47,7 +59,7 @@ type BonusRuntimeConfig = {
  *   1. Persist raw results.
  *   2. Calculate base points (rank table) honoring doublePoints / noBonus.
  *   3. Calculate penalties using consecutive-miss history.
- *   4. Calculate bonuses (capped).
+ *   4. Calculate bonuses.
  *   5. Score predictions.
  *   6. Update match status -> completed.
  */
@@ -235,9 +247,8 @@ async function applyBonuses(args: {
   bonusConfig: BonusRuntimeConfig;
 }) {
   const { matchId, results, prevRankMap, prevLeaderId, chaos, bonusConfig } = args;
-  // In Chaos mode, every bonus value is doubled and the per-match cap is doubled too.
+  // In Chaos mode, every bonus value is doubled.
   const bonusMul = chaos ? 2 : 1;
-  const cap = chaos ? bonusConfig.maxBonusPerMatch * 2 : bonusConfig.maxBonusPerMatch;
 
   // Sort results by rank (1 best). Skip missed.
   const ranked = [...results].filter((r) => !r.missed && r.rank > 0).sort((a, b) => a.rank - b.rank);
@@ -304,20 +315,27 @@ async function applyBonuses(args: {
       }
     }
 
-    // Apply per-match cap (doubled in Chaos mode)
-    let bonusPoints = total;
-    if (bonusPoints > cap) {
-      bonusPoints = cap;
-      breakdown.push({
-        type: "cap_applied",
-        points: 0,
-        reason: `Bonus capped at ${cap}`,
+    for (const custom of bonusConfig.customBonuses) {
+      if (!custom.active) continue;
+      const ok = await isCustomBonusConditionSatisfied({
+        custom,
+        result: r,
+        results,
+        prevRankMap,
+        newRankMap,
+        prevLeaderId,
       });
+      if (!ok) continue;
+      add(
+        `custom_${custom.id}`,
+        custom.points,
+        `${custom.name}: ${custom.basis}`
+      );
     }
 
-    r.bonusPoints = bonusPoints;
+    r.bonusPoints = total;
     r.bonuses = breakdown;
-    r.finalPoints = r.basePoints + r.penaltyPoints + bonusPoints;
+    r.finalPoints = r.basePoints + r.penaltyPoints + total;
     await r.save();
 
     // Audit log per applied bonus
@@ -562,8 +580,59 @@ async function getBonusRuntimeConfig(): Promise<BonusRuntimeConfig> {
     bounty: cfg.bounty ?? BONUSES.BOUNTY,
     rivalry: cfg.rivalry ?? BONUSES.RIVALRY,
     rivalryRevenge: cfg.rivalryRevenge ?? 1,
-    maxBonusPerMatch: cfg.maxBonusPerMatch ?? MAX_BONUS_PER_MATCH,
+    customBonuses: (settings.customBonuses ?? [])
+      .filter((b) => b.active)
+      .map((b) => ({
+        id: b.id,
+        name: b.name,
+        points: b.points,
+        basis: b.basis,
+        conditionType: b.conditionType ?? "fantasy_points_gte",
+        conditionValue: b.conditionValue,
+        active: b.active,
+      })),
   };
+}
+
+async function isCustomBonusConditionSatisfied(args: {
+  custom: BonusRuntimeConfig["customBonuses"][number];
+  result: HydratedDocument<IMatchResult>;
+  results: HydratedDocument<IMatchResult>[];
+  prevRankMap: Map<string, number>;
+  newRankMap: Map<string, number>;
+  prevLeaderId: string | null;
+}): Promise<boolean> {
+  const { custom, result, results, prevRankMap, newRankMap, prevLeaderId } = args;
+  const uid = String(result.userId);
+  const n = custom.conditionValue ?? 0;
+
+  switch (custom.conditionType) {
+    case "fantasy_points_gte":
+      return !result.missed && result.fantasyPoints >= n;
+    case "rank_lte":
+      return !result.missed && result.rank > 0 && result.rank <= n;
+    case "leaderboard_climb_gte": {
+      const prevPos = prevRankMap.get(uid);
+      const newPos = newRankMap.get(uid);
+      return !!(prevPos && newPos && prevPos - newPos >= n);
+    }
+    case "beat_pre_match_leader_fp": {
+      if (!prevLeaderId || uid === prevLeaderId || result.missed) return false;
+      const leaderRes = results.find((x) => String(x.userId) === prevLeaderId);
+      return !!leaderRes && !leaderRes.missed && result.fantasyPoints > leaderRes.fantasyPoints;
+    }
+    case "top_n_by_fantasy_points": {
+      if (result.missed) return false;
+      const betterCount = await MatchResult.countDocuments({
+        matchId: result.matchId,
+        missed: false,
+        fantasyPoints: { $gt: result.fantasyPoints },
+      });
+      return betterCount < Math.max(1, n);
+    }
+    default:
+      return false;
+  }
 }
 
 async function scorePredictions(

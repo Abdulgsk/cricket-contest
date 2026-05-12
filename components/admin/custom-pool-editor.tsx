@@ -53,6 +53,7 @@ export function CustomPoolEditor({ matchId, initial }: { matchId: string; initia
                     <Button
                       size="sm"
                       variant="outline"
+                      loading={pending}
                       disabled={pending}
                       onClick={() =>
                         start(async () => {
@@ -105,6 +106,7 @@ export function CustomPoolEditor({ matchId, initial }: { matchId: string; initia
         </div>
         <Button
           variant="glow"
+          loading={pending}
           disabled={pending || !q.trim() || opts.filter((o) => o.trim()).length < 2}
           onClick={() =>
             start(async () => {

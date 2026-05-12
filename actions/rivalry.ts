@@ -4,7 +4,7 @@ import { z } from "zod";
 import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 import { connectDB } from "@/lib/db";
-import { requireUser } from "@/lib/rbac";
+import { requireAdminFeature, requireUser } from "@/lib/rbac";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { Rivalry } from "@/models/Rivalry";
@@ -332,10 +332,7 @@ const AdminWithdrawSchema = z.object({
 });
 
 export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
-  const admin = await requireUser();
-  if (admin.role !== "admin" && admin.role !== "superadmin") {
-    return { ok: false as const, error: "Admin access required" };
-  }
+  const admin = await requireAdminFeature("rivalry.withdraw.approve");
   const parsed = AdminWithdrawSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();

@@ -15,7 +15,7 @@ async function callJson(url: string, method: "GET" | "POST" = "GET") {
   return data as Record<string, unknown>;
 }
 
-export function AutomationTools() {
+export function AutomationTools({ canForceComplete = false }: { canForceComplete?: boolean }) {
   const [pending, start] = useTransition();
   const [matchId, setMatchId] = useState("");
 
@@ -84,14 +84,18 @@ export function AutomationTools() {
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-        <Input
-          placeholder="Match ID for force complete"
-          value={matchId}
-          onChange={(e) => setMatchId(e.target.value)}
-        />
-        <Button variant="outline" loading={pending} onClick={forceComplete}>
-          Force Complete
-        </Button>
+        {canForceComplete && (
+          <>
+            <Input
+              placeholder="Match ID for force complete"
+              value={matchId}
+              onChange={(e) => setMatchId(e.target.value)}
+            />
+            <Button variant="outline" loading={pending} onClick={forceComplete}>
+              Force Complete
+            </Button>
+          </>
+        )}
       </div>
     </Card>
   );

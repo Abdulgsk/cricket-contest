@@ -1,7 +1,24 @@
 import { Card } from "@/components/ui/card";
-import { RANK_POINTS, PENALTIES, BONUSES, MAX_BONUS_PER_MATCH, PREDICTION_POINTS } from "@/lib/constants";
+import { RANK_POINTS, PENALTIES, BONUSES, PREDICTION_POINTS } from "@/lib/constants";
 import { connectDB } from "@/lib/db";
 import { getSettings } from "@/models/Settings";
+
+function customConditionText(conditionType: string, conditionValue?: number) {
+  switch (conditionType) {
+    case "fantasy_points_gte":
+      return `fantasy points >= ${conditionValue ?? 0}`;
+    case "rank_lte":
+      return `match rank <= ${conditionValue ?? 0}`;
+    case "leaderboard_climb_gte":
+      return `leaderboard climb >= ${conditionValue ?? 0}`;
+    case "beat_pre_match_leader_fp":
+      return "score more fantasy points than pre-match leaderboard #1";
+    case "top_n_by_fantasy_points":
+      return `finish in top ${conditionValue ?? 1} by fantasy points`;
+    default:
+      return "configured condition";
+  }
+}
 
 export default async function RulesPage() {
   await connectDB();
@@ -15,7 +32,6 @@ export default async function RulesPage() {
     bounty: settings.bonusConfig?.bounty ?? BONUSES.BOUNTY,
     rivalry: settings.bonusConfig?.rivalry ?? BONUSES.RIVALRY,
     rivalryRevenge: settings.bonusConfig?.rivalryRevenge ?? 1,
-    maxBonusPerMatch: settings.bonusConfig?.maxBonusPerMatch ?? MAX_BONUS_PER_MATCH,
   };
   const customBonuses = (settings.customBonuses ?? []).filter((b) => b.active);
   const allThreeSubtotal =
@@ -64,9 +80,6 @@ export default async function RulesPage() {
 
       <Card>
         <h2 className="font-semibold mb-3">🎁 Bonuses</h2>
-        <p className="text-xs text-muted-foreground mb-3">
-          Maximum bonus points allowed per match: {bonusConfig.maxBonusPerMatch}
-        </p>
         <ul className="text-sm space-y-2">
           <li className="flex justify-between">
             <span>
@@ -107,7 +120,7 @@ export default async function RulesPage() {
             <li key={b.id} className="flex justify-between">
               <span>
                 {b.name}
-                <span className="text-muted-foreground"> (based on {b.basis})</span>
+                <span className="text-muted-foreground"> ({customConditionText(b.conditionType, b.conditionValue)}; {b.basis})</span>
               </span>
               <span className="text-success">+{b.points}</span>
             </li>

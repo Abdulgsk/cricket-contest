@@ -16,7 +16,7 @@ import { MatchBountyPanel } from "@/components/admin/match-bounty-panel";
 import { MatchLockExtensionsPanel } from "@/components/admin/match-lock-extensions-panel";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
-import { requireRole } from "@/lib/rbac";
+import { requireRole, userHasFeature } from "@/lib/rbac";
 import { isModuleLocked } from "@/lib/match-locks";
 
 export default async function AdminMatchResultPage({
@@ -26,6 +26,9 @@ export default async function AdminMatchResultPage({
 }) {
   const me = await requireRole("admin", "superadmin");
   const isSuperadmin = me.role === "superadmin";
+  const canManageLockExtensions = userHasFeature(me, "match.lock.extend");
+  const canManageMatch = userHasFeature(me, "matches.manage");
+  const canManageResults = userHasFeature(me, "results.manage");
   const { id } = await params;
   await connectDB();
   const match = await Match.findById(id).lean();
@@ -71,13 +74,13 @@ export default async function AdminMatchResultPage({
               {match.teamB}
             </h1>
             <p className="text-sm text-muted-foreground">{formatDate(match.startTime)}</p>
-            {match.externalId && (
+            {isSuperadmin && match.externalId && (
               <p className="text-xs text-muted-foreground mt-1 break-all">
                 Source id: <code>{match.externalId}</code> · Players: {match.players?.length ?? 0}
               </p>
             )}
           </div>
-          {match.externalId && (
+          {match.externalId && canManageMatch && (
             <div className="shrink-0">
               <RefreshSquadsButton matchId={id} />
             </div>
@@ -85,18 +88,20 @@ export default async function AdminMatchResultPage({
         </div>
       </Card>
 
-      <MatchModesPanel
-        matchId={id}
-        disabled={match.resultsEntered}
-        initial={{
-          doublePoints: match.doublePoints,
-          chaosMatch: match.chaosMatch,
-          noBonus: match.noBonus,
-          predictionMadness: match.predictionMadness,
-        }}
-      />
+      {canManageMatch && (
+        <MatchModesPanel
+          matchId={id}
+          disabled={match.resultsEntered}
+          initial={{
+            doublePoints: match.doublePoints,
+            chaosMatch: match.chaosMatch,
+            noBonus: match.noBonus,
+            predictionMadness: match.predictionMadness,
+          }}
+        />
+      )}
 
-      {isSuperadmin && (
+      {canManageLockExtensions && (
         <MatchLockExtensionsPanel
           matchId={id}
           startTime={match.startTime}
@@ -109,20 +114,24 @@ export default async function AdminMatchResultPage({
         />
       )}
 
-      <ContestUrlForm matchId={id} initial={match.contestUrl} />
+      {canManageMatch && (
+        <ContestUrlForm matchId={id} initial={match.contestUrl} />
+      )}
 
-      <MatchBountyPanel
-        matchId={id}
-        initialBountyUserId={match.bountyUserId ? String(match.bountyUserId) : ""}
-        initialReason={match.bountyReason ?? ""}
-        users={users.map((u) => ({
-          id: String(u._id),
-          name: u.username,
-          handle: u.userId,
-        }))}
-      />
+      {canManageMatch && (
+        <MatchBountyPanel
+          matchId={id}
+          initialBountyUserId={match.bountyUserId ? String(match.bountyUserId) : ""}
+          initialReason={match.bountyReason ?? ""}
+          users={users.map((u) => ({
+            id: String(u._id),
+            name: u.username,
+            handle: u.userId,
+          }))}
+        />
+      )}
 
-      {!predictionLocked && (
+      {!predictionLocked && canManageResults && (
         <PredictionResetPanel
           matchId={id}
           canReset
@@ -135,48 +144,52 @@ export default async function AdminMatchResultPage({
         />
       )}
 
-      <CustomPoolEditor
-        matchId={id}
-        initial={pools.map((p) => ({
-          id: String(p._id),
-          question: p.question,
-          options: p.options,
-          pointsValue: p.pointsValue,
-          scored: p.scored,
-          correctOption: p.correctOption,
-        }))}
-      />
+      {canManageMatch && (
+        <CustomPoolEditor
+          matchId={id}
+          initial={pools.map((p) => ({
+            id: String(p._id),
+            question: p.question,
+            options: p.options,
+            pointsValue: p.pointsValue,
+            scored: p.scored,
+            correctOption: p.correctOption,
+          }))}
+        />
+      )}
 
-      <ResultEntryForm
-        matchId={id}
-        teamA={match.teamA}
-        teamB={match.teamB}
-        players={(match.players ?? []).map((p) => p.name)}
-        contestLinked={!!match.contestUrl}
-        resultsEntered={!!match.resultsEntered}
-        isSuperadmin={isSuperadmin}
-        existingPrediction={inferred}
-        existingScoreSummary={match.scoreSummary ?? ""}
-        pools={pools.map((p) => ({
-          id: String(p._id),
-          question: p.question,
-          options: p.options,
-          scored: p.scored,
-          correctOption: p.correctOption,
-        }))}
-        users={users.map((u) => ({
-          id: String(u._id),
-          username: u.username,
-          handle: u.userId,
-          my11circleName: u.my11circleName,
-          existing: existingMap.get(String(u._id))
-            ? {
-                rank: existingMap.get(String(u._id))!.rank,
-                fp: existingMap.get(String(u._id))!.fantasyPoints,
-              }
-            : undefined,
-        }))}
-      />
+      {canManageResults && (
+        <ResultEntryForm
+          matchId={id}
+          teamA={match.teamA}
+          teamB={match.teamB}
+          players={(match.players ?? []).map((p) => p.name)}
+          contestLinked={!!match.contestUrl}
+          resultsEntered={!!match.resultsEntered}
+          isSuperadmin={isSuperadmin}
+          existingPrediction={inferred}
+          existingScoreSummary={match.scoreSummary ?? ""}
+          pools={pools.map((p) => ({
+            id: String(p._id),
+            question: p.question,
+            options: p.options,
+            scored: p.scored,
+            correctOption: p.correctOption,
+          }))}
+          users={users.map((u) => ({
+            id: String(u._id),
+            username: u.username,
+            handle: u.userId,
+            my11circleName: u.my11circleName,
+            existing: existingMap.get(String(u._id))
+              ? {
+                  rank: existingMap.get(String(u._id))!.rank,
+                  fp: existingMap.get(String(u._id))!.fantasyPoints,
+                }
+              : undefined,
+          }))}
+        />
+      )}
     </div>
   );
 }
