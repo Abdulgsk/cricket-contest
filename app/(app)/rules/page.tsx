@@ -49,12 +49,41 @@ export default function RulesPage() {
       <Card>
         <h2 className="font-semibold mb-3">🎁 Bonuses (max {MAX_BONUS_PER_MATCH}/match)</h2>
         <ul className="text-sm space-y-2">
-          <li className="flex justify-between"><span>Consistency · 3 consecutive Top 5</span><span className="text-success">+{BONUSES.CONSISTENCY}</span></li>
-          <li className="flex justify-between"><span>King Slayer · finish above #1</span><span className="text-success">+{BONUSES.KING_SLAYER}</span></li>
-          <li className="flex justify-between"><span>Comeback · climb 4+ positions</span><span className="text-success">+{BONUSES.COMEBACK}</span></li>
-
-          <li className="flex justify-between"><span>Underdog · ranked 10–13 finish Top 2</span><span className="text-success">+{BONUSES.UNDERDOG}</span></li>
-          <li className="flex justify-between"><span>Match Domination · win by 300+ FP</span><span className="text-success">+{BONUSES.MATCH_DOMINATION}</span></li>
+          <li className="flex justify-between">
+            <span>
+              Get <strong>top-5 by fantasy points</strong> for 3 matches in a row
+              <span className="text-muted-foreground"> (based on fantasy points in each match)</span>
+            </span>
+            <span className="text-success">+{BONUSES.CONSISTENCY}</span>
+          </li>
+          <li className="flex justify-between">
+            <span>
+              Finish above the player who was overall #1 before this match
+              <span className="text-muted-foreground"> (based on leaderboard rank before match + this match rank)</span>
+            </span>
+            <span className="text-success">+{BONUSES.KING_SLAYER}</span>
+          </li>
+          <li className="flex justify-between">
+            <span>
+              Move up 4 or more places after this match
+              <span className="text-muted-foreground"> (based on leaderboard position change)</span>
+            </span>
+            <span className="text-success">+{BONUSES.COMEBACK}</span>
+          </li>
+          <li className="flex justify-between">
+            <span>
+              If you were 10th-13th overall, finish top 2 in this match
+              <span className="text-muted-foreground"> (based on leaderboard before match + this match rank)</span>
+            </span>
+            <span className="text-success">+{BONUSES.UNDERDOG}</span>
+          </li>
+          <li className="flex justify-between">
+            <span>
+              Win the match by 300+ fantasy points over 2nd place
+              <span className="text-muted-foreground"> (based on fantasy points in this match)</span>
+            </span>
+            <span className="text-success">+{BONUSES.MATCH_DOMINATION}</span>
+          </li>
         </ul>
       </Card>
 

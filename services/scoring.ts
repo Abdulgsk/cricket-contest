@@ -278,11 +278,11 @@ async function applyBonuses(args: {
       );
     }
 
-    // Consistency: 3 consecutive top-5 finishes (this match counts)
-    if (!r.missed && top5.has(uid)) {
-      const streak = await countConsecutiveTop5(uid, matchId);
+    // Consistency: 3 consecutive matches in top-5 by fantasy points.
+    if (!r.missed) {
+      const streak = await countConsecutiveFantasyTop5(uid);
       if (streak >= 3) {
-        add("consistency", BONUSES.CONSISTENCY, "3 consecutive Top 5 finishes");
+        add("consistency", BONUSES.CONSISTENCY, "3 consecutive matches in top 5 by fantasy points");
       }
     }
 
@@ -498,24 +498,38 @@ async function settleRivalries(args: {
   }
 }
 
-async function countConsecutiveTop5(userId: string, currentMatchId: string): Promise<number> {
+async function countConsecutiveFantasyTop5(userId: string): Promise<number> {
   const recent = await MatchResult.find({ userId })
     .populate({ path: "matchId", select: "startTime", model: Match })
     .sort({ createdAt: -1 })
     .limit(10)
     .lean();
-  // include current first
+
   const sorted = recent.sort((a, b) => {
     const ad = (a.matchId as unknown as { startTime: Date })?.startTime?.getTime() ?? 0;
     const bd = (b.matchId as unknown as { startTime: Date })?.startTime?.getTime() ?? 0;
     return bd - ad;
   });
+
   let count = 0;
   for (const r of sorted) {
-    if (!r.missed && r.rank > 0 && r.rank <= 5) count++;
-    else break;
+    if (r.missed) break;
+
+    // Top-5 check is based on fantasy points only.
+    const betterCount = await MatchResult.countDocuments({
+      matchId: r.matchId,
+      missed: false,
+      fantasyPoints: { $gt: r.fantasyPoints },
+    });
+
+    if (betterCount <= 4) {
+      count++;
+      continue;
+    }
+
+    break;
   }
-  if (count === 0 && currentMatchId) count = 1; // safety
+
   return count;
 }
 

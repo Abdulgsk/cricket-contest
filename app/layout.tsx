@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script";
 import { Toaster } from "sonner";
+import { ThemeInit } from "@/components/theme-init";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -20,19 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Script
-          id="theme-init"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `(() => {
-              try {
-                const t = localStorage.getItem('theme');
-                if (t === 'dark') document.documentElement.classList.add('dark');
-                if (t === 'light') document.documentElement.classList.remove('dark');
-              } catch {}
-            })();`,
-          }}
-        />
+        <ThemeInit />
         {children}
         <Toaster theme="system" position="top-right" richColors />
       </body>
