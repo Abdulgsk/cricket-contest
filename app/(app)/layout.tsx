@@ -34,6 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .lean(),
     getUnseenRivalryCount(String(me._id)),
   ]);
+  const bountyReward = settings.bonusConfig?.bounty ?? BONUSES.BOUNTY;
   return (
     <div className="flex flex-1 min-h-screen">
       <Nav role={me.role} rivalryUnseen={rivalryUnseen} />
@@ -45,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ) : null}
         {bountyMatch ? (
           <div className="mx-3 md:mx-4 glass rounded-xl px-4 py-2 text-sm text-warning">
-            🎯 Bounty Match: {bountyMatch.teamA} vs {bountyMatch.teamB} · Target: {(bountyMatch.bountyUserId as unknown as { username?: string })?.username ?? "Selected player"} · Reward +{BONUSES.BOUNTY}
+            🎯 Bounty Match: {bountyMatch.teamA} vs {bountyMatch.teamB} · Target: {(bountyMatch.bountyUserId as unknown as { username?: string })?.username ?? "Selected player"} · Reward +{bountyReward}
             {(bountyMatch.bountyReason as string | undefined)?.trim() ? (
               <span className="block mt-2 text-xs text-muted-foreground">
                 Reason: {String(bountyMatch.bountyReason)}

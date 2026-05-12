@@ -15,6 +15,7 @@ import { requireRole } from "@/lib/rbac";
 import { env } from "@/lib/env";
 import { normalizeMy11circleName } from "@/lib/my11circle";
 import { fetchLeaderboardFromContestUrl } from "@/lib/my11-api";
+import { BONUSES, MAX_BONUS_PER_MATCH } from "@/lib/constants";
 
 const MatchSchema = z.object({
   teamA: z.string().min(1),
@@ -269,6 +270,76 @@ export async function setAnnouncementAction(text: string) {
   await Settings.updateOne({}, { announcement: text }, { upsert: true });
   revalidatePath("/");
   revalidatePath("/dashboard");
+}
+
+const BonusSettingsSchema = z.object({
+  bonusConfig: z.object({
+    consistency: z.number().int().min(0).max(50),
+    kingSlayer: z.number().int().min(0).max(50),
+    comeback: z.number().int().min(0).max(50),
+    underdog: z.number().int().min(0).max(50),
+    matchDomination: z.number().int().min(0).max(50),
+    bounty: z.number().int().min(0).max(50),
+    rivalry: z.number().int().min(0).max(50),
+    rivalryRevenge: z.number().int().min(0).max(50),
+    maxBonusPerMatch: z.number().int().min(0).max(200),
+  }),
+  customBonuses: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1).max(80),
+      points: z.number().int().min(0).max(200),
+      basis: z.string().min(1).max(240),
+      active: z.boolean(),
+    })
+  ),
+});
+
+export async function updateBonusSettingsAction(payload: unknown) {
+  const me = await requireRole("superadmin");
+  const parsed = BonusSettingsSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid bonus settings" };
+  await connectDB();
+
+  const defaults = {
+    consistency: BONUSES.CONSISTENCY,
+    kingSlayer: BONUSES.KING_SLAYER,
+    comeback: BONUSES.COMEBACK,
+    underdog: BONUSES.UNDERDOG,
+    matchDomination: BONUSES.MATCH_DOMINATION,
+    bounty: BONUSES.BOUNTY,
+    rivalry: BONUSES.RIVALRY,
+    rivalryRevenge: 1,
+    maxBonusPerMatch: MAX_BONUS_PER_MATCH,
+  };
+
+  const bonusConfig = { ...defaults, ...parsed.data.bonusConfig };
+
+  await Settings.updateOne(
+    {},
+    {
+      $set: {
+        bonusConfig,
+        customBonuses: parsed.data.customBonuses,
+      },
+    },
+    { upsert: true }
+  );
+
+  await AuditLog.create({
+    actorId: me._id,
+    action: "settings.bonuses",
+    meta: {
+      bonusConfig,
+      customBonusCount: parsed.data.customBonuses.length,
+    },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/rules");
+  revalidatePath("/leaderboard");
+  revalidatePath("/dashboard");
+  return { ok: true as const };
 }
 
 export async function checkMy11SessionAction() {

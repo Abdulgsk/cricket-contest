@@ -1,7 +1,23 @@
 import { Card } from "@/components/ui/card";
 import { RANK_POINTS, PENALTIES, BONUSES, MAX_BONUS_PER_MATCH, PREDICTION_POINTS } from "@/lib/constants";
+import { connectDB } from "@/lib/db";
+import { getSettings } from "@/models/Settings";
 
-export default function RulesPage() {
+export default async function RulesPage() {
+  await connectDB();
+  const settings = await getSettings();
+  const bonusConfig = {
+    consistency: settings.bonusConfig?.consistency ?? BONUSES.CONSISTENCY,
+    kingSlayer: settings.bonusConfig?.kingSlayer ?? BONUSES.KING_SLAYER,
+    comeback: settings.bonusConfig?.comeback ?? BONUSES.COMEBACK,
+    underdog: settings.bonusConfig?.underdog ?? BONUSES.UNDERDOG,
+    matchDomination: settings.bonusConfig?.matchDomination ?? BONUSES.MATCH_DOMINATION,
+    bounty: settings.bonusConfig?.bounty ?? BONUSES.BOUNTY,
+    rivalry: settings.bonusConfig?.rivalry ?? BONUSES.RIVALRY,
+    rivalryRevenge: settings.bonusConfig?.rivalryRevenge ?? 1,
+    maxBonusPerMatch: settings.bonusConfig?.maxBonusPerMatch ?? MAX_BONUS_PER_MATCH,
+  };
+  const customBonuses = (settings.customBonuses ?? []).filter((b) => b.active);
   const allThreeSubtotal =
     PREDICTION_POINTS.WINNER +
     PREDICTION_POINTS.TOP_BATTER +
@@ -47,43 +63,55 @@ export default function RulesPage() {
       </Card>
 
       <Card>
-        <h2 className="font-semibold mb-3">🎁 Bonuses (max {MAX_BONUS_PER_MATCH}/match)</h2>
+        <h2 className="font-semibold mb-3">🎁 Bonuses</h2>
+        <p className="text-xs text-muted-foreground mb-3">
+          Maximum bonus points allowed per match: {bonusConfig.maxBonusPerMatch}
+        </p>
         <ul className="text-sm space-y-2">
           <li className="flex justify-between">
             <span>
               Finish in top 5 by fantasy points for 3 matches in a row
               <span className="text-muted-foreground"> (based only on fantasy points in each match)</span>
             </span>
-            <span className="text-success">+{BONUSES.CONSISTENCY}</span>
+            <span className="text-success">+{bonusConfig.consistency}</span>
           </li>
           <li className="flex justify-between">
             <span>
               Score more fantasy points than the player who was #1 on leaderboard before this match
               <span className="text-muted-foreground"> (based on leaderboard #1 before match + fantasy points in this match)</span>
             </span>
-            <span className="text-success">+{BONUSES.KING_SLAYER}</span>
+            <span className="text-success">+{bonusConfig.kingSlayer}</span>
           </li>
           <li className="flex justify-between">
             <span>
               Move up 4 or more places after this match
               <span className="text-muted-foreground"> (based on leaderboard position change)</span>
             </span>
-            <span className="text-success">+{BONUSES.COMEBACK}</span>
+            <span className="text-success">+{bonusConfig.comeback}</span>
           </li>
           <li className="flex justify-between">
             <span>
               If you were 10th-13th overall, finish top 2 in this match
               <span className="text-muted-foreground"> (based on leaderboard before match + this match rank)</span>
             </span>
-            <span className="text-success">+{BONUSES.UNDERDOG}</span>
+            <span className="text-success">+{bonusConfig.underdog}</span>
           </li>
           <li className="flex justify-between">
             <span>
               Win the match by 300+ fantasy points over 2nd place
               <span className="text-muted-foreground"> (based on fantasy points in this match)</span>
             </span>
-            <span className="text-success">+{BONUSES.MATCH_DOMINATION}</span>
+            <span className="text-success">+{bonusConfig.matchDomination}</span>
           </li>
+          {customBonuses.map((b) => (
+            <li key={b.id} className="flex justify-between">
+              <span>
+                {b.name}
+                <span className="text-muted-foreground"> (based on {b.basis})</span>
+              </span>
+              <span className="text-success">+{b.points}</span>
+            </li>
+          ))}
         </ul>
       </Card>
 
@@ -91,7 +119,7 @@ export default function RulesPage() {
         <h2 className="font-semibold mb-3">🎯 Bounty (separate from bonuses)</h2>
         <p className="text-sm text-muted-foreground">
           Bounty is selected per match by admin. If no player is selected, that match has no bounty.
-          Any non-missed player who finishes above the selected bounty holder gets <span className="text-success">+{BONUSES.BOUNTY}</span> bounty points.
+          Any non-missed player who finishes above the selected bounty holder gets <span className="text-success">+{bonusConfig.bounty}</span> bounty points.
         </p>
       </Card>
 
@@ -102,7 +130,7 @@ export default function RulesPage() {
           <li>You can keep multiple challenges open in the same match.</li>
           <li>When one challenge is accepted, the others for that same match are withdrawn without penalty.</li>
           <li>You can challenge the same player at most twice in your lifetime: the first challenge and one revenge match.</li>
-          <li>If you win a revenge match, you get an extra <span className="text-success">+1</span> on top of <span className="text-success">+{BONUSES.RIVALRY}</span>.</li>
+          <li>If you win a revenge match, you get an extra <span className="text-success">+{bonusConfig.rivalryRevenge}</span> on top of <span className="text-success">+{bonusConfig.rivalry}</span>.</li>
           <li>Withdrawals before lock cost <span className="text-danger">−2</span>; a separate admin approval request is available for no-penalty withdrawals.</li>
         </ul>
       </Card>

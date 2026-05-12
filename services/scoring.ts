@@ -6,6 +6,7 @@ import { Prediction } from "@/models/Prediction";
 import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
 import { BonusAuditLog } from "@/models/BonusAuditLog";
 import { User } from "@/models/User";
+import { getSettings } from "@/models/Settings";
 import {
   RANK_POINTS,
   PENALTIES,
@@ -28,6 +29,18 @@ interface MatchPredictionResult {
   topBowler: string;
 }
 
+type BonusRuntimeConfig = {
+  consistency: number;
+  kingSlayer: number;
+  comeback: number;
+  underdog: number;
+  matchDomination: number;
+  bounty: number;
+  rivalry: number;
+  rivalryRevenge: number;
+  maxBonusPerMatch: number;
+};
+
 /**
  * Process all results for a match in one go.
  * Steps:
@@ -47,6 +60,7 @@ export async function processMatchResults(
   await connectDB();
   const match = await Match.findById(matchId);
   if (!match) throw new Error("Match not found");
+  const bonusConfig = await getBonusRuntimeConfig();
 
   const doubleMul = match.doublePoints ? 2 : 1;
   const allowBonuses = !match.noBonus;
@@ -128,14 +142,15 @@ export async function processMatchResults(
       prevRankMap,
       prevLeaderId,
       chaos,
+      bonusConfig,
     });
   }
 
   // --- Bounty points (separate bucket, not part of bonuses) ---
-  await applyBountyPoints({ matchId, results: created, bountyId });
+  await applyBountyPoints({ matchId, results: created, bountyId, bonusConfig });
 
   // --- Rivalry points (1v1 challenges) ---
-  await settleRivalries({ matchId, results: created });
+  await settleRivalries({ matchId, results: created, bonusConfig });
 
   // --- Score predictions for this match ---
   if (predictionResult) {
@@ -217,11 +232,12 @@ async function applyBonuses(args: {
   prevRankMap: Map<string, number>;
   prevLeaderId: string | null;
   chaos: boolean;
+  bonusConfig: BonusRuntimeConfig;
 }) {
-  const { matchId, results, prevRankMap, prevLeaderId, chaos } = args;
+  const { matchId, results, prevRankMap, prevLeaderId, chaos, bonusConfig } = args;
   // In Chaos mode, every bonus value is doubled and the per-match cap is doubled too.
   const bonusMul = chaos ? 2 : 1;
-  const cap = chaos ? MAX_BONUS_PER_MATCH * 2 : MAX_BONUS_PER_MATCH;
+  const cap = chaos ? bonusConfig.maxBonusPerMatch * 2 : bonusConfig.maxBonusPerMatch;
 
   // Sort results by rank (1 best). Skip missed.
   const ranked = [...results].filter((r) => !r.missed && r.rank > 0).sort((a, b) => a.rank - b.rank);
@@ -252,7 +268,7 @@ async function applyBonuses(args: {
         if (leaderRes && !leaderRes.missed && r.fantasyPoints > leaderRes.fantasyPoints) {
           add(
             "king_slayer",
-            BONUSES.KING_SLAYER,
+            bonusConfig.kingSlayer,
             "Scored more fantasy points than the player who was overall #1 before this match"
           );
         }
@@ -262,20 +278,20 @@ async function applyBonuses(args: {
     const prevPos = prevRankMap.get(uid);
     const newPos = newRankMap.get(uid);
     if (prevPos && newPos && prevPos - newPos >= 4) {
-      add("comeback", BONUSES.COMEBACK, `Climbed ${prevPos - newPos} leaderboard positions`);
+      add("comeback", bonusConfig.comeback, `Climbed ${prevPos - newPos} leaderboard positions`);
     }
 
     // Underdog: was ranked 10-13 overall AND finished top 2
     if (prevPos && prevPos >= 10 && prevPos <= 13 && top1 && top2) {
       const isTop2 = String(top1.userId) === uid || String(top2.userId) === uid;
-      if (isTop2) add("underdog", BONUSES.UNDERDOG, `Was overall #${prevPos} and finished top 2`);
+      if (isTop2) add("underdog", bonusConfig.underdog, `Was overall #${prevPos} and finished top 2`);
     }
 
     // Match domination: only the winner gets it
     if (dominationApplies && top1 && String(top1.userId) === uid) {
       add(
         "match_domination",
-        BONUSES.MATCH_DOMINATION,
+        bonusConfig.matchDomination,
         `Won by ${top1.fantasyPoints - top2.fantasyPoints} Dream11 points`
       );
     }
@@ -284,7 +300,7 @@ async function applyBonuses(args: {
     if (!r.missed) {
       const streak = await countConsecutiveFantasyTop5(uid);
       if (streak >= 3) {
-        add("consistency", BONUSES.CONSISTENCY, "3 consecutive matches in top 5 by fantasy points");
+        add("consistency", bonusConfig.consistency, "3 consecutive matches in top 5 by fantasy points");
       }
     }
 
@@ -321,8 +337,9 @@ async function applyBountyPoints(args: {
   matchId: string;
   results: HydratedDocument<IMatchResult>[];
   bountyId: string | null;
+  bonusConfig: BonusRuntimeConfig;
 }) {
-  const { matchId, results, bountyId } = args;
+  const { matchId, results, bountyId, bonusConfig } = args;
   if (!bountyId) {
     for (const r of results) {
       if (r.bountyPoints) {
@@ -348,7 +365,7 @@ async function applyBountyPoints(args: {
       bountyRes.rank > 0 &&
       r.rank < bountyRes.rank
     ) {
-      bountyPts = BONUSES.BOUNTY;
+      bountyPts = bonusConfig.bounty;
       await BonusAuditLog.create({
         userId: r.userId,
         matchId,
@@ -364,16 +381,14 @@ async function applyBountyPoints(args: {
   }
 }
 
-const RIVALRY_POINTS = 3;
-const RIVALRY_REVENGE_BONUS = 1;
-
 async function settleRivalries(args: {
   matchId: string;
   results: HydratedDocument<IMatchResult>[];
+  bonusConfig: BonusRuntimeConfig;
 }) {
   const { Rivalry } = await import("@/models/Rivalry");
   const { Notification } = await import("@/models/Notification");
-  const { matchId, results } = args;
+  const { matchId, results, bonusConfig } = args;
   const rivalries = await Rivalry.find({ matchId, status: "accepted" });
   if (!rivalries.length) {
     // Nothing to settle, but reset any stale rivalry points on results just in case.
@@ -439,24 +454,24 @@ async function settleRivalries(args: {
               : riv.challengerId,
         },
       }).lean();
-      if (priorLoss) revengeBonus = RIVALRY_REVENGE_BONUS;
+      if (priorLoss) revengeBonus = bonusConfig.rivalryRevenge;
     }
 
-    riv.pointsAwarded = winnerId ? RIVALRY_POINTS + revengeBonus : 0;
+    riv.pointsAwarded = winnerId ? bonusConfig.rivalry + revengeBonus : 0;
     await riv.save();
 
     if (winnerId) {
       const winnerRes = resByUser.get(String(winnerId));
       if (winnerRes) {
         winnerRes.rivalryPoints =
-          (winnerRes.rivalryPoints ?? 0) + RIVALRY_POINTS + revengeBonus;
+          (winnerRes.rivalryPoints ?? 0) + bonusConfig.rivalry + revengeBonus;
         await BonusAuditLog.create({
           userId: winnerId,
           matchId,
           bonusType: revengeBonus ? "rivalry_revenge_win" : "rivalry_win",
-          points: RIVALRY_POINTS + revengeBonus,
+          points: bonusConfig.rivalry + revengeBonus,
           explanation: revengeBonus
-            ? `Won the revenge rivalry (+${RIVALRY_POINTS} +${revengeBonus} bonus)`
+            ? `Won the revenge rivalry (+${bonusConfig.rivalry} +${revengeBonus} bonus)`
             : "Won a 1v1 rivalry challenge for this match",
         });
       }
@@ -467,8 +482,8 @@ async function settleRivalries(args: {
         userId: winnerId,
         title: revengeBonus ? "Revenge won \ud83c\udfc6" : "Rivalry won \ud83c\udfc6",
         body: revengeBonus
-          ? `You won the revenge match (+${RIVALRY_POINTS + revengeBonus} points).`
-          : `You beat your rival this match (+${RIVALRY_POINTS} points).`,
+          ? `You won the revenge match (+${bonusConfig.rivalry + revengeBonus} points).`
+          : `You beat your rival this match (+${bonusConfig.rivalry} points).`,
       });
       await Notification.create({
         userId: loserId,
@@ -533,6 +548,22 @@ async function countConsecutiveFantasyTop5(userId: string): Promise<number> {
   }
 
   return count;
+}
+
+async function getBonusRuntimeConfig(): Promise<BonusRuntimeConfig> {
+  const settings = await getSettings();
+  const cfg = settings.bonusConfig ?? {};
+  return {
+    consistency: cfg.consistency ?? BONUSES.CONSISTENCY,
+    kingSlayer: cfg.kingSlayer ?? BONUSES.KING_SLAYER,
+    comeback: cfg.comeback ?? BONUSES.COMEBACK,
+    underdog: cfg.underdog ?? BONUSES.UNDERDOG,
+    matchDomination: cfg.matchDomination ?? BONUSES.MATCH_DOMINATION,
+    bounty: cfg.bounty ?? BONUSES.BOUNTY,
+    rivalry: cfg.rivalry ?? BONUSES.RIVALRY,
+    rivalryRevenge: cfg.rivalryRevenge ?? 1,
+    maxBonusPerMatch: cfg.maxBonusPerMatch ?? MAX_BONUS_PER_MATCH,
+  };
 }
 
 async function scorePredictions(
