@@ -22,6 +22,10 @@ export const BONUSES = {
   COMEBACK: 5, // gain 4+ leaderboard positions after a match
   UNDERDOG: 6, // ranked 10-13 overall finishing top 2
   MATCH_DOMINATION: 5, // win by 100+ Dream11 points difference
+  TOPPER_DEFENDS_TOP: 2, // pre-match leaderboard #1 stays #1 after this match
+  TOPPER_TOPS_MATCH: 2, // pre-match leaderboard #1 also finishes #1 by fantasy points in match
+  CAPTAIN_TEAM_WIN: 1, // captain (top leaderboard player on a Civil War side) has more FP than opposing captain → every teammate (incl. captain) +1
+  LEADER_TOPPER_BONUS: 1, // overall leaderboard #1 not in this match's Civil War beats both captains' FP → +1
   BOUNTY: 3, // beating the bounty holder
   RIVALRY: 3, // winning a 1v1 rivalry challenge for the match
 } as const;

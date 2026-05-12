@@ -364,6 +364,10 @@ const BonusSettingsSchema = z.object({
     comeback: z.number().int().min(0).max(50),
     underdog: z.number().int().min(0).max(50),
     matchDomination: z.number().int().min(0).max(50),
+    topperDefendsTop: z.number().int().min(0).max(50),
+    topperTopsMatch: z.number().int().min(0).max(50),
+    captainTeamWin: z.number().int().min(0).max(50),
+    leaderTopperBonus: z.number().int().min(0).max(50),
     bounty: z.number().int().min(0).max(50),
     rivalry: z.number().int().min(0).max(50),
     rivalryRevenge: z.number().int().min(0).max(50),
@@ -374,14 +378,33 @@ const BonusSettingsSchema = z.object({
       name: z.string().min(1).max(80),
       points: z.number().int().min(0).max(200),
       basis: z.string().min(1).max(240),
-      conditionType: z.enum([
-        "fantasy_points_gte",
-        "rank_lte",
-        "leaderboard_climb_gte",
-        "beat_pre_match_leader_fp",
-        "top_n_by_fantasy_points",
-      ]),
-      conditionValue: z.number().int().min(0).max(10000).optional(),
+      action: z.enum(["add", "deduct"]),
+      conditionLogic: z.enum(["all", "any"]),
+      conditions: z
+        .array(
+          z.object({
+            conditionType: z.enum([
+              "fantasy_points_gte",
+              "fantasy_points_lte",
+              "rank_lte",
+              "rank_gte",
+              "leaderboard_climb_gte",
+              "leaderboard_drop_gte",
+              "pre_match_table_pos_lte",
+              "pre_match_table_pos_gte",
+              "post_match_table_pos_lte",
+              "post_match_table_pos_gte",
+              "beat_pre_match_leader_fp",
+              "top_n_by_fantasy_points",
+              "bottom_n_by_fantasy_points",
+              "missed_match",
+              "played_match",
+            ]),
+            conditionValue: z.number().int().min(0).max(10000).optional(),
+          })
+        )
+        .min(1)
+        .max(10),
       active: z.boolean(),
     })
   ),
@@ -399,6 +422,10 @@ export async function updateBonusSettingsAction(payload: unknown) {
     comeback: BONUSES.COMEBACK,
     underdog: BONUSES.UNDERDOG,
     matchDomination: BONUSES.MATCH_DOMINATION,
+    topperDefendsTop: BONUSES.TOPPER_DEFENDS_TOP,
+    topperTopsMatch: BONUSES.TOPPER_TOPS_MATCH,
+    captainTeamWin: BONUSES.CAPTAIN_TEAM_WIN,
+    leaderTopperBonus: BONUSES.LEADER_TOPPER_BONUS,
     bounty: BONUSES.BOUNTY,
     rivalry: BONUSES.RIVALRY,
     rivalryRevenge: 1,

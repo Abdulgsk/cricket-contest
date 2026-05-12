@@ -71,6 +71,7 @@ export function ResultEntryForm({
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [fetchingContestPoints, setFetchingContestPoints] = useState(false);
+  const [fetchContestStatus, setFetchContestStatus] = useState<string | null>(null);
   const [my11Session, setMy11Session] = useState<{
     hasCookie: boolean;
     loggedIn: boolean;
@@ -193,12 +194,15 @@ export function ResultEntryForm({
 
   const fetchContestPoints = async () => {
     setFetchingContestPoints(true);
+    setFetchContestStatus("Connecting to My11...");
     try {
       const response = await fetch("/api/admin/fetch-my11-automation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ matchId }),
       });
+
+      setFetchContestStatus("Processing contest leaderboard...");
 
       const data = (await response.json()) as {
         ok: boolean;
@@ -237,8 +241,14 @@ export function ResultEntryForm({
       toast.success(
         `Contest points loaded · matched ${foundCount}/${data.entries?.length ?? 0} players${cacheMsg}`
       );
+      setFetchContestStatus(`Matched ${foundCount}/${data.entries?.length ?? 0} players`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to fetch contest points";
+      toast.error(msg);
+      setFetchContestStatus(msg);
     } finally {
       setFetchingContestPoints(false);
+      window.setTimeout(() => setFetchContestStatus(null), 2500);
     }
   };
 
@@ -581,10 +591,13 @@ export function ResultEntryForm({
               loading={fetchingContestPoints}
               disabled={!contestLinked}
             >
-              {fetchingContestPoints ? "Fetching…" : "🔄 Fetch My11 Points"}
+              {fetchingContestPoints ? "Fetching My11 points..." : "🔄 Fetch My11 Points"}
             </Button>
           </div>
         </div>
+        {fetchContestStatus && (
+          <p className="mb-3 text-xs text-muted-foreground">{fetchContestStatus}</p>
+        )}
         {!contestLinked && (
           <p className="mb-3 text-xs text-muted-foreground">
             No contest linked yet. Use the picker below or add a contest URL on the match.

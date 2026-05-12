@@ -9,6 +9,8 @@ import { RegenerateFactsButton } from "@/components/admin/regenerate-facts-butto
 import { RivalryWithdrawalQueue } from "@/components/admin/rivalry-withdrawal-queue";
 import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
 import { BonusSettingsPanel } from "@/components/admin/bonus-settings-panel";
+import { CivilWarSettingsPanel } from "@/components/admin/civil-war-settings-panel";
+import { CIVIL_WAR_DEFAULTS } from "@/services/civil-war";
 import { formatDate } from "@/lib/utils";
 import { requireRole, userHasFeature } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
@@ -46,6 +48,8 @@ export default async function AdminHome() {
   ]);
 
   const canEditBonus = userHasFeature(me, "bonus.manage");
+  const canEditCivilWar = me.role === "superadmin" || userHasFeature(me, "civilwar.points.manage");
+  const showCivilWarTab = me.role === "superadmin" || canEditCivilWar;
   const canApproveRivalryWithdrawals = userHasFeature(me, "rivalry.withdraw.approve");
   const canManageResults = userHasFeature(me, "results.manage");
   const canSeeMatches =
@@ -62,6 +66,10 @@ export default async function AdminHome() {
         comeback: settings.bonusConfig?.comeback ?? BONUSES.COMEBACK,
         underdog: settings.bonusConfig?.underdog ?? BONUSES.UNDERDOG,
         matchDomination: settings.bonusConfig?.matchDomination ?? BONUSES.MATCH_DOMINATION,
+        topperDefendsTop: settings.bonusConfig?.topperDefendsTop ?? BONUSES.TOPPER_DEFENDS_TOP,
+        topperTopsMatch: settings.bonusConfig?.topperTopsMatch ?? BONUSES.TOPPER_TOPS_MATCH,
+        captainTeamWin: settings.bonusConfig?.captainTeamWin ?? BONUSES.CAPTAIN_TEAM_WIN,
+        leaderTopperBonus: settings.bonusConfig?.leaderTopperBonus ?? BONUSES.LEADER_TOPPER_BONUS,
         bounty: settings.bonusConfig?.bounty ?? BONUSES.BOUNTY,
         rivalry: settings.bonusConfig?.rivalry ?? BONUSES.RIVALRY,
         rivalryRevenge: settings.bonusConfig?.rivalryRevenge ?? 1,
@@ -72,8 +80,22 @@ export default async function AdminHome() {
           name: b.name,
           points: b.points,
           basis: b.basis,
-          conditionType: b.conditionType,
-          conditionValue: b.conditionValue,
+          action: (b as unknown as { action?: "add" | "deduct" }).action ?? "add",
+          conditionLogic: (b as unknown as { conditionLogic?: "all" | "any" }).conditionLogic ?? "all",
+          conditions:
+            (b as unknown as {
+              conditions?: Array<{ conditionType: string; conditionValue?: number }>;
+              conditionType?: string;
+              conditionValue?: number;
+            }).conditions ??
+            [
+              {
+                conditionType:
+                  (b as unknown as { conditionType?: string }).conditionType ??
+                  "fantasy_points_gte",
+                conditionValue: (b as unknown as { conditionValue?: number }).conditionValue,
+              },
+            ],
           active: b.active,
         }))
       }
@@ -228,6 +250,25 @@ export default async function AdminHome() {
           ? [{ id: "requests", label: "Rivalry Approvals", badge: withdrawalRows.length, content: requestsTab }]
           : []),
         ...(canEditBonus ? [{ id: "bonus", label: "Bonus Rules", content: bonusTab }] : []),
+        ...(showCivilWarTab
+          ? [
+              {
+                id: "civilwar",
+                label: "Civil War",
+                content: (
+                  <CivilWarSettingsPanel
+                    canEdit={canEditCivilWar}
+                    initial={{
+                      decisiveWin: settings.civilWarConfig?.decisiveWin ?? CIVIL_WAR_DEFAULTS.decisiveWin,
+                      decisiveLoss: settings.civilWarConfig?.decisiveLoss ?? CIVIL_WAR_DEFAULTS.decisiveLoss,
+                      splitWin: settings.civilWarConfig?.splitWin ?? CIVIL_WAR_DEFAULTS.splitWin,
+                      splitLoss: settings.civilWarConfig?.splitLoss ?? CIVIL_WAR_DEFAULTS.splitLoss,
+                    }}
+                  />
+                ),
+              },
+            ]
+          : []),
         { id: "tools", label: "Operations", content: toolsTab },
         { id: "help", label: "Docs", content: helpTab },
       ]}

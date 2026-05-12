@@ -13,6 +13,10 @@ type BonusConfigInput = {
   comeback: number;
   underdog: number;
   matchDomination: number;
+  topperDefendsTop: number;
+  topperTopsMatch: number;
+  captainTeamWin: number;
+  leaderTopperBonus: number;
   bounty: number;
   rivalry: number;
   rivalryRevenge: number;
@@ -20,35 +24,71 @@ type BonusConfigInput = {
 
 type ConditionType =
   | "fantasy_points_gte"
+  | "fantasy_points_lte"
   | "rank_lte"
+  | "rank_gte"
   | "leaderboard_climb_gte"
+  | "leaderboard_drop_gte"
+  | "pre_match_table_pos_lte"
+  | "pre_match_table_pos_gte"
+  | "post_match_table_pos_lte"
+  | "post_match_table_pos_gte"
   | "beat_pre_match_leader_fp"
-  | "top_n_by_fantasy_points";
+  | "top_n_by_fantasy_points"
+  | "bottom_n_by_fantasy_points"
+  | "missed_match"
+  | "played_match";
+
+type RuleConditionInput = {
+  conditionType: ConditionType;
+  conditionValue?: number;
+};
 
 type CustomBonusInput = {
   id: string;
   name: string;
   points: number;
   basis: string;
-  conditionType: ConditionType;
-  conditionValue?: number;
+  action: "add" | "deduct";
+  conditionLogic: "all" | "any";
+  conditions: RuleConditionInput[];
   active: boolean;
 };
 
 const CONDITION_LABELS: Record<ConditionType, string> = {
   fantasy_points_gte: "Fantasy points >= value",
+  fantasy_points_lte: "Fantasy points <= value",
   rank_lte: "Match rank <= value",
+  rank_gte: "Match rank >= value",
   leaderboard_climb_gte: "Leaderboard climb >= value",
+  leaderboard_drop_gte: "Leaderboard drop >= value",
+  pre_match_table_pos_lte: "Pre-match table position <= value",
+  pre_match_table_pos_gte: "Pre-match table position >= value",
+  post_match_table_pos_lte: "Post-match table position <= value",
+  post_match_table_pos_gte: "Post-match table position >= value",
   beat_pre_match_leader_fp: "Beat pre-match leaderboard #1 by fantasy points",
   top_n_by_fantasy_points: "Top N by fantasy points in match",
+  bottom_n_by_fantasy_points: "Bottom N by fantasy points in match",
+  missed_match: "Missed this match",
+  played_match: "Played this match",
 };
 
 const NEEDS_VALUE: Record<ConditionType, boolean> = {
   fantasy_points_gte: true,
+  fantasy_points_lte: true,
   rank_lte: true,
+  rank_gte: true,
   leaderboard_climb_gte: true,
+  leaderboard_drop_gte: true,
+  pre_match_table_pos_lte: true,
+  pre_match_table_pos_gte: true,
+  post_match_table_pos_lte: true,
+  post_match_table_pos_gte: true,
   beat_pre_match_leader_fp: false,
   top_n_by_fantasy_points: true,
+  bottom_n_by_fantasy_points: true,
+  missed_match: false,
+  played_match: false,
 };
 
 export function BonusSettingsPanel({
@@ -57,12 +97,48 @@ export function BonusSettingsPanel({
   canEdit,
 }: {
   initialBonusConfig: BonusConfigInput;
-  initialCustomBonuses: CustomBonusInput[];
+  initialCustomBonuses: Array<{
+    id: string;
+    name: string;
+    points: number;
+    basis: string;
+    active: boolean;
+    action?: "add" | "deduct";
+    conditionLogic?: "all" | "any";
+    conditionType?: ConditionType;
+    conditionValue?: number;
+    conditions?: Array<{ conditionType: string; conditionValue?: number }>;
+  }>;
   canEdit: boolean;
 }) {
   const [pending, start] = useTransition();
   const [bonusConfig, setBonusConfig] = useState<BonusConfigInput>(initialBonusConfig);
-  const [customBonuses, setCustomBonuses] = useState<CustomBonusInput[]>(initialCustomBonuses);
+  const [customBonuses, setCustomBonuses] = useState<CustomBonusInput[]>(
+    initialCustomBonuses.map((b) => {
+      const withRules = b;
+      return {
+        id: b.id,
+        name: b.name,
+        points: b.points,
+        basis: b.basis,
+        active: b.active,
+        action: withRules.action ?? "add",
+        conditionLogic: withRules.conditionLogic ?? "all",
+        conditions:
+          withRules.conditions && withRules.conditions.length
+            ? withRules.conditions.map((c) => ({
+                conditionType: c.conditionType as ConditionType,
+                conditionValue: c.conditionValue,
+              }))
+            : [
+                {
+                  conditionType: withRules.conditionType ?? "fantasy_points_gte",
+                  conditionValue: withRules.conditionValue,
+                },
+              ],
+      };
+    })
+  );
 
   function setConfigField<K extends keyof BonusConfigInput>(key: K, value: string) {
     const parsed = Number(value);
@@ -77,8 +153,9 @@ export function BonusSettingsPanel({
         name: "",
         points: 0,
         basis: "",
-        conditionType: "fantasy_points_gte",
-        conditionValue: 0,
+        action: "add",
+        conditionLogic: "all",
+        conditions: [{ conditionType: "fantasy_points_gte", conditionValue: 0 }],
         active: true,
       },
     ]);
@@ -92,15 +169,58 @@ export function BonusSettingsPanel({
     setCustomBonuses((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  function addCondition(ruleIdx: number) {
+    setCustomBonuses((prev) =>
+      prev.map((b, i) =>
+        i === ruleIdx
+          ? {
+              ...b,
+              conditions: [...b.conditions, { conditionType: "fantasy_points_gte", conditionValue: 0 }],
+            }
+          : b
+      )
+    );
+  }
+
+  function removeCondition(ruleIdx: number, condIdx: number) {
+    setCustomBonuses((prev) =>
+      prev.map((b, i) =>
+        i === ruleIdx
+          ? { ...b, conditions: b.conditions.filter((_, j) => j !== condIdx) }
+          : b
+      )
+    );
+  }
+
+  function updateCondition(
+    ruleIdx: number,
+    condIdx: number,
+    patch: Partial<RuleConditionInput>
+  ) {
+    setCustomBonuses((prev) =>
+      prev.map((b, i) =>
+        i === ruleIdx
+          ? {
+              ...b,
+              conditions: b.conditions.map((c, j) => (j === condIdx ? { ...c, ...patch } : c)),
+            }
+          : b
+      )
+    );
+  }
+
   const save = () =>
     start(async () => {
       const cleaned = customBonuses
-        .filter((b) => b.name.trim() && b.basis.trim())
+        .filter((b) => b.name.trim() && b.basis.trim() && b.conditions.length > 0)
         .map((b) => ({
           ...b,
           name: b.name.trim(),
           basis: b.basis.trim(),
-          conditionValue: NEEDS_VALUE[b.conditionType] ? Number(b.conditionValue ?? 0) : undefined,
+          conditions: b.conditions.map((c) => ({
+            conditionType: c.conditionType,
+            conditionValue: NEEDS_VALUE[c.conditionType] ? Number(c.conditionValue ?? 0) : undefined,
+          })),
         }));
       const res = await updateBonusSettingsAction({
         bonusConfig,
@@ -142,6 +262,22 @@ export function BonusSettingsPanel({
           <Input type="number" min={0} value={bonusConfig.matchDomination} onChange={(e) => setConfigField("matchDomination", e.target.value)} disabled={!canEdit} />
         </div>
         <div className="space-y-1">
+          <Label>Leaderboard topper stays #1 after match</Label>
+          <Input type="number" min={0} value={bonusConfig.topperDefendsTop} onChange={(e) => setConfigField("topperDefendsTop", e.target.value)} disabled={!canEdit} />
+        </div>
+        <div className="space-y-1">
+          <Label>Leaderboard topper also tops match (My11)</Label>
+          <Input type="number" min={0} value={bonusConfig.topperTopsMatch} onChange={(e) => setConfigField("topperTopsMatch", e.target.value)} disabled={!canEdit} />
+        </div>
+        <div className="space-y-1">
+          <Label>Captain&apos;s team wins (each member)</Label>
+          <Input type="number" min={0} value={bonusConfig.captainTeamWin} onChange={(e) => setConfigField("captainTeamWin", e.target.value)} disabled={!canEdit} />
+        </div>
+        <div className="space-y-1">
+          <Label>Leader topper override (outsider beats both captains)</Label>
+          <Input type="number" min={0} value={bonusConfig.leaderTopperBonus} onChange={(e) => setConfigField("leaderTopperBonus", e.target.value)} disabled={!canEdit} />
+        </div>
+        <div className="space-y-1">
           <Label>Bounty reward</Label>
           <Input type="number" min={0} value={bonusConfig.bounty} onChange={(e) => setConfigField("bounty", e.target.value)} disabled={!canEdit} />
         </div>
@@ -157,19 +293,21 @@ export function BonusSettingsPanel({
 
       <div className="mt-5 space-y-2 border-t border-border pt-4">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-medium">Custom bonuses</h3>
+          <h3 className="font-medium">Custom workflow rules</h3>
           <Button variant="outline" size="sm" onClick={addCustomBonus} loading={pending} disabled={!canEdit}>
-            Add custom bonus
+            Add rule
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">Define condition + points. If condition is satisfied, points are added.</p>
+        <p className="text-xs text-muted-foreground">
+          Build rules like: if conditions match, then add or deduct points. You can combine multiple conditions with ALL or ANY logic.
+        </p>
 
         <div className="space-y-2">
           {customBonuses.map((bonus, idx) => (
             <div key={bonus.id} className="rounded-lg border border-border p-3 space-y-2">
-              <div className="grid gap-2 sm:grid-cols-[1fr_110px]">
+              <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
                 <Input
-                  placeholder="Bonus title"
+                  placeholder="Rule title"
                   value={bonus.name}
                   onChange={(e) => updateCustomBonus(idx, { name: e.target.value })}
                   disabled={!canEdit}
@@ -184,35 +322,77 @@ export function BonusSettingsPanel({
                 />
               </div>
 
-              <select
-                className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
-                value={bonus.conditionType}
-                onChange={(e) => {
-                  const next = e.target.value as ConditionType;
-                  updateCustomBonus(idx, {
-                    conditionType: next,
-                    conditionValue: NEEDS_VALUE[next] ? bonus.conditionValue ?? 0 : undefined,
-                  });
-                }}
-                disabled={!canEdit}
-              >
-                {Object.entries(CONDITION_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-
-              {NEEDS_VALUE[bonus.conditionType] && (
-                <Input
-                  type="number"
-                  min={0}
-                  placeholder="Condition value"
-                  value={bonus.conditionValue ?? 0}
-                  onChange={(e) => updateCustomBonus(idx, { conditionValue: Number(e.target.value) || 0 })}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <select
+                  className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
+                  value={bonus.action}
+                  onChange={(e) => updateCustomBonus(idx, { action: e.target.value as "add" | "deduct" })}
                   disabled={!canEdit}
-                />
-              )}
+                >
+                  <option value="add">Action: Add points</option>
+                  <option value="deduct">Action: Deduct points</option>
+                </select>
+                <select
+                  className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
+                  value={bonus.conditionLogic}
+                  onChange={(e) => updateCustomBonus(idx, { conditionLogic: e.target.value as "all" | "any" })}
+                  disabled={!canEdit}
+                >
+                  <option value="all">Condition logic: ALL must match</option>
+                  <option value="any">Condition logic: ANY can match</option>
+                </select>
+              </div>
+
+              <div className="space-y-2 rounded-lg bg-muted/20 p-2">
+                {bonus.conditions.map((cond, condIdx) => (
+                  <div key={`${bonus.id}-${condIdx}`} className="grid gap-2 sm:grid-cols-[1fr_140px_auto]">
+                    <select
+                      className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
+                      value={cond.conditionType}
+                      onChange={(e) => {
+                        const next = e.target.value as ConditionType;
+                        updateCondition(idx, condIdx, {
+                          conditionType: next,
+                          conditionValue: NEEDS_VALUE[next] ? cond.conditionValue ?? 0 : undefined,
+                        });
+                      }}
+                      disabled={!canEdit}
+                    >
+                      {Object.entries(CONDITION_LABELS).map(([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    {NEEDS_VALUE[cond.conditionType] ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="Value"
+                        value={cond.conditionValue ?? 0}
+                        onChange={(e) => updateCondition(idx, condIdx, { conditionValue: Number(e.target.value) || 0 })}
+                        disabled={!canEdit}
+                      />
+                    ) : (
+                      <div className="h-11 rounded-xl border border-border bg-card px-3 text-xs text-muted-foreground flex items-center">
+                        No value needed
+                      </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeCondition(idx, condIdx)}
+                      disabled={!canEdit || bonus.conditions.length <= 1}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+
+                <Button variant="outline" size="sm" onClick={() => addCondition(idx)} disabled={!canEdit}>
+                  Add condition
+                </Button>
+              </div>
 
               <Textarea
                 rows={2}

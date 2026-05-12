@@ -7,17 +7,52 @@ function customConditionText(conditionType: string, conditionValue?: number) {
   switch (conditionType) {
     case "fantasy_points_gte":
       return `fantasy points >= ${conditionValue ?? 0}`;
+    case "fantasy_points_lte":
+      return `fantasy points <= ${conditionValue ?? 0}`;
     case "rank_lte":
       return `match rank <= ${conditionValue ?? 0}`;
+    case "rank_gte":
+      return `match rank >= ${conditionValue ?? 0}`;
     case "leaderboard_climb_gte":
       return `leaderboard climb >= ${conditionValue ?? 0}`;
+    case "leaderboard_drop_gte":
+      return `leaderboard drop >= ${conditionValue ?? 0}`;
+    case "pre_match_table_pos_lte":
+      return `pre-match table position <= ${conditionValue ?? 0}`;
+    case "pre_match_table_pos_gte":
+      return `pre-match table position >= ${conditionValue ?? 0}`;
+    case "post_match_table_pos_lte":
+      return `post-match table position <= ${conditionValue ?? 0}`;
+    case "post_match_table_pos_gte":
+      return `post-match table position >= ${conditionValue ?? 0}`;
     case "beat_pre_match_leader_fp":
       return "score more fantasy points than pre-match leaderboard #1";
     case "top_n_by_fantasy_points":
       return `finish in top ${conditionValue ?? 1} by fantasy points`;
+    case "bottom_n_by_fantasy_points":
+      return `finish in bottom ${conditionValue ?? 1} by fantasy points`;
+    case "missed_match":
+      return "miss this match";
+    case "played_match":
+      return "submit this match";
     default:
       return "configured condition";
   }
+}
+
+function customRuleText(rule: {
+  conditions?: Array<{ conditionType?: string; conditionValue?: number }>;
+  conditionLogic?: "all" | "any";
+  conditionType?: string;
+  conditionValue?: number;
+}) {
+  const conditions = rule.conditions?.length
+    ? rule.conditions
+    : [{ conditionType: rule.conditionType, conditionValue: rule.conditionValue }];
+  const joiner = (rule.conditionLogic ?? "all") === "any" ? " OR " : " AND ";
+  return conditions
+    .map((c) => customConditionText(c.conditionType ?? "fantasy_points_gte", c.conditionValue))
+    .join(joiner);
 }
 
 export default async function RulesPage() {
@@ -29,9 +64,19 @@ export default async function RulesPage() {
     comeback: settings.bonusConfig?.comeback ?? BONUSES.COMEBACK,
     underdog: settings.bonusConfig?.underdog ?? BONUSES.UNDERDOG,
     matchDomination: settings.bonusConfig?.matchDomination ?? BONUSES.MATCH_DOMINATION,
+    topperDefendsTop: settings.bonusConfig?.topperDefendsTop ?? BONUSES.TOPPER_DEFENDS_TOP,
+    topperTopsMatch: settings.bonusConfig?.topperTopsMatch ?? BONUSES.TOPPER_TOPS_MATCH,
+    captainTeamWin: settings.bonusConfig?.captainTeamWin ?? BONUSES.CAPTAIN_TEAM_WIN,
+    leaderTopperBonus: settings.bonusConfig?.leaderTopperBonus ?? BONUSES.LEADER_TOPPER_BONUS,
     bounty: settings.bonusConfig?.bounty ?? BONUSES.BOUNTY,
     rivalry: settings.bonusConfig?.rivalry ?? BONUSES.RIVALRY,
     rivalryRevenge: settings.bonusConfig?.rivalryRevenge ?? 1,
+  };
+  const civilWarConfig = {
+    decisiveWin: settings.civilWarConfig?.decisiveWin ?? 2,
+    decisiveLoss: settings.civilWarConfig?.decisiveLoss ?? 2,
+    splitWin: settings.civilWarConfig?.splitWin ?? 1,
+    splitLoss: settings.civilWarConfig?.splitLoss ?? 1,
   };
   const customBonuses = (settings.customBonuses ?? []).filter((b) => b.active);
   const allThreeSubtotal =
@@ -120,9 +165,16 @@ export default async function RulesPage() {
             <li key={b.id} className="flex justify-between">
               <span>
                 {b.name}
-                <span className="text-muted-foreground"> ({customConditionText(b.conditionType, b.conditionValue)}; {b.basis})</span>
+                <span className="text-muted-foreground"> ({customRuleText(b)}; {b.basis})</span>
               </span>
-              <span className="text-success">+{b.points}</span>
+              <span className={
+                ((b as unknown as { action?: "add" | "deduct" }).action ?? "add") === "deduct"
+                  ? "text-danger"
+                  : "text-success"
+              }>
+                {((b as unknown as { action?: "add" | "deduct" }).action ?? "add") === "deduct" ? "-" : "+"}
+                {b.points}
+              </span>
             </li>
           ))}
         </ul>
@@ -145,6 +197,88 @@ export default async function RulesPage() {
           <li>You can challenge the same player at most twice in your lifetime: the first challenge and one revenge match.</li>
           <li>If you win a revenge match, you get an extra <span className="text-success">+{bonusConfig.rivalryRevenge}</span> on top of <span className="text-success">+{bonusConfig.rivalry}</span>.</li>
           <li>Withdrawals before lock cost <span className="text-danger">−2</span>; a separate admin approval request is available for no-penalty withdrawals.</li>
+        </ul>
+      </Card>
+
+      <Card>
+        <h2 className="font-semibold mb-3">🛡️ Civil War — team vs team</h2>
+        <p className="text-sm mb-3">
+          Think of every match like a playground game. Whenever two players
+          accept a rivalry, the game puts them on <strong>opposite</strong>{" "}
+          teams — Team A or Team B. As more rivalries get accepted for the
+          same match, both teams fill up. The teams stay <strong>secret</strong>{" "}
+          until the match starts — you only find out who&apos;s on your side
+          (and who you&apos;re up against) at start time.
+        </p>
+        <p className="text-sm mb-3">
+          After the match, we tally two things for each team:
+        </p>
+        <ul className="text-sm space-y-2 list-disc pl-5 mb-3">
+          <li>How many 1v1 rivalries the team won.</li>
+          <li>The total fantasy points the team earned together.</li>
+        </ul>
+        <p className="text-sm mb-2">Then everyone on the winning team gets points, and everyone on the losing team loses points:</p>
+        <ul className="text-sm space-y-2 list-disc pl-5 mb-3">
+          <li>
+            <strong>Decisive win</strong> — your team wins on BOTH (more 1v1 wins AND more fantasy points):{" "}
+            <span className="text-success">+{civilWarConfig.decisiveWin}</span> for the winners,{" "}
+            <span className="text-danger">−{civilWarConfig.decisiveLoss}</span> for the losers.
+          </li>
+          <li>
+            <strong>Split win</strong> — your team only won on 1v1s OR only on fantasy points:{" "}
+            <span className="text-success">+{civilWarConfig.splitWin}</span> for the winners,{" "}
+            <span className="text-danger">−{civilWarConfig.splitLoss}</span> for the losers.
+          </li>
+          <li>
+            <strong>Tiebreak</strong> — 1v1 wins are tied, so fantasy points decide. Uses the
+            same split values above.
+          </li>
+          <li>
+            <strong>Draw</strong> — everything tied. Nobody gains or loses points.
+          </li>
+        </ul>
+        <p className="text-xs text-muted-foreground">
+          A match needs at least 2 accepted rivalries to run a Civil War. If a
+          rivalry ends in a tie, it doesn&apos;t count toward winners — but its
+          players&apos; fantasy points still count for their team. If you miss
+          the match, your fantasy points are 0 and you automatically lose your
+          1v1.
+        </p>
+      </Card>
+
+      <Card>
+        <h2 className="font-semibold mb-3">👑 Leader Bonus</h2>
+        <p className="text-sm mb-3">
+          Four rules reward the players who lead the overall leaderboard or
+          their Civil War side.
+        </p>
+        <ul className="text-sm space-y-3 list-disc pl-5">
+          <li>
+            <strong>Topper defends the throne</strong> — if the pre-match
+            leaderboard #1 stays #1 after this match scores:{" "}
+            <span className="text-success">+{bonusConfig.topperDefendsTop}</span>.
+          </li>
+          <li>
+            <strong>Topper tops the match</strong> — if the pre-match
+            leaderboard #1 also finishes #1 by fantasy points in this match:{" "}
+            <span className="text-success">+{bonusConfig.topperTopsMatch}</span>.
+          </li>
+          <li>
+            <strong>Captain&apos;s team wins</strong> — every Civil War has two
+            captains: the highest-ranked leaderboard player on each side.
+            (Only captains can rename their team.) Whichever captain scores more
+            fantasy points this match, every member of that team (captain too)
+            gets{" "}
+            <span className="text-success">+{bonusConfig.captainTeamWin}</span>.
+            The losing team is <em>not</em> deducted points for this rule.
+          </li>
+          <li>
+            <strong>Leader topper override</strong> — if the overall
+            leaderboard&apos;s #1 is <em>not</em> in this match&apos;s Civil War
+            and still scores more fantasy points than BOTH captains, they get{" "}
+            <span className="text-success">+{bonusConfig.leaderTopperBonus}</span>{" "}
+            for stamping authority over the captains.
+          </li>
         </ul>
       </Card>
 

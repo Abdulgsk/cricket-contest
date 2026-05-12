@@ -11,6 +11,7 @@ import { Rivalry } from "@/models/Rivalry";
 import { Notification } from "@/models/Notification";
 import { isModuleLocked } from "@/lib/match-locks";
 import { computeLeaderboard } from "@/services/scoring";
+import { attachRivalryToCivilWar, detachRivalryFromCivilWar } from "@/services/civil-war";
 
 const CreateSchema = z.object({
   matchId: z.string().min(1),
@@ -95,6 +96,7 @@ async function withdrawRivalryNoPenalty(riv: {
   pointsPenalty?: number;
   save: () => Promise<unknown>;
 }) {
+  const wasAccepted = riv.status === "accepted";
   riv.status = "cancelled";
   riv.pointsPenalty = 0;
   riv.cancelledBy = null;
@@ -103,6 +105,9 @@ async function withdrawRivalryNoPenalty(riv: {
   riv.withdrawalApprovedBy = null;
   riv.withdrawalApprovedAt = null;
   await riv.save();
+  if (wasAccepted) {
+    await detachRivalryFromCivilWar({ _id: riv._id, matchId: riv.matchId });
+  }
 }
 
 async function hasAcceptedRivalryForUser(matchId: string, userId: string, excludeRivalryId?: string): Promise<boolean> {
@@ -239,6 +244,16 @@ export async function respondRivalryAction(payload: unknown) {
   riv.status = accept ? "accepted" : "declined";
   await riv.save();
 
+  if (accept) {
+    // Add both players into this match's Civil War on opposite sides.
+    await attachRivalryToCivilWar({
+      _id: riv._id,
+      matchId: riv.matchId,
+      challengerId: riv.challengerId,
+      opponentId: riv.opponentId,
+    });
+  }
+
   await Notification.create({
     userId: riv.challengerId,
     title: accept ? "Rivalry accepted ⚔️" : "Rivalry declined",
@@ -316,7 +331,16 @@ export async function cancelRivalryAction(payload: unknown) {
   riv.cancelledBy = me._id as unknown as typeof riv.cancelledBy;
   // Only penalise withdrawals from a real (pending or accepted) challenge.
   riv.pointsPenalty = 2;
+  // Self-withdraw supersedes any pending admin-approval request: clear it so
+  // the admin queue doesn't show a stale row.
+  riv.withdrawalRequestedBy = null;
+  riv.withdrawalRequestedAt = null;
+  riv.withdrawalApprovedBy = null;
+  riv.withdrawalApprovedAt = null;
   await riv.save();
+  if (wasAccepted) {
+    await detachRivalryFromCivilWar({ _id: riv._id, matchId: riv.matchId });
+  }
 
   const otherUserId = isChallenger ? riv.opponentId : riv.challengerId;
   await Notification.create({

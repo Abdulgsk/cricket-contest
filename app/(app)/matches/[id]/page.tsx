@@ -4,6 +4,8 @@ import { Match } from "@/models/Match";
 import { MatchResult } from "@/models/MatchResult";
 import { Prediction } from "@/models/Prediction";
 import { Rivalry } from "@/models/Rivalry";
+import { CivilWar } from "@/models/CivilWar";
+import { User } from "@/models/User";
 import { requireUser } from "@/lib/rbac";
 import { getPredictionSuspense } from "@/services/prediction-engine";
 import { getCustomPoolsForMatch } from "@/actions/custom-pools";
@@ -14,6 +16,7 @@ import { PredictionForm } from "@/components/prediction-form";
 import { CustomPoolsList } from "@/components/custom-pools-list";
 import { MatchPlayers } from "@/components/match/match-players";
 import { FetchPlayersButton } from "@/components/match/fetch-players-button";
+import { CivilWarResult } from "@/components/rivalry/civil-war-result";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 import { isModuleLocked } from "@/lib/match-locks";
 
@@ -42,6 +45,12 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         .populate("winnerId", "username")
         .lean()
     : [];
+
+  const civilWar = match.status === "completed"
+    ? await CivilWar.findOne({ matchId: id, settled: true })
+        .populate({ path: "members.userId", model: User, select: "username" })
+        .lean()
+    : null;
 
   const predictionLocked = isModuleLocked(match, "predictions");
   const isAdmin = me.role === "admin" || me.role === "superadmin";
@@ -297,6 +306,103 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           </div>
         </Card>
       )}
+
+      {civilWar && civilWar.result && (() => {
+        const myId = String(me._id);
+        const fpByUser = new Map<string, number>();
+        for (const r of results) {
+          const u = r.userId as unknown as { _id?: { toString(): string } } | null;
+          const uid = u?._id ? String(u._id) : String(r.userId);
+          fpByUser.set(uid, r.fantasyPoints ?? 0);
+        }
+        const captainAId = civilWar.result.captainAUserId
+          ? String(civilWar.result.captainAUserId)
+          : null;
+        const captainBId = civilWar.result.captainBUserId
+          ? String(civilWar.result.captainBUserId)
+          : null;
+        const buildMember = (m: {
+          userId: { _id?: { toString(): string }; username?: string } | unknown;
+          side: "A" | "B";
+        }) => {
+          const u = m.userId as { _id?: { toString(): string }; username?: string };
+          const uid = u?._id ? String(u._id) : String(m.userId);
+          const captainId = m.side === "A" ? captainAId : captainBId;
+          return {
+            userId: uid,
+            username: u?.username ?? "—",
+            fantasyPoints: fpByUser.get(uid) ?? 0,
+            isCaptain: uid === captainId,
+            isMe: uid === myId,
+          };
+        };
+        const teamAMembers = civilWar.members
+          .filter((m) => m.side === "A")
+          .map(buildMember)
+          .sort((a, b) => b.fantasyPoints - a.fantasyPoints);
+        const teamBMembers = civilWar.members
+          .filter((m) => m.side === "B")
+          .map(buildMember)
+          .sort((a, b) => b.fantasyPoints - a.fantasyPoints);
+        const myMember = civilWar.members.find(
+          (m) =>
+            String((m.userId as { _id?: { toString(): string } })?._id ?? m.userId) ===
+            myId
+        );
+        const mySide: "A" | "B" = myMember?.side ?? "A";
+        const myPpm =
+          (mySide === "A"
+            ? civilWar.result.teamAPointsPerMember
+            : civilWar.result.teamBPointsPerMember) ?? 0;
+        const captainBonusApplied =
+          civilWar.result.captainWinnerSide === mySide &&
+          (civilWar.result.captainBonusPerMember ?? 0) > 0;
+        const myPoints =
+          myPpm + (captainBonusApplied ? civilWar.result.captainBonusPerMember ?? 0 : 0);
+        const wasCaptain = myId === (mySide === "A" ? captainAId : captainBId);
+        const leaderTopperId = civilWar.result.leaderTopperUserId
+          ? String(civilWar.result.leaderTopperUserId)
+          : null;
+        const leaderTopperUsername = leaderTopperId
+          ? (
+              [...teamAMembers, ...teamBMembers].find(
+                (m) => m.userId === leaderTopperId
+              )?.username ?? null
+            )
+          : null;
+        const entry = {
+          matchId: id,
+          matchLabel: `${match.teamA} vs ${match.teamB}`,
+          startTime: new Date(match.startTime).toISOString(),
+          mySide,
+          myTeamName: mySide === "A" ? civilWar.teamAName : civilWar.teamBName,
+          oppTeamName: mySide === "A" ? civilWar.teamBName : civilWar.teamAName,
+          outcome: civilWar.result.outcome,
+          myPoints,
+          wasCaptain,
+          captainBonusApplied,
+          teamAName: civilWar.teamAName,
+          teamBName: civilWar.teamBName,
+          teamAPointsPerMember: civilWar.result.teamAPointsPerMember ?? 0,
+          teamBPointsPerMember: civilWar.result.teamBPointsPerMember ?? 0,
+          captainAUserId: captainAId,
+          captainBUserId: captainBId,
+          captainAFp: civilWar.result.captainAFp ?? 0,
+          captainBFp: civilWar.result.captainBFp ?? 0,
+          captainBonusPerMember: civilWar.result.captainBonusPerMember ?? 0,
+          leaderTopperUserId: leaderTopperId,
+          leaderTopperBonus: civilWar.result.leaderTopperBonus ?? 0,
+          teamAMembers,
+          teamBMembers,
+          leaderTopperUsername,
+        };
+        return (
+          <Card>
+            <h2 className="font-semibold mb-3">🛡️ Civil War result</h2>
+            <CivilWarResult entry={entry} showHeader={false} />
+          </Card>
+        );
+      })()}
     </div>
   );
 }

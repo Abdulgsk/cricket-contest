@@ -5,6 +5,7 @@ export const FEATURE_KEYS = [
   "results.manage",
   "users.manage",
   "rivalry.withdraw.approve",
+  "civilwar.points.manage",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -16,4 +17,5 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   "results.manage": "Enter results and scoring",
   "users.manage": "Manage user roles and access",
   "rivalry.withdraw.approve": "Approve rivalry withdrawals",
+  "civilwar.points.manage": "Change Civil War point values",
 };

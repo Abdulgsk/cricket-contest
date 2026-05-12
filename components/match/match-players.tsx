@@ -53,9 +53,7 @@ function TeamBlock({ label, players }: { label: string; players: IMatchPlayer[] 
         {players.map((p) => (
           <li
             key={p.name}
-            className={`flex items-center gap-2 rounded-lg bg-muted/30 px-2 py-1.5 text-sm ${
-              p.keeper ? "glow" : ""
-            }`}
+            className="flex items-center gap-2 rounded-lg bg-muted/30 px-2 py-1.5 text-sm"
           >
             <span className="flex gap-0.5 text-xs">
               {p.captain && <span title="Captain">👑</span>}

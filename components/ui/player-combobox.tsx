@@ -83,7 +83,7 @@ export function PlayerCombobox({
     setHighlight(0);
   }, [query, open]);
 
-  // Position dropdown, close on outside-scroll
+  // Position dropdown and keep it anchored while the page scrolls/resizes.
   useEffect(() => {
     if (!open) {
       setRect(null);
@@ -93,10 +93,7 @@ export function PlayerCombobox({
       if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
     };
     measure();
-    const onScroll = (e: Event) => {
-      if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) return;
-      setOpen(false);
-    };
+    const onScroll = () => measure();
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", measure);
     return () => {

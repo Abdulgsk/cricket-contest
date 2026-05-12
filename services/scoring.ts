@@ -7,6 +7,7 @@ import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
 import { BonusAuditLog } from "@/models/BonusAuditLog";
 import { User } from "@/models/User";
 import { getSettings } from "@/models/Settings";
+import { settleCivilWar } from "@/services/civil-war";
 import {
   RANK_POINTS,
   PENALTIES,
@@ -34,6 +35,10 @@ type BonusRuntimeConfig = {
   comeback: number;
   underdog: number;
   matchDomination: number;
+  topperDefendsTop: number;
+  topperTopsMatch: number;
+  captainTeamWin: number;
+  leaderTopperBonus: number;
   bounty: number;
   rivalry: number;
   rivalryRevenge: number;
@@ -42,13 +47,27 @@ type BonusRuntimeConfig = {
     name: string;
     points: number;
     basis: string;
-    conditionType:
-      | "fantasy_points_gte"
-      | "rank_lte"
-      | "leaderboard_climb_gte"
-      | "beat_pre_match_leader_fp"
-      | "top_n_by_fantasy_points";
-    conditionValue?: number;
+    action: "add" | "deduct";
+    conditionLogic: "all" | "any";
+    conditions: Array<{
+      conditionType:
+        | "fantasy_points_gte"
+        | "fantasy_points_lte"
+        | "rank_lte"
+        | "rank_gte"
+        | "leaderboard_climb_gte"
+        | "leaderboard_drop_gte"
+        | "pre_match_table_pos_lte"
+        | "pre_match_table_pos_gte"
+        | "post_match_table_pos_lte"
+        | "post_match_table_pos_gte"
+        | "beat_pre_match_leader_fp"
+        | "top_n_by_fantasy_points"
+        | "bottom_n_by_fantasy_points"
+        | "missed_match"
+        | "played_match";
+      conditionValue?: number;
+    }>;
     active: boolean;
   }>;
 };
@@ -135,6 +154,7 @@ export async function processMatchResults(
         bonusPoints: 0,
         bountyPoints: 0,
         rivalryPoints: 0,
+        civilWarPoints: 0,
         bonuses: [],
         finalPoints: base + penaltyTotal,
       },
@@ -163,6 +183,15 @@ export async function processMatchResults(
 
   // --- Rivalry points (1v1 challenges) ---
   await settleRivalries({ matchId, results: created, bonusConfig });
+
+  // --- Civil War team scoring (depends on rivalries being settled) ---
+  await applyCivilWarPoints({
+    matchId,
+    results: created,
+    prevLeaderboardOrder: prevLb.map((r) => String(r.userId)),
+    captainTeamWin: bonusConfig.captainTeamWin,
+    leaderTopperBonus: bonusConfig.leaderTopperBonus,
+  });
 
   // --- Score predictions for this match ---
   if (predictionResult) {
@@ -307,6 +336,27 @@ async function applyBonuses(args: {
       );
     }
 
+    // Pre-match leaderboard topper remains #1 after this match.
+    if (prevLeaderId && uid === prevLeaderId) {
+      const currentPos = newRankMap.get(uid);
+      if (currentPos === 1) {
+        add(
+          "topper_defends_top",
+          bonusConfig.topperDefendsTop,
+          "Stayed #1 on the overall leaderboard after this match"
+        );
+      }
+
+      // Pre-match topper also tops this match by fantasy points.
+      if (top1 && String(top1.userId) === uid && !r.missed) {
+        add(
+          "topper_tops_match",
+          bonusConfig.topperTopsMatch,
+          "Was overall #1 before match and finished #1 in this match by fantasy points"
+        );
+      }
+    }
+
     // Consistency: 3 consecutive matches in top-5 by fantasy points.
     if (!r.missed) {
       const streak = await countConsecutiveFantasyTop5(uid);
@@ -326,9 +376,10 @@ async function applyBonuses(args: {
         prevLeaderId,
       });
       if (!ok) continue;
+      const signedPoints = custom.action === "deduct" ? -custom.points : custom.points;
       add(
         `custom_${custom.id}`,
-        custom.points,
+        signedPoints,
         `${custom.name}: ${custom.basis}`
       );
     }
@@ -339,7 +390,7 @@ async function applyBonuses(args: {
     await r.save();
 
     // Audit log per applied bonus
-    for (const b of breakdown.filter((x) => x.points > 0)) {
+    for (const b of breakdown.filter((x) => x.points !== 0)) {
       await BonusAuditLog.create({
         userId: r.userId,
         matchId,
@@ -363,8 +414,7 @@ async function applyBountyPoints(args: {
       if (r.bountyPoints) {
         r.bountyPoints = 0;
         r.finalPoints =
-          r.basePoints + r.penaltyPoints + r.bonusPoints + (r.rivalryPoints ?? 0);
-        await r.save();
+        r.basePoints + r.penaltyPoints + r.bonusPoints + (r.rivalryPoints ?? 0) + (r.civilWarPoints ?? 0);
       }
     }
     return;
@@ -394,7 +444,7 @@ async function applyBountyPoints(args: {
     }
     r.bountyPoints = bountyPts;
     r.finalPoints =
-      r.basePoints + r.penaltyPoints + r.bonusPoints + bountyPts + (r.rivalryPoints ?? 0);
+      r.basePoints + r.penaltyPoints + r.bonusPoints + bountyPts + (r.rivalryPoints ?? 0) + (r.civilWarPoints ?? 0);
     await r.save();
   }
 }
@@ -414,7 +464,7 @@ async function settleRivalries(args: {
       if (r.rivalryPoints) {
         r.rivalryPoints = 0;
         r.finalPoints =
-          r.basePoints + r.penaltyPoints + r.bonusPoints + (r.bountyPoints ?? 0);
+          r.basePoints + r.penaltyPoints + r.bonusPoints + (r.bountyPoints ?? 0) + (r.civilWarPoints ?? 0);
         await r.save();
       }
     }
@@ -528,7 +578,59 @@ async function settleRivalries(args: {
   // Persist updated final points for every result (rivalry points may have changed).
   for (const r of results) {
     r.finalPoints =
-      r.basePoints + r.penaltyPoints + r.bonusPoints + (r.bountyPoints ?? 0) + (r.rivalryPoints ?? 0);
+      r.basePoints + r.penaltyPoints + r.bonusPoints + (r.bountyPoints ?? 0) + (r.rivalryPoints ?? 0) + (r.civilWarPoints ?? 0);
+    await r.save();
+  }
+}
+
+async function applyCivilWarPoints(args: {
+  matchId: string;
+  results: HydratedDocument<IMatchResult>[];
+  prevLeaderboardOrder: string[];
+  captainTeamWin: number;
+  leaderTopperBonus: number;
+}) {
+  const { Rivalry } = await import("@/models/Rivalry");
+  const { matchId, results } = args;
+
+  // Reset civil war points on all results first (idempotent re-runs).
+  for (const r of results) {
+    if (r.civilWarPoints) {
+      r.civilWarPoints = 0;
+    }
+  }
+
+  const rivalries = await Rivalry.find({ matchId, status: "accepted" })
+    .select("_id winnerId settled")
+    .lean();
+
+  const pointMap = await settleCivilWar({
+    matchId,
+    matchResults: results.map((r) => ({
+      userId: r.userId as mongoose.Types.ObjectId,
+      fantasyPoints: r.fantasyPoints,
+      missed: r.missed,
+    })),
+    rivalries: rivalries.map((r) => ({
+      _id: r._id as mongoose.Types.ObjectId,
+      winnerId: r.winnerId ?? null,
+      settled: !!r.settled,
+    })),
+    prevLeaderboardOrder: args.prevLeaderboardOrder,
+    captainTeamWin: args.captainTeamWin,
+    leaderTopperBonus: args.leaderTopperBonus,
+  });
+
+  for (const r of results) {
+    const pts = pointMap.get(String(r.userId)) ?? 0;
+    r.civilWarPoints = pts;
+    r.finalPoints =
+      r.basePoints +
+      r.penaltyPoints +
+      r.bonusPoints +
+      (r.bountyPoints ?? 0) +
+      (r.rivalryPoints ?? 0) +
+      (r.civilWarPoints ?? 0);
     await r.save();
   }
 }
@@ -571,24 +673,67 @@ async function countConsecutiveFantasyTop5(userId: string): Promise<number> {
 async function getBonusRuntimeConfig(): Promise<BonusRuntimeConfig> {
   const settings = await getSettings();
   const cfg = settings.bonusConfig ?? {};
+  const legacyNeedsValue = (type: string) =>
+    type !== "beat_pre_match_leader_fp" && type !== "missed_match" && type !== "played_match";
+
+  const normalizedCustom = (settings.customBonuses ?? []).map((b) => {
+    const asNew = b as unknown as {
+      conditions?: Array<{ conditionType: string; conditionValue?: number }>;
+      conditionLogic?: "all" | "any";
+      action?: "add" | "deduct";
+      conditionType?: string;
+      conditionValue?: number;
+    };
+    const conditions =
+      asNew.conditions && asNew.conditions.length
+        ? asNew.conditions.map((c) => ({
+            conditionType: c.conditionType as BonusRuntimeConfig["customBonuses"][number]["conditions"][number]["conditionType"],
+            conditionValue: legacyNeedsValue(c.conditionType) ? c.conditionValue : undefined,
+          }))
+        : [
+            {
+              conditionType: (asNew.conditionType ?? "fantasy_points_gte") as BonusRuntimeConfig["customBonuses"][number]["conditions"][number]["conditionType"],
+              conditionValue: legacyNeedsValue(asNew.conditionType ?? "fantasy_points_gte")
+                ? asNew.conditionValue
+                : undefined,
+            },
+          ];
+
+    return {
+      id: b.id,
+      name: b.name,
+      points: b.points,
+      basis: b.basis,
+      action: asNew.action ?? "add",
+      conditionLogic: asNew.conditionLogic ?? "all",
+      conditions,
+      active: b.active,
+    };
+  });
+
   return {
     consistency: cfg.consistency ?? BONUSES.CONSISTENCY,
     kingSlayer: cfg.kingSlayer ?? BONUSES.KING_SLAYER,
     comeback: cfg.comeback ?? BONUSES.COMEBACK,
     underdog: cfg.underdog ?? BONUSES.UNDERDOG,
     matchDomination: cfg.matchDomination ?? BONUSES.MATCH_DOMINATION,
+    topperDefendsTop: cfg.topperDefendsTop ?? BONUSES.TOPPER_DEFENDS_TOP,
+    topperTopsMatch: cfg.topperTopsMatch ?? BONUSES.TOPPER_TOPS_MATCH,
+    captainTeamWin: cfg.captainTeamWin ?? BONUSES.CAPTAIN_TEAM_WIN,
+    leaderTopperBonus: cfg.leaderTopperBonus ?? BONUSES.LEADER_TOPPER_BONUS,
     bounty: cfg.bounty ?? BONUSES.BOUNTY,
     rivalry: cfg.rivalry ?? BONUSES.RIVALRY,
     rivalryRevenge: cfg.rivalryRevenge ?? 1,
-    customBonuses: (settings.customBonuses ?? [])
+    customBonuses: normalizedCustom
       .filter((b) => b.active)
       .map((b) => ({
         id: b.id,
         name: b.name,
         points: b.points,
         basis: b.basis,
-        conditionType: b.conditionType ?? "fantasy_points_gte",
-        conditionValue: b.conditionValue,
+        action: b.action,
+        conditionLogic: b.conditionLogic,
+        conditions: b.conditions,
         active: b.active,
       })),
   };
@@ -604,35 +749,82 @@ async function isCustomBonusConditionSatisfied(args: {
 }): Promise<boolean> {
   const { custom, result, results, prevRankMap, newRankMap, prevLeaderId } = args;
   const uid = String(result.userId);
-  const n = custom.conditionValue ?? 0;
 
-  switch (custom.conditionType) {
-    case "fantasy_points_gte":
-      return !result.missed && result.fantasyPoints >= n;
-    case "rank_lte":
-      return !result.missed && result.rank > 0 && result.rank <= n;
-    case "leaderboard_climb_gte": {
-      const prevPos = prevRankMap.get(uid);
-      const newPos = newRankMap.get(uid);
-      return !!(prevPos && newPos && prevPos - newPos >= n);
+  const evaluateCondition = async (
+    condition: BonusRuntimeConfig["customBonuses"][number]["conditions"][number]
+  ) => {
+    const n = condition.conditionValue ?? 0;
+    switch (condition.conditionType) {
+      case "fantasy_points_gte":
+        return !result.missed && result.fantasyPoints >= n;
+      case "fantasy_points_lte":
+        return !result.missed && result.fantasyPoints <= n;
+      case "rank_lte":
+        return !result.missed && result.rank > 0 && result.rank <= n;
+      case "rank_gte":
+        return !result.missed && result.rank > 0 && result.rank >= n;
+      case "leaderboard_climb_gte": {
+        const prevPos = prevRankMap.get(uid);
+        const newPos = newRankMap.get(uid);
+        return !!(prevPos && newPos && prevPos - newPos >= n);
+      }
+      case "leaderboard_drop_gte": {
+        const prevPos = prevRankMap.get(uid);
+        const newPos = newRankMap.get(uid);
+        return !!(prevPos && newPos && newPos - prevPos >= n);
+      }
+      case "pre_match_table_pos_lte": {
+        const prevPos = prevRankMap.get(uid);
+        return !!prevPos && prevPos <= n;
+      }
+      case "pre_match_table_pos_gte": {
+        const prevPos = prevRankMap.get(uid);
+        return !!prevPos && prevPos >= n;
+      }
+      case "post_match_table_pos_lte": {
+        const pos = newRankMap.get(uid);
+        return !!pos && pos <= n;
+      }
+      case "post_match_table_pos_gte": {
+        const pos = newRankMap.get(uid);
+        return !!pos && pos >= n;
+      }
+      case "beat_pre_match_leader_fp": {
+        if (!prevLeaderId || uid === prevLeaderId || result.missed) return false;
+        const leaderRes = results.find((x) => String(x.userId) === prevLeaderId);
+        return !!leaderRes && !leaderRes.missed && result.fantasyPoints > leaderRes.fantasyPoints;
+      }
+      case "top_n_by_fantasy_points": {
+        if (result.missed) return false;
+        const betterCount = await MatchResult.countDocuments({
+          matchId: result.matchId,
+          missed: false,
+          fantasyPoints: { $gt: result.fantasyPoints },
+        });
+        return betterCount < Math.max(1, n);
+      }
+      case "bottom_n_by_fantasy_points": {
+        if (result.missed) return false;
+        const betterCount = await MatchResult.countDocuments({
+          matchId: result.matchId,
+          missed: false,
+          fantasyPoints: { $gt: result.fantasyPoints },
+        });
+        const totalPlayed = results.filter((x) => !x.missed && x.rank > 0).length;
+        const rankByFp = betterCount + 1;
+        return rankByFp >= Math.max(1, totalPlayed - Math.max(1, n) + 1);
+      }
+      case "missed_match":
+        return result.missed;
+      case "played_match":
+        return !result.missed;
+      default:
+        return false;
     }
-    case "beat_pre_match_leader_fp": {
-      if (!prevLeaderId || uid === prevLeaderId || result.missed) return false;
-      const leaderRes = results.find((x) => String(x.userId) === prevLeaderId);
-      return !!leaderRes && !leaderRes.missed && result.fantasyPoints > leaderRes.fantasyPoints;
-    }
-    case "top_n_by_fantasy_points": {
-      if (result.missed) return false;
-      const betterCount = await MatchResult.countDocuments({
-        matchId: result.matchId,
-        missed: false,
-        fantasyPoints: { $gt: result.fantasyPoints },
-      });
-      return betterCount < Math.max(1, n);
-    }
-    default:
-      return false;
-  }
+  };
+
+  const checks = await Promise.all(custom.conditions.map((c) => evaluateCondition(c)));
+  return custom.conditionLogic === "any" ? checks.some(Boolean) : checks.every(Boolean);
 }
 
 async function scorePredictions(
@@ -677,6 +869,7 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
         bonusPoints: { $sum: "$bonusPoints" },
         bountyPoints: { $sum: "$bountyPoints" },
         rivalryPoints: { $sum: "$rivalryPoints" },
+        civilWarPoints: { $sum: "$civilWarPoints" },
         penaltyPoints: { $sum: "$penaltyPoints" },
         matches: { $sum: 1 },
         wins: { $sum: { $cond: [{ $eq: ["$rank", 1] }, 1, 0] } },
@@ -736,6 +929,7 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
       bonusPoints: r.bonusPoints as number,
       bountyPoints: (r.bountyPoints as number) ?? 0,
       rivalryPoints: (r.rivalryPoints as number) ?? 0,
+      civilWarPoints: (r.civilWarPoints as number) ?? 0,
       rivalryWithdrawPenalty: withdraw,
       penaltyPoints: r.penaltyPoints as number,
       matches: r.matches as number,
@@ -767,6 +961,7 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
         bonusPoints: 0,
         bountyPoints: 0,
         rivalryPoints: 0,
+        civilWarPoints: 0,
         rivalryWithdrawPenalty: withdraw,
         penaltyPoints: 0,
         matches: 0,

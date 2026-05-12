@@ -18,6 +18,7 @@ export interface IMatchResult {
   bonusPoints: number; // capped per match
   bountyPoints: number; // separate from bonuses
   rivalryPoints: number; // +3 per won rivalry
+  civilWarPoints: number; // team-based civil war outcome
   penaltyPoints: number;
   finalPoints: number;
   bonuses: IBonusBreakdown[];
@@ -42,6 +43,7 @@ const MatchResultSchema = new Schema<IMatchResult>(
     bonusPoints: { type: Number, default: 0 },
     bountyPoints: { type: Number, default: 0 },
     rivalryPoints: { type: Number, default: 0 },
+    civilWarPoints: { type: Number, default: 0 },
     penaltyPoints: { type: Number, default: 0 },
     finalPoints: { type: Number, default: 0 },
     bonuses: { type: [BreakdownSchema], default: [] },

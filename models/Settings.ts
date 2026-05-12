@@ -6,10 +6,21 @@ export interface IBonusConfig {
   comeback: number;
   underdog: number;
   matchDomination: number;
+  topperDefendsTop: number;
+  topperTopsMatch: number;
+  captainTeamWin: number;
+  leaderTopperBonus: number;
   bounty: number;
   rivalry: number;
   rivalryRevenge: number;
   maxBonusPerMatch: number;
+}
+
+export interface ICivilWarConfig {
+  decisiveWin: number;
+  decisiveLoss: number;
+  splitWin: number;
+  splitLoss: number;
 }
 
 export interface ICustomBonusDefinition {
@@ -17,13 +28,27 @@ export interface ICustomBonusDefinition {
   name: string;
   points: number;
   basis: string;
-  conditionType:
-    | "fantasy_points_gte"
-    | "rank_lte"
-    | "leaderboard_climb_gte"
-    | "beat_pre_match_leader_fp"
-    | "top_n_by_fantasy_points";
-  conditionValue?: number;
+  action: "add" | "deduct";
+  conditionLogic: "all" | "any";
+  conditions: Array<{
+    conditionType:
+      | "fantasy_points_gte"
+      | "fantasy_points_lte"
+      | "rank_lte"
+      | "rank_gte"
+      | "leaderboard_climb_gte"
+      | "leaderboard_drop_gte"
+      | "pre_match_table_pos_lte"
+      | "pre_match_table_pos_gte"
+      | "post_match_table_pos_lte"
+      | "post_match_table_pos_gte"
+      | "beat_pre_match_leader_fp"
+      | "top_n_by_fantasy_points"
+      | "bottom_n_by_fantasy_points"
+      | "missed_match"
+      | "played_match";
+    conditionValue?: number;
+  }>;
   active: boolean;
 }
 
@@ -34,6 +59,7 @@ export interface ISettings {
   seasonName: string;
   bonusConfig?: Partial<IBonusConfig>;
   customBonuses?: ICustomBonusDefinition[];
+  civilWarConfig?: Partial<ICivilWarConfig>;
   my11sessionCookie?: string;
   my11cookieExpiresAt?: Date;
   updatedAt: Date;
@@ -52,6 +78,10 @@ const SettingsSchema = new Schema<ISettings>(
       comeback: { type: Number },
       underdog: { type: Number },
       matchDomination: { type: Number },
+      topperDefendsTop: { type: Number },
+      topperTopsMatch: { type: Number },
+      captainTeamWin: { type: Number },
+      leaderTopperBonus: { type: Number },
       bounty: { type: Number },
       rivalry: { type: Number },
       rivalryRevenge: { type: Number },
@@ -63,11 +93,23 @@ const SettingsSchema = new Schema<ISettings>(
         name: { type: String, required: true },
         points: { type: Number, required: true },
         basis: { type: String, required: true },
-        conditionType: { type: String, required: true },
-        conditionValue: { type: Number },
+        action: { type: String, enum: ["add", "deduct"], default: "add" },
+        conditionLogic: { type: String, enum: ["all", "any"], default: "all" },
+        conditions: [
+          {
+            conditionType: { type: String, required: true },
+            conditionValue: { type: Number },
+          },
+        ],
         active: { type: Boolean, default: true },
       },
     ],
+    civilWarConfig: {
+      decisiveWin: { type: Number },
+      decisiveLoss: { type: Number },
+      splitWin: { type: Number },
+      splitLoss: { type: Number },
+    },
   },
   { timestamps: true }
 );
