@@ -206,9 +206,11 @@ export default async function PlayerDetailPage({
             <h1 className="text-2xl md:text-3xl font-bold truncate">{user.username}</h1>
             <p className="text-muted-foreground text-sm truncate">@{user.userId}</p>
             {user.bio && (
-              <p className="text-sm text-foreground/90 mt-1 whitespace-pre-wrap break-words max-w-prose">
-                {user.bio}
-              </p>
+              <div className="mt-2 rounded-xl border border-border bg-muted/20 px-3 py-2 max-w-2xl">
+                <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
+                  {user.bio}
+                </p>
+              </div>
             )}
           </div>
         </div>

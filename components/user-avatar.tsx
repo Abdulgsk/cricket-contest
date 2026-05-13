@@ -89,7 +89,7 @@ export function ClickableUserAvatar({
           setOpen(true);
         }}
         className={
-          "rounded-full ring-1 ring-border hover:ring-primary/50 transition focus:outline-none focus:ring-2 focus:ring-ring " +
+          "inline-flex items-center justify-center align-middle p-0 border-0 bg-transparent leading-none rounded-full overflow-hidden ring-1 ring-border hover:ring-primary/50 transition focus:outline-none focus:ring-2 focus:ring-ring " +
           className
         }
         aria-label={`Show ${name}'s avatar`}

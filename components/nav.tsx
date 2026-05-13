@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const NAV = [
   { href: "/dashboard", label: "Home" },
   { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/matches", label: "Matches" },
   { href: "/predictions", label: "Predictions" },
   { href: "/rivalry", label: "Rivalry" },

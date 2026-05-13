@@ -110,9 +110,6 @@ export function AvatarUploader({
             </Button>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Resized to 256×256 JPEG. Stored compactly in your profile.
-        </p>
         <input
           ref={fileRef}
           type="file"
