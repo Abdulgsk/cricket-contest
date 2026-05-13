@@ -45,8 +45,7 @@ export function CivilWarLivePanel({
   if (!data.ok) {
     return (
       <UnavailableShell>
-        📡 We couldn&apos;t fetch live points right now. We&apos;ll try again in
-        a moment.
+        ⏱️ Live updates coming soon — warming up the scoreboard.
       </UnavailableShell>
     );
   }
