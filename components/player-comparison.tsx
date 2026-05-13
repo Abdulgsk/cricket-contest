@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { UserAvatar } from "@/components/user-avatar";
 import { cn } from "@/lib/utils";
 
-type TabKey = "overview" | "breakdown" | "form";
+type TabKey = "overview" | "form";
 
 export interface ComparisonStats {
   userId: string;
@@ -216,7 +216,6 @@ export function PlayerComparison({
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "overview", label: "Overview" },
-    { key: "breakdown", label: "Point Sources" },
     { key: "form", label: "Recent Form" },
   ];
 
@@ -228,9 +227,9 @@ export function PlayerComparison({
   const totalDeltaLabel = totalDelta === 0 ? "Level on total points" : totalDelta > 0 ? `${me.username} leads by ${formatInt(totalDelta)}` : `${opponent.username} leads by ${formatInt(Math.abs(totalDelta))}`;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xl md:p-6 lg:p-8">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-xl md:p-6 lg:p-8">
       <Card className="mx-auto w-full max-w-6xl overflow-hidden border border-border/70 p-0 shadow-[0_30px_120px_rgba(0,0,0,0.4)]">
-        <div className="bg-gradient-to-br from-primary/10 via-background to-accent/10 px-5 py-5 sm:px-6 sm:py-6 lg:px-8">
+        <div className="bg-gradient-to-br from-primary/6 via-background to-muted/30 px-5 py-5 sm:px-6 sm:py-6 lg:px-8">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Head-to-head comparison</p>
@@ -270,13 +269,13 @@ export function PlayerComparison({
               <p className="mt-4 text-4xl font-semibold tracking-tight">{totalDelta === 0 ? "—" : totalDelta > 0 ? `+${formatInt(totalDelta)}` : `-${formatInt(Math.abs(totalDelta))}`}</p>
               <p className="mt-2 text-sm text-muted-foreground">{totalDeltaLabel}</p>
               <div className="mt-4 grid grid-cols-2 gap-2 text-left text-sm">
-                <div className="rounded-2xl bg-success/10 p-3">
+                <div className="rounded-2xl bg-muted/30 p-3">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Leader</p>
-                  <p className="mt-1 font-semibold text-success">{totalLeader}</p>
+                  <p className="mt-1 font-semibold text-foreground">{totalLeader}</p>
                 </div>
-                <div className="rounded-2xl bg-primary/10 p-3">
+                <div className="rounded-2xl bg-muted/30 p-3">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Match status</p>
-                  <p className="mt-1 font-semibold text-primary">{meHasData || opponentHasData ? "Scored" : "Pending"}</p>
+                  <p className="mt-1 font-semibold text-foreground">{meHasData || opponentHasData ? "Scored" : "Pending"}</p>
                 </div>
               </div>
             </div>
@@ -302,28 +301,6 @@ export function PlayerComparison({
             </Link>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Overall edge</p>
-              <p className="mt-2 text-xl font-semibold">{totalLeader}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Highest total score</p>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Most consistent</p>
-              <p className="mt-2 text-xl font-semibold">{meHasData && opponentHasData ? (me.consistency === opponent.consistency ? "Even" : me.consistency > opponent.consistency ? me.username : opponent.username) : "—"}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Last 5-match average</p>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Best finish</p>
-              <p className="mt-2 text-xl font-semibold">{meHasData && opponentHasData ? (me.maxPoints === opponent.maxPoints ? "Even" : me.maxPoints > opponent.maxPoints ? me.username : opponent.username) : "—"}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Highest single-match score</p>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Data coverage</p>
-              <p className="mt-2 text-xl font-semibold">{me.matches + opponent.matches > 0 ? "Available" : "None yet"}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Comparison only shows real metrics</p>
-            </div>
-          </div>
         </div>
 
         <div className="border-b border-border bg-background/95 px-4 sm:px-6">
@@ -393,98 +370,21 @@ export function PlayerComparison({
                 />
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="border border-border/60 p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Performance span</p>
-                  <div className="mt-4 space-y-3">
-                    <ComparisonRow label="Matches" leftValue={me.matches} rightValue={opponent.matches} leftData={meHasData} rightData={opponentHasData} />
-                    <ComparisonRow label="Top 3 finishes" leftValue={me.top3} rightValue={opponent.top3} leftData={meHasData} rightData={opponentHasData} />
-                    <ComparisonRow label="Average finish" leftValue={me.averageFinish} rightValue={opponent.averageFinish} leftData={meHasData} rightData={opponentHasData} format={(n) => n.toFixed(1)} />
-                  </div>
-                </Card>
-
-                <Card className="border border-border/60 p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Ceiling and floor</p>
-                  <div className="mt-4 space-y-3">
-                    <ComparisonRow label="Best single match" leftValue={me.maxPoints} rightValue={opponent.maxPoints} leftData={meHasData} rightData={opponentHasData} />
-                    <ComparisonRow label="Lowest scored match" leftValue={me.minPoints} rightValue={opponent.minPoints} leftData={meHasData} rightData={opponentHasData} />
-                  </div>
-                </Card>
-              </div>
-
               <Card className="border border-border/60 p-4 sm:p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Comparison summary</p>
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-2xl bg-success/10 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Leader</p>
-                    <p className="mt-2 text-lg font-semibold text-success">{totalLeader}</p>
-                  </div>
-                  <div className="rounded-2xl bg-primary/10 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Edge</p>
-                    <p className="mt-2 text-lg font-semibold text-primary">{totalDelta === 0 ? "Even" : totalDelta > 0 ? `+${formatInt(totalDelta)}` : `-${formatInt(Math.abs(totalDelta))}`}</p>
-                  </div>
-                  <div className="rounded-2xl bg-muted/30 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Matches covered</p>
-                    <p className="mt-2 text-lg font-semibold">{formatInt(me.matches + opponent.matches)}</p>
-                  </div>
-                  <div className="rounded-2xl bg-muted/30 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Availability</p>
-                    <p className="mt-2 text-lg font-semibold">{meHasData || opponentHasData ? "Ready" : "Empty"}</p>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          )}
-
-          {tab === "breakdown" && (
-            <div className="space-y-5">
-              <Card className="border border-border/60 p-4 sm:p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Scoring mix</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  League points remain the base. Prediction, bonus, bounty, and rivalry points add or subtract from the final score.
-                </p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Point sources</p>
                 <div className="mt-4 space-y-3">
                   <ComparisonRow label="League" leftValue={me.leaguePoints} rightValue={opponent.leaguePoints} leftData={meHasData} rightData={opponentHasData} />
-                  <ComparisonRow label="Predictions" leftValue={me.predictionPoints} rightValue={opponent.predictionPoints} leftData={meHasData} rightData={opponentHasData} />
+                  <ComparisonRow label="Prediction" leftValue={me.predictionPoints} rightValue={opponent.predictionPoints} leftData={meHasData} rightData={opponentHasData} />
                   <ComparisonRow label="Bonus" leftValue={me.bonusPoints} rightValue={opponent.bonusPoints} leftData={meHasData} rightData={opponentHasData} />
-                  <ComparisonRow label="Bounty" leftValue={me.bountyPoints} rightValue={opponent.bountyPoints} leftData={meHasData} rightData={opponentHasData} />
-                  <ComparisonRow label="Rivalry" leftValue={me.rivalryPoints} rightValue={opponent.rivalryPoints} leftData={meHasData} rightData={opponentHasData} />
                   <ComparisonRow label="Penalty" leftValue={me.penaltyPoints} rightValue={opponent.penaltyPoints} leftData={meHasData} rightData={opponentHasData} />
                 </div>
               </Card>
-
-              <div className="grid gap-4 xl:grid-cols-2">
-                <Card className="border border-border/60 p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Formula view</p>
-                  <div className="mt-4 rounded-3xl border border-border/60 bg-background/80 p-4 text-sm leading-7 text-muted-foreground">
-                    <span className="font-semibold text-foreground">Total score</span> = league + predictions + bonus + bounty + rivalry - penalty
-                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-                      <div className="rounded-2xl bg-muted/40 p-3">League is the match performance baseline.</div>
-                      <div className="rounded-2xl bg-muted/40 p-3">Penalties are subtracted, so they are shown separately.</div>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="border border-border/60 p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">What matters most</p>
-                  <div className="mt-4 space-y-3 text-sm">
-                    <div className="rounded-2xl bg-success/10 p-4">
-                      <p className="font-semibold text-success">League score</p>
-                      <p className="mt-1 text-muted-foreground">This is the primary backbone of the comparison.</p>
-                    </div>
-                    <div className="rounded-2xl bg-primary/10 p-4">
-                      <p className="font-semibold text-primary">Prediction points</p>
-                      <p className="mt-1 text-muted-foreground">Use this to see who converts pre-match reads more efficiently.</p>
-                    </div>
-                  </div>
-                </Card>
-              </div>
             </div>
           )}
 
           {tab === "form" && (
             <div className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <Card className="border border-border/60 p-4 sm:p-5">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{me.username}</p>
                   <p className="mt-2 text-3xl font-semibold">{formatMaybe(meHasData ? me.consistency : null, (n) => n.toFixed(1))}</p>
@@ -494,16 +394,6 @@ export function PlayerComparison({
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{opponent.username}</p>
                   <p className="mt-2 text-3xl font-semibold">{formatMaybe(opponentHasData ? opponent.consistency : null, (n) => n.toFixed(1))}</p>
                   <p className="mt-1 text-sm text-muted-foreground">Last 5-match average</p>
-                </Card>
-                <Card className="border border-border/60 p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Recent form</p>
-                  <p className="mt-2 text-3xl font-semibold">{formatInt(me.recentForm.length + opponent.recentForm.length)}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Scored matches shown in the chart</p>
-                </Card>
-                <Card className="border border-border/60 p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Momentum</p>
-                  <p className="mt-2 text-3xl font-semibold">{meHasData || opponentHasData ? "Live" : "Empty"}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Recent results only, no filler rows</p>
                 </Card>
               </div>
 

@@ -172,16 +172,13 @@ export default async function AnalyticsPage() {
   return (
     <div className="space-y-6">
       {/* Premium hero */}
-      <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-primary/15 via-background to-accent/15 shadow-sm">
-        <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-accent/20 blur-3xl" />
+      <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-primary/8 via-background to-muted/30 shadow-sm">
+        <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-muted/50 blur-3xl" />
 
         <div className="relative px-5 py-6 sm:px-7 sm:py-8 lg:px-9 lg:py-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground backdrop-blur">
-                Personal analytics
-              </div>
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
                 Welcome back, <span className="text-primary">{me.username}</span>
               </h1>
@@ -198,12 +195,12 @@ export default async function AnalyticsPage() {
                   </span>
                 )}
                 {wins > 0 && (
-                  <span className="rounded-full border border-success/40 bg-success/10 px-3 py-1 font-semibold text-success">
+                  <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 font-semibold text-foreground">
                     {wins} {wins === 1 ? "win" : "wins"}
                   </span>
                 )}
                 {podiums > 0 && (
-                  <span className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 font-semibold text-accent">
+                  <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 font-semibold text-foreground">
                     {podiums} podium {podiums === 1 ? "finish" : "finishes"}
                   </span>
                 )}
