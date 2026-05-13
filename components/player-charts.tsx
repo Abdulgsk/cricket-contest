@@ -51,10 +51,8 @@ const tooltipStyle = {
 
 export function PlayerCharts({
   data,
-  totals,
 }: {
   data: PlayerChartRow[];
-  totals: { league: number; prediction: number; bonus: number; penalty: number };
 }) {
   if (!data.length) return null;
 
@@ -66,27 +64,8 @@ export function PlayerCharts({
     negativePenalty: Math.abs(Math.min(row.penalty, 0)),
   }));
 
-  const summary = [
-    { label: "League", value: totals.league, tone: "text-foreground" },
-    { label: "Predictions", value: totals.prediction, tone: "text-accent" },
-    { label: "Bonus", value: totals.bonus, tone: "text-success" },
-    { label: "Penalty", value: totals.penalty, tone: "text-danger" },
-  ];
-
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {summary.map((item) => (
-          <div key={item.label} className="rounded-2xl border border-border bg-muted/30 px-4 py-3">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</div>
-            <div className={`mt-1 text-2xl font-semibold ${item.tone}`}>
-              {item.value > 0 ? "+" : ""}
-              {item.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
       <div>
         <h3 className="font-semibold mb-2 text-sm">📈 Points over time</h3>
         <p className="mb-2 text-xs text-muted-foreground">A cleaner view of how total score moved match by match.</p>

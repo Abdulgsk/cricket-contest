@@ -8,6 +8,7 @@ import { Prediction } from "@/models/Prediction";
 import { User } from "@/models/User";
 import { Card, Badge } from "@/components/ui/card";
 import { TeamLogo } from "@/components/team-logo";
+import { ClickableUserAvatar } from "@/components/user-avatar";
 import { PlayerCharts, type PlayerChartRow } from "@/components/player-charts";
 import { formatDate } from "@/lib/utils";
 import { PREDICTION_POINTS } from "@/lib/constants";
@@ -199,9 +200,17 @@ export default async function PlayerDetailPage({
   return (
     <div className="space-y-4">
       <header className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <h1 className="text-2xl md:text-3xl font-bold truncate">{user.username}</h1>
-          <p className="text-muted-foreground text-sm truncate">@{user.userId}</p>
+        <div className="min-w-0 flex items-start gap-3">
+          <ClickableUserAvatar src={user.avatar} name={user.username} size={56} />
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold truncate">{user.username}</h1>
+            <p className="text-muted-foreground text-sm truncate">@{user.userId}</p>
+            {user.bio && (
+              <p className="text-sm text-foreground/90 mt-1 whitespace-pre-wrap break-words max-w-prose">
+                {user.bio}
+              </p>
+            )}
+          </div>
         </div>
         <Link href="/leaderboard" className="text-sm text-muted-foreground hover:text-foreground shrink-0">
           ← Leaderboard
@@ -238,15 +247,7 @@ export default async function PlayerDetailPage({
       {chartData.length > 0 ? (
         <Card>
           <h2 className="font-semibold mb-3">📊 {user.username}&apos;s stats</h2>
-          <PlayerCharts
-            data={chartData}
-            totals={{
-              league: totals.league,
-              prediction: totals.pred,
-              bonus: totals.bonus,
-              penalty: totals.penalty,
-            }}
-          />
+          <PlayerCharts data={chartData} />
         </Card>
       ) : (
         <Card>
@@ -296,6 +297,9 @@ export default async function PlayerDetailPage({
                 <Badge tone="default">{r.fp} Dream11 pts</Badge>
               )}
               <Badge tone="success">League: {r.leaguePoints}</Badge>
+              {!r.missed && r.rank > 0 && (
+                <Badge tone="default">My11 rank pts: +{r.base}</Badge>
+              )}
               {r.bounty > 0 && <Badge tone="warning">Bounty: +{r.bounty}</Badge>}
               {r.rivalry > 0 && <Badge tone="accent">Rivalry: +{r.rivalry}</Badge>}
               {r.predPoints > 0 && (
@@ -307,32 +311,32 @@ export default async function PlayerDetailPage({
               <div className="rounded-lg bg-muted/30 p-2">
                 <div className="font-medium mb-1">League points</div>
                 <div className="space-y-0.5">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">Base (rank)</span>
-                    <span>{r.base}</span>
+                    <span className="shrink-0">{r.base}</span>
                   </div>
                   {r.bonuses.filter((b) => b.points !== 0).map((b, i) => (
-                    <div key={`b${i}`} className="flex justify-between text-success">
-                      <span>+ {b.reason}</span>
-                      <span>+{b.points}</span>
+                    <div key={`b${i}`} className="flex justify-between gap-3 text-success">
+                      <span className="break-words">+ {b.reason}</span>
+                      <span className="shrink-0">+{b.points}</span>
                     </div>
                   ))}
                   {r.bounty > 0 && (
-                    <div className="flex justify-between text-warning">
+                    <div className="flex justify-between gap-3 text-warning">
                       <span>+ Match bounty</span>
-                      <span>+{r.bounty}</span>
+                      <span className="shrink-0">+{r.bounty}</span>
                     </div>
                   )}
                   {r.rivalry > 0 && (
-                    <div className="flex justify-between text-accent">
+                    <div className="flex justify-between gap-3 text-accent">
                       <span>+ Rivalry win</span>
-                      <span>+{r.rivalry}</span>
+                      <span className="shrink-0">+{r.rivalry}</span>
                     </div>
                   )}
                   {r.penalties.map((p, i) => (
-                    <div key={`p${i}`} className="flex justify-between text-danger">
-                      <span>− {p.reason}</span>
-                      <span>{p.points}</span>
+                    <div key={`p${i}`} className="flex justify-between gap-3 text-danger">
+                      <span className="break-words">− {p.reason}</span>
+                      <span className="shrink-0">{p.points}</span>
                     </div>
                   ))}
                   <div className="flex justify-between font-semibold pt-1 border-t border-border">

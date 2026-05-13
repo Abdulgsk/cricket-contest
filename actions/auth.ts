@@ -110,6 +110,7 @@ const ProfileSchema = z.object({
   username: z.string().min(2).max(60),
   whatsapp: z.string().optional().or(z.literal("")),
   my11circleName: z.string().max(80).optional().or(z.literal("")),
+  bio: z.string().max(280).optional().or(z.literal("")),
 });
 
 export async function updateProfileAction(formData: FormData): Promise<ActionResult> {
@@ -119,6 +120,7 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
     username: formData.get("username"),
     whatsapp: formData.get("whatsapp") ?? "",
     my11circleName: formData.get("my11circleName") ?? "",
+    bio: formData.get("bio") ?? "",
   });
   if (!parsed.success) return { ok: false, error: "Invalid input" };
   await connectDB();
@@ -132,8 +134,46 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
       username: parsed.data.username.trim(),
       whatsapp: wa,
       my11circleName: parsed.data.my11circleName?.trim() || undefined,
+      bio: parsed.data.bio?.trim() || null,
     }
   );
   revalidatePath("/profile");
+  revalidatePath(`/players/${String(me._id)}`);
+  return { ok: true };
+}
+
+/**
+ * Maximum stored avatar size (raw data URI string length). With JPEG quality 0.85
+ * at 256x256 this stays well under 30KB for typical photos. We cap at 96 KB to
+ * leave headroom while keeping User documents small.
+ */
+const MAX_AVATAR_BYTES = 96 * 1024;
+const AVATAR_DATA_URI_RE = /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+$/;
+
+export async function updateAvatarAction(
+  dataUri: string | null
+): Promise<ActionResult> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: "Not authenticated" };
+  await connectDB();
+
+  if (dataUri === null || dataUri === "") {
+    await User.updateOne({ _id: me._id }, { $set: { avatar: null } });
+    revalidatePath("/profile");
+    revalidatePath("/leaderboard");
+    return { ok: true };
+  }
+
+  if (typeof dataUri !== "string" || !AVATAR_DATA_URI_RE.test(dataUri)) {
+    return { ok: false, error: "Invalid image" };
+  }
+  if (dataUri.length > MAX_AVATAR_BYTES) {
+    return { ok: false, error: "Image too large (max ~70 KB after compression)" };
+  }
+
+  await User.updateOne({ _id: me._id }, { $set: { avatar: dataUri } });
+  revalidatePath("/profile");
+  revalidatePath("/leaderboard");
+  revalidatePath(`/players/${String(me._id)}`);
   return { ok: true };
 }

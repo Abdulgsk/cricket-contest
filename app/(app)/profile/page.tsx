@@ -87,17 +87,6 @@ export default async function ProfilePage() {
     };
   });
 
-  const totals = rows.reduce(
-    (acc, r) => {
-      acc.league += r.league;
-      acc.prediction += r.prediction;
-      acc.bonus += r.bonus;
-      acc.penalty += r.penalty;
-      return acc;
-    },
-    { league: 0, prediction: 0, bonus: 0, penalty: 0 }
-  );
-
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3 flex-wrap">
@@ -123,12 +112,14 @@ export default async function ProfilePage() {
           username: me.username,
           whatsapp: me.whatsapp,
           my11circleName: me.my11circleName,
+          avatar: me.avatar ?? null,
+          bio: me.bio ?? null,
         }}
       />
 
       {chartData.length > 0 && (
         <Card>
-          <PlayerCharts data={chartData} totals={totals} />
+          <PlayerCharts data={chartData} />
         </Card>
       )}
 

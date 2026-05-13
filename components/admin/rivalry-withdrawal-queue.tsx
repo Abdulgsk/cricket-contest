@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,15 +18,22 @@ type Row = {
 
 export function RivalryWithdrawalQueue({ rows }: { rows: Row[] }) {
   const [pending, start] = useTransition();
+  const [activeRivalryId, setActiveRivalryId] = useState<string | null>(null);
+  const [activeAction, setActiveAction] = useState<"approve" | "deny" | null>(null);
 
   const resolve = (rivalryId: string, approve: boolean) =>
     start(async () => {
+      setActiveRivalryId(rivalryId);
+      setActiveAction(approve ? "approve" : "deny");
       try {
         const res = await adminResolveRivalryWithdrawalAction({ rivalryId, approve });
         if (!res.ok) throw new Error(res.error);
         toast.success(approve ? "Withdrawal approved" : "Withdrawal denied");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Request failed");
+      } finally {
+        setActiveRivalryId(null);
+        setActiveAction(null);
       }
     });
 
@@ -54,19 +61,23 @@ export function RivalryWithdrawalQueue({ rows }: { rows: Row[] }) {
                     Requested by {row.requestedBy} · {new Date(row.requestedAt).toLocaleString()}
                   </div>
                 </div>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-2 flex-wrap sm:flex-nowrap shrink-0">
                   <Button
+                    className="min-w-[98px]"
                     size="sm"
                     onClick={() => resolve(row.rivalryId, true)}
-                    loading={pending}
+                    loading={pending && activeRivalryId === row.rivalryId && activeAction === "approve"}
+                    disabled={pending}
                   >
                     Approve
                   </Button>
                   <Button
+                    className="min-w-[98px]"
                     size="sm"
                     variant="outline"
                     onClick={() => resolve(row.rivalryId, false)}
-                    loading={pending}
+                    loading={pending && activeRivalryId === row.rivalryId && activeAction === "deny"}
+                    disabled={pending}
                   >
                     Deny
                   </Button>

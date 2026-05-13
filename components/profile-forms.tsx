@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { changePasswordAction, logoutAction, updateProfileAction } from "@/actions/auth";
+import { AvatarUploader } from "@/components/avatar-uploader";
 
 export function ProfileForms({
   initial,
 }: {
-  initial: { username: string; whatsapp?: string; my11circleName?: string };
+  initial: { username: string; whatsapp?: string; my11circleName?: string; avatar?: string | null; bio?: string | null };
 }) {
   const [pending, start] = useTransition();
   const [pwPending, pwStart] = useTransition();
@@ -19,6 +20,9 @@ export function ProfileForms({
     <div className="grid md:grid-cols-2 gap-4">
       <Card>
         <h2 className="font-semibold mb-3">Profile</h2>
+        <div className="mb-4 pb-4 border-b border-border">
+          <AvatarUploader initial={initial.avatar ?? null} name={initial.username} />
+        </div>
         <form
           action={(fd) =>
             start(async () => {
@@ -60,6 +64,19 @@ export function ProfileForms({
               defaultValue={initial.my11circleName ?? ""}
               placeholder="Exact My11Circle username"
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bio">Bio</Label>
+            <textarea
+              id="bio"
+              name="bio"
+              defaultValue={initial.bio ?? ""}
+              maxLength={280}
+              rows={3}
+              placeholder="Tell others about yourself (max 280 chars)"
+              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
+            />
+            <p className="text-[11px] text-muted-foreground">Visible to other players on your profile page.</p>
           </div>
           <Button loading={pending} variant="glow">{pending ? "Saving…" : "Save changes"}</Button>
         </form>

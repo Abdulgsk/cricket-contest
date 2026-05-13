@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/rbac";
 import { computeLeaderboard } from "@/services/scoring";
 import { Card, Badge } from "@/components/ui/card";
+import { ClickableUserAvatar } from "@/components/user-avatar";
 import Link from "next/link";
 
 export default async function LeaderboardPage() {
@@ -43,16 +44,23 @@ export default async function LeaderboardPage() {
                     {r.position === 1 ? "🏆" : r.position}
                   </td>
                   <td className="p-2 sm:p-3">
-                    <Link
-                      href={`/players/${String(r.userId)}`}
-                      className="hover:underline"
-                    >
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium truncate">{r.username}</span>
-                        {mine && <Badge tone="accent">You</Badge>}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">@{r.handle}</div>
-                    </Link>
+                    <div className="flex items-center gap-2.5">
+                      <ClickableUserAvatar
+                        src={r.avatar}
+                        name={r.username}
+                        size={36}
+                      />
+                      <Link
+                        href={`/players/${String(r.userId)}`}
+                        className="hover:underline min-w-0"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium truncate">{r.username}</span>
+                          {mine && <Badge tone="accent">You</Badge>}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">@{r.handle}</div>
+                      </Link>
+                    </div>
                   </td>
                   <td className="p-2 sm:p-3 text-right font-bold text-primary">{r.totalPoints}</td>
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell">{r.leaguePoints}</td>

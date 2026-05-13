@@ -12,6 +12,13 @@ export interface IUser {
   role: Role;
   enabledFeatures?: FeatureKey[];
   avatarColor?: string;
+  /**
+   * Profile picture stored as a compressed data URI ("data:image/jpeg;base64,...").
+   * Capped server-side at ~96 KB; clients resize to <=256x256 JPEG before upload.
+   */
+  avatar?: string | null;
+  /** Short user bio shown on profile / player page. */
+  bio?: string | null;
   lastSeenRivalryAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -27,6 +34,8 @@ const UserSchema = new Schema<IUser>(
     role: { type: String, enum: ["user", "admin", "superadmin"], default: "user", index: true },
     enabledFeatures: { type: [String], default: [] },
     avatarColor: { type: String },
+    avatar: { type: String, default: null },
+    bio: { type: String, default: null, maxlength: 280 },
     lastSeenRivalryAt: { type: Date, default: null },
   },
   { timestamps: true }
