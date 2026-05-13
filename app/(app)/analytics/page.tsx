@@ -7,6 +7,7 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { MatchResult } from "@/models/MatchResult";
 import { Prediction } from "@/models/Prediction";
+import { User } from "@/models/User";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
 import { PREDICTION_POINTS } from "@/lib/constants";
@@ -18,11 +19,12 @@ export default async function AnalyticsPage() {
   const record = await getMyRivalryAndCivilWarRecord();
 
   await connectDB();
-  const [results, predictions] = await Promise.all([
+  const [results, predictions, players] = await Promise.all([
     MatchResult.find({ userId: me._id })
       .populate({ path: "matchId", model: Match })
       .lean(),
     Prediction.find({ userId: me._id, scored: true }).lean(),
+    User.find({}).select("_id username").sort({ username: 1 }).lean(),
   ]);
 
   const predByMatch = new Map<string, any>();
@@ -145,15 +147,151 @@ export default async function AnalyticsPage() {
     });
   }
 
+  // ---- Hero summary metrics -------------------------------------------------
+  const playedRows = rows.filter((r) => !r.missed);
+  const totalLeague = rows.reduce((sum, r) => sum + r.leaguePoints, 0);
+  const totalPrediction = rows.reduce((sum, r) => sum + r.predPoints, 0);
+  const totalPoints = totalLeague + totalPrediction;
+  const matchesPlayed = playedRows.length;
+  const matchesMissed = rows.length - playedRows.length;
+  const wins = playedRows.filter((r) => r.rank === 1).length;
+  const podiums = playedRows.filter((r) => r.rank > 0 && r.rank <= 3).length;
+  const bestRank = playedRows.reduce<number | null>(
+    (best, r) => (r.rank > 0 && (best === null || r.rank < best) ? r.rank : best),
+    null,
+  );
+  const bestMatch = playedRows.reduce<number>(
+    (best, r) => Math.max(best, r.leaguePoints + r.predPoints),
+    0,
+  );
+  const avgPerMatch = matchesPlayed > 0 ? totalPoints / matchesPlayed : 0;
+  const winRate = matchesPlayed > 0 ? (wins / matchesPlayed) * 100 : 0;
+  const lastFive = chartData.slice(-5);
+  const lastFiveMax = Math.max(...lastFive.map((r) => r.league + r.prediction), 1);
+
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl md:text-3xl font-bold">Analytics</h1>
-        <p className="text-muted-foreground text-sm">Your performance and stats breakdown.</p>
-      </header>
+      {/* Premium hero */}
+      <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-primary/15 via-background to-accent/15 shadow-sm">
+        <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-accent/20 blur-3xl" />
 
-      {/* Compare Button */}
-      <CompareButton meId={String(me._id)} />
+        <div className="relative px-5 py-6 sm:px-7 sm:py-8 lg:px-9 lg:py-10">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground backdrop-blur">
+                Personal analytics
+              </div>
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                Welcome back, <span className="text-primary">{me.username}</span>
+              </h1>
+              <p className="text-sm leading-6 text-muted-foreground sm:text-base">
+                Track every point, surface your best matches, and benchmark yourself against other players in one focused view.
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 font-medium text-muted-foreground">
+                  {matchesPlayed} played
+                </span>
+                {matchesMissed > 0 && (
+                  <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 font-medium text-muted-foreground">
+                    {matchesMissed} missed
+                  </span>
+                )}
+                {wins > 0 && (
+                  <span className="rounded-full border border-success/40 bg-success/10 px-3 py-1 font-semibold text-success">
+                    {wins} {wins === 1 ? "win" : "wins"}
+                  </span>
+                )}
+                {podiums > 0 && (
+                  <span className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 font-semibold text-accent">
+                    {podiums} podium {podiums === 1 ? "finish" : "finishes"}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex w-full max-w-sm flex-col gap-3 lg:w-auto lg:items-end">
+              <CompareButton
+                meId={String(me._id)}
+                players={players.map((p) => ({ _id: String(p._id), username: p.username }))}
+                variant="inline"
+              />
+              <p className="text-right text-xs text-muted-foreground">
+                Open a head-to-head with any other player.
+              </p>
+            </div>
+          </div>
+
+          {/* Hero stats grid */}
+          <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-4 backdrop-blur">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Total points
+              </p>
+              <p className="mt-2 text-3xl font-semibold tracking-tight">{totalPoints.toLocaleString()}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {totalLeague.toLocaleString()} league + {totalPrediction.toLocaleString()} prediction
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-4 backdrop-blur">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Avg / match
+              </p>
+              <p className="mt-2 text-3xl font-semibold tracking-tight">
+                {matchesPlayed > 0 ? avgPerMatch.toFixed(1) : "—"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {matchesPlayed > 0 ? `Over ${matchesPlayed} scored matches` : "No scored matches yet"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-4 backdrop-blur">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Best finish
+              </p>
+              <p className="mt-2 text-3xl font-semibold tracking-tight">
+                {bestRank !== null ? `#${bestRank}` : "—"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {bestMatch > 0 ? `Top match: ${bestMatch} pts` : "Awaiting first scored match"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-4 backdrop-blur">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Win rate
+                </p>
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  {wins}/{matchesPlayed || 0}
+                </span>
+              </div>
+              <p className="mt-2 text-3xl font-semibold tracking-tight">
+                {matchesPlayed > 0 ? `${winRate.toFixed(0)}%` : "—"}
+              </p>
+              {lastFive.length > 0 ? (
+                <div className="mt-3 flex h-6 items-end gap-1">
+                  {lastFive.map((r, i) => {
+                    const value = r.league + r.prediction;
+                    const pct = Math.max((value / lastFiveMax) * 100, 8);
+                    return (
+                      <div
+                        key={i}
+                        className="flex-1 rounded-sm bg-primary/70"
+                        style={{ height: `${pct}%` }}
+                        title={`${r.label}: ${value} pts`}
+                      />
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-muted-foreground">Last 5 matches trend</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Chart */}
       {chartData.length > 0 ? (

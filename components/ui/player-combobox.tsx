@@ -11,6 +11,12 @@ export type ComboboxPlayer = {
   keeper?: boolean;
 };
 
+export type ComboboxOption = {
+  value: string;
+  label: string;
+  description?: string;
+};
+
 function PlayerIcons({ role, keeper }: { role?: string; keeper?: boolean }) {
   if (!role && !keeper) return null;
   return (
@@ -33,6 +39,7 @@ interface PlayerComboboxProps {
   onChange: (value: string) => void;
   players: string[];
   playerInfo?: ComboboxPlayer[];
+  options?: ComboboxOption[];
   placeholder?: string;
   disabled?: boolean;
   name?: string; // for hidden input (form submission)
@@ -46,6 +53,7 @@ export function PlayerCombobox({
   onChange,
   players,
   playerInfo,
+  options,
   placeholder = "— pick a player —",
   disabled,
   name,
@@ -62,21 +70,24 @@ export function PlayerCombobox({
   const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const [rect, setRect] = useState<DOMRect | null>(null);
 
+  const optionList = useMemo(
+    (): ComboboxOption[] =>
+      options
+        ? [...options].sort((a, b) => a.label.localeCompare(b.label))
+        : [...players].sort((a, b) => a.localeCompare(b)).map((player) => ({ value: player, label: player })),
+    [options, players]
+  );
+
   const infoMap = useMemo(
     () => new Map((playerInfo ?? []).map((p) => [p.name, p])),
     [playerInfo]
   );
 
-  const sorted = useMemo(
-    () => [...players].sort((a, b) => a.localeCompare(b)),
-    [players]
-  );
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return sorted;
-    return sorted.filter((p) => p.toLowerCase().includes(q));
-  }, [sorted, query]);
+    if (!q) return optionList;
+    return optionList.filter((p) => p.label.toLowerCase().includes(q));
+  }, [optionList, query]);
 
   // Reset highlight when filter changes
   useEffect(() => {
@@ -147,7 +158,7 @@ export function PlayerCombobox({
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (filtered[highlight]) select(filtered[highlight]);
+      if (filtered[highlight]) select(filtered[highlight].value);
     } else if (e.key === "Escape") {
       e.preventDefault();
       setOpen(false);
@@ -155,6 +166,8 @@ export function PlayerCombobox({
   };
 
   const selectedInfo = infoMap.get(value);
+  const selectedOption = optionList.find((option) => option.value === value);
+  const selectedLabel = selectedOption?.label ?? value;
 
   const dropdown = open && rect ? (
     <div
@@ -188,12 +201,12 @@ export function PlayerCombobox({
           </div>
         ) : (
           filtered.map((p, i) => {
-            const info = infoMap.get(p);
-            const selected = value === p;
+            const info = infoMap.get(p.value);
+            const selected = value === p.value;
             const isHighlight = i === highlight;
             return (
               <button
-                key={p}
+                key={p.value}
                 ref={(el) => {
                   if (el) itemRefs.current.set(i, el);
                   else itemRefs.current.delete(i);
@@ -202,7 +215,7 @@ export function PlayerCombobox({
                 role="option"
                 aria-selected={selected}
                 onMouseEnter={() => setHighlight(i)}
-                onClick={() => select(p)}
+                onClick={() => select(p.value)}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-left transition",
                   isHighlight && "bg-muted",
@@ -217,7 +230,10 @@ export function PlayerCombobox({
                   )}
                 />
                 <PlayerIcons role={info?.role} keeper={info?.keeper} />
-                <span className="flex-1 truncate">{p}</span>
+                <span className="flex-1 truncate">{p.label}</span>
+                {p.description && !selected && (
+                  <span className="hidden max-w-44 truncate text-[10px] text-muted-foreground sm:inline">{p.description}</span>
+                )}
                 {info?.role && (
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                     {info.role}
@@ -250,7 +266,7 @@ export function PlayerCombobox({
       >
         <span className={cn("flex min-w-0 items-center gap-2", !value && "text-muted-foreground")}>
           {value && <PlayerIcons role={selectedInfo?.role} keeper={selectedInfo?.keeper} />}
-          <span className="truncate">{value || placeholder}</span>
+          <span className="truncate">{value ? selectedLabel : placeholder}</span>
         </span>
         <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
       </button>

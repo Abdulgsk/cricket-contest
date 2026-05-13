@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { UserAvatar } from "@/components/user-avatar";
-import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+type TabKey = "overview" | "breakdown" | "form";
 
 export interface ComparisonStats {
   userId: string;
@@ -33,59 +36,167 @@ export interface ComparisonStats {
   consistency: number;
 }
 
-function StatRow({
-  label,
-  meVal,
-  oppVal,
-  format = (v: number) => String(v),
-  barChart = false,
-}: {
-  label: string;
-  meVal: number;
-  oppVal: number;
-  format?: (v: number) => string;
-  barChart?: boolean;
-}) {
-  const meWins = meVal > oppVal;
-  const equal = meVal === oppVal;
-  const meDisplay = format(meVal);
-  const oppDisplay = format(oppVal);
-  const maxVal = Math.max(meVal, oppVal, 1);
-  const mePercent = (meVal / maxVal) * 100;
-  const oppPercent = (oppVal / maxVal) * 100;
+function formatInt(value: number) {
+  return value.toLocaleString();
+}
 
-  if (barChart) {
-    return (
-      <div className="space-y-2 py-3">
-        <div className="flex justify-between text-sm font-medium">
-          <span>{label}</span>
-          <span className="text-muted-foreground text-xs">{meDisplay} vs {oppDisplay}</span>
-        </div>
-        <div className="flex gap-1 h-6 rounded overflow-hidden bg-muted/20">
-          <div
-            className={`transition-all ${meWins ? "bg-success" : equal ? "bg-muted" : "bg-muted"}`}
-            style={{ width: `${mePercent}%` }}
-            title={`Me: ${meDisplay}`}
-          />
-          <div
-            className={`transition-all ${!meWins && !equal ? "bg-accent" : equal ? "bg-muted" : "bg-muted"}`}
-            style={{ width: `${oppPercent}%` }}
-            title={`Opponent: ${oppDisplay}`}
-          />
-        </div>
-      </div>
-    );
-  }
+function formatMaybe(value: number | null, formatter: (n: number) => string) {
+  return value === null ? "—" : formatter(value);
+}
+
+function ScoreCard({
+  title,
+  subtitle,
+  leftLabel,
+  rightLabel,
+  leftValue,
+  rightValue,
+  leftData,
+  rightData,
+  format = formatInt,
+}: {
+  title: string;
+  subtitle: string;
+  leftLabel: string;
+  rightLabel: string;
+  leftValue: number;
+  rightValue: number;
+  leftData: boolean;
+  rightData: boolean;
+  format?: (n: number) => string;
+}) {
+  const leftDisplay = formatMaybe(leftData ? leftValue : null, format);
+  const rightDisplay = formatMaybe(rightData ? rightValue : null, format);
+  const leftRaw = leftData ? leftValue : 0;
+  const rightRaw = rightData ? rightValue : 0;
+  const max = Math.max(leftRaw, rightRaw, 1);
+  const leftPercent = leftData ? (leftRaw / max) * 100 : 0;
+  const rightPercent = rightData ? (rightRaw / max) * 100 : 0;
+  const leftWins = leftData && rightData && leftRaw > rightRaw;
+  const rightWins = leftData && rightData && rightRaw > leftRaw;
+  const tied = leftData && rightData && leftRaw === rightRaw;
+
+  const leader = !leftData && !rightData ? "No data" : tied ? "Even" : leftWins ? leftLabel : rightLabel;
 
   return (
-    <div className="grid grid-cols-3 gap-4 items-center py-2 border-b border-border/50 last:border-0">
-      <div className={`text-right font-medium text-sm ${meWins ? "text-success font-bold" : equal ? "text-muted-foreground" : ""}`}>
-        {meDisplay}
+    <Card className="overflow-hidden border border-border/60 p-4 shadow-sm sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">{title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+        </div>
+        <span className="rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          {leader}
+        </span>
       </div>
-      <div className="text-center text-muted-foreground font-medium text-xs uppercase">{label}</div>
-      <div className={`text-left font-medium text-sm ${!meWins && !equal ? "text-accent font-bold" : equal ? "text-muted-foreground" : ""}`}>
-        {oppDisplay}
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className={cn("rounded-2xl p-3", leftWins && "bg-success/10") }>
+          <p className="truncate text-xs font-medium text-muted-foreground">{leftLabel}</p>
+          <p className={cn("mt-1 text-2xl font-semibold tracking-tight", leftWins && "text-success")}>{leftDisplay}</p>
+        </div>
+        <div className={cn("rounded-2xl p-3 text-right", rightWins && "bg-primary/10") }>
+          <p className="truncate text-xs font-medium text-muted-foreground">{rightLabel}</p>
+          <p className={cn("mt-1 text-2xl font-semibold tracking-tight", rightWins && "text-primary")}>{rightDisplay}</p>
+        </div>
       </div>
+
+      <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-muted/60">
+        <div
+          className={cn(
+            "transition-all",
+            leftWins ? "bg-success" : tied ? "bg-muted-foreground/60" : "bg-success/60",
+            !leftData && "bg-muted-foreground/25"
+          )}
+          style={{ width: `${leftPercent}%` }}
+        />
+        <div
+          className={cn(
+            "transition-all",
+            rightWins ? "bg-primary" : tied ? "bg-muted-foreground/60" : "bg-primary/60",
+            !rightData && "bg-muted-foreground/25"
+          )}
+          style={{ width: `${rightPercent}%` }}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function ComparisonRow({
+  label,
+  leftValue,
+  rightValue,
+  leftData,
+  rightData,
+  format,
+}: {
+  label: string;
+  leftValue: number;
+  rightValue: number;
+  leftData: boolean;
+  rightData: boolean;
+  format?: (n: number) => string;
+}) {
+  const render = format ?? formatInt;
+  const leftDisplay = formatMaybe(leftData ? leftValue : null, render);
+  const rightDisplay = formatMaybe(rightData ? rightValue : null, render);
+  const leftRaw = leftData ? leftValue : 0;
+  const rightRaw = rightData ? rightValue : 0;
+  const max = Math.max(leftRaw, rightRaw, 1);
+  const leftPercent = leftData ? (leftRaw / max) * 100 : 0;
+  const rightPercent = rightData ? (rightRaw / max) * 100 : 0;
+  const leftWins = leftData && rightData && leftRaw > rightRaw;
+  const rightWins = leftData && rightData && rightRaw > leftRaw;
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-background/75 p-4">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
+        <span className="text-muted-foreground">{leftDisplay} vs {rightDisplay}</span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <div className={cn("rounded-xl p-3", leftWins && "bg-success/10") }>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Left</p>
+          <p className={cn("mt-1 text-lg font-semibold", leftWins && "text-success")}>{leftDisplay}</p>
+        </div>
+        <div className={cn("rounded-xl p-3 text-right", rightWins && "bg-primary/10") }>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Right</p>
+          <p className={cn("mt-1 text-lg font-semibold", rightWins && "text-primary")}>{rightDisplay}</p>
+        </div>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted/60">
+        <div className="flex h-full w-full">
+          <div className={cn("transition-all bg-success/80", !leftData && "bg-muted-foreground/25", leftWins && "bg-success")} style={{ width: `${leftPercent}%` }} />
+          <div className={cn("transition-all bg-primary/80", !rightData && "bg-muted-foreground/25", rightWins && "bg-primary")} style={{ width: `${rightPercent}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FormBars({ values, tone }: { values: number[]; tone: "left" | "right" }) {
+  const max = Math.max(...values, 1);
+
+  return (
+    <div className="grid grid-cols-5 gap-2 sm:gap-3">
+      {values.map((v, idx) => {
+        const pct = Math.max((v / max) * 100, 10);
+        return (
+          <div key={idx} className="group flex flex-col items-stretch gap-2">
+            <div className="flex h-28 items-end rounded-2xl border border-border/60 bg-muted/20 p-2">
+              <div
+                className={cn(
+                  "w-full rounded-xl transition-all",
+                  tone === "left" ? "bg-success/85 group-hover:bg-success" : "bg-primary/85 group-hover:bg-primary"
+                )}
+                style={{ height: `${pct}%` }}
+              />
+            </div>
+            <div className="text-center text-xs font-medium text-muted-foreground">{v}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -99,289 +210,357 @@ export function PlayerComparison({
   opponent: ComparisonStats;
   onClose: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "breakdown" | "form">("overview");
+  const [tab, setTab] = useState<TabKey>("overview");
+  const meHasData = me.matches > 0;
+  const opponentHasData = opponent.matches > 0;
 
-  const tabs = [
-    { id: "overview", label: "Overview", icon: "📊" },
-    { id: "breakdown", label: "Points Breakdown", icon: "📈" },
-    { id: "form", label: "Recent Form", icon: "🔥" },
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: "overview", label: "Overview" },
+    { key: "breakdown", label: "Point Sources" },
+    { key: "form", label: "Recent Form" },
   ];
 
-  return (
-    <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-0">
-        {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-primary/10 to-accent/10 border-b border-border p-4 flex justify-between items-center">
-          <h2 className="text-xl font-bold">Player Comparison</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition text-2xl leading-none"
-          >
-            ✕
-          </button>
-        </div>
+  const totalDelta = useMemo(() => me.totalPoints - opponent.totalPoints, [me.totalPoints, opponent.totalPoints]);
+  const totalLeader = useMemo(() => {
+    if (totalDelta === 0) return "Even";
+    return totalDelta > 0 ? me.username : opponent.username;
+  }, [me.username, opponent.username, totalDelta]);
+  const totalDeltaLabel = totalDelta === 0 ? "Level on total points" : totalDelta > 0 ? `${me.username} leads by ${formatInt(totalDelta)}` : `${opponent.username} leads by ${formatInt(Math.abs(totalDelta))}`;
 
-        {/* Player Headers */}
-        <div className="p-4 border-b border-border">
-          <div className="grid grid-cols-3 gap-4 items-center">
-            <Link
-              href={`/players/${me.userId}`}
-              className="text-center hover:opacity-80 transition"
-            >
-              <UserAvatar src={me.avatar} name={me.username} size={64} />
-              <div className="font-bold text-sm mt-2 line-clamp-1">{me.username}</div>
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xl md:p-6 lg:p-8">
+      <Card className="mx-auto w-full max-w-6xl overflow-hidden border border-border/70 p-0 shadow-[0_30px_120px_rgba(0,0,0,0.4)]">
+        <div className="bg-gradient-to-br from-primary/10 via-background to-accent/10 px-5 py-5 sm:px-6 sm:py-6 lg:px-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Head-to-head comparison</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{me.username} vs {opponent.username}</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                A cleaner view of total score, scoring mix, and recent trend strength, with no filler metrics when the underlying data is not available.
+              </p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+          </div>
+
+          <div className="mt-6 grid gap-3 lg:grid-cols-[1fr_auto_1fr] lg:items-stretch">
+            <Link href={`/players/${me.userId}`} className="group rounded-3xl border border-border/60 bg-background/90 p-4 transition hover:-translate-y-0.5 hover:shadow-lg">
+              <div className="flex items-center gap-3">
+                <UserAvatar src={me.avatar} name={me.username} size={52} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-base font-semibold">{me.username}</p>
+                  <p className="text-sm text-muted-foreground">{me.matches > 0 ? `${me.matches} scored matches` : "No scored matches yet"}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-2xl bg-success/10 p-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Total points</p>
+                  <p className="mt-1 text-xl font-semibold text-success">{formatInt(me.totalPoints)}</p>
+                </div>
+                <div className="rounded-2xl bg-muted/30 p-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Consistency</p>
+                  <p className="mt-1 text-xl font-semibold">{formatMaybe(meHasData ? me.consistency : null, (n) => n.toFixed(1))}</p>
+                </div>
+              </div>
             </Link>
 
-            <div className="text-center">
-              <div className="text-xs text-muted-foreground font-medium uppercase">VS</div>
-              <div className="text-2xl font-bold text-muted-foreground mt-1">⚔️</div>
+            <div className="rounded-3xl border border-border/60 bg-background/90 p-4 text-center shadow-sm lg:min-w-[240px] lg:self-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Scoreboard</p>
+              <p className="mt-4 text-4xl font-semibold tracking-tight">{totalDelta === 0 ? "—" : totalDelta > 0 ? `+${formatInt(totalDelta)}` : `-${formatInt(Math.abs(totalDelta))}`}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{totalDeltaLabel}</p>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-left text-sm">
+                <div className="rounded-2xl bg-success/10 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Leader</p>
+                  <p className="mt-1 font-semibold text-success">{totalLeader}</p>
+                </div>
+                <div className="rounded-2xl bg-primary/10 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Match status</p>
+                  <p className="mt-1 font-semibold text-primary">{meHasData || opponentHasData ? "Scored" : "Pending"}</p>
+                </div>
+              </div>
             </div>
 
-            <Link
-              href={`/players/${opponent.userId}`}
-              className="text-center hover:opacity-80 transition"
-            >
-              <UserAvatar src={opponent.avatar} name={opponent.username} size={64} />
-              <div className="font-bold text-sm mt-2 line-clamp-1">{opponent.username}</div>
+            <Link href={`/players/${opponent.userId}`} className="group rounded-3xl border border-border/60 bg-background/90 p-4 transition hover:-translate-y-0.5 hover:shadow-lg">
+              <div className="flex items-center gap-3">
+                <UserAvatar src={opponent.avatar} name={opponent.username} size={52} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-base font-semibold">{opponent.username}</p>
+                  <p className="text-sm text-muted-foreground">{opponent.matches > 0 ? `${opponent.matches} scored matches` : "No scored matches yet"}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-2xl bg-primary/10 p-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Total points</p>
+                  <p className="mt-1 text-xl font-semibold text-primary">{formatInt(opponent.totalPoints)}</p>
+                </div>
+                <div className="rounded-2xl bg-muted/30 p-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Consistency</p>
+                  <p className="mt-1 text-xl font-semibold">{formatMaybe(opponentHasData ? opponent.consistency : null, (n) => n.toFixed(1))}</p>
+                </div>
+              </div>
             </Link>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Overall edge</p>
+              <p className="mt-2 text-xl font-semibold">{totalLeader}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Highest total score</p>
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Most consistent</p>
+              <p className="mt-2 text-xl font-semibold">{meHasData && opponentHasData ? (me.consistency === opponent.consistency ? "Even" : me.consistency > opponent.consistency ? me.username : opponent.username) : "—"}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Last 5-match average</p>
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Best finish</p>
+              <p className="mt-2 text-xl font-semibold">{meHasData && opponentHasData ? (me.maxPoints === opponent.maxPoints ? "Even" : me.maxPoints > opponent.maxPoints ? me.username : opponent.username) : "—"}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Highest single-match score</p>
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Data coverage</p>
+              <p className="mt-2 text-xl font-semibold">{me.matches + opponent.matches > 0 ? "Available" : "None yet"}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Comparison only shows real metrics</p>
+            </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="border-b border-border flex gap-0">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition border-b-2 ${
-                activeTab === tab.id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <span className="mr-1">{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
+        <div className="border-b border-border bg-background/95 px-4 sm:px-6">
+          <div className="flex gap-2 overflow-x-auto py-3">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition",
+                  tab === t.key ? "bg-primary text-primary-foreground shadow-sm" : "border border-border/70 bg-background text-muted-foreground hover:bg-muted/50"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="p-4 space-y-6">
-          {/* Overview Tab */}
-          {activeTab === "overview" && (
-            <div className="space-y-6">
-              {/* Top Stats */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-lg bg-success/10 p-4 border border-success/20">
-                  <div className="text-2xl font-bold text-success">{me.totalPoints}</div>
-                  <div className="text-xs text-muted-foreground mt-1">Total Points</div>
-                </div>
-                <div className="rounded-lg bg-accent/10 p-4 border border-accent/20">
-                  <div className="text-2xl font-bold text-accent">{opponent.totalPoints}</div>
-                  <div className="text-xs text-muted-foreground mt-1">Total Points</div>
-                </div>
+        <div className="max-h-[58vh] overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
+          {tab === "overview" && (
+            <div className="space-y-5">
+              <div className="grid gap-4 xl:grid-cols-2">
+                <ScoreCard
+                  title="Total points"
+                  subtitle="The clearest headline metric in the comparison."
+                  leftLabel={me.username}
+                  rightLabel={opponent.username}
+                  leftValue={me.totalPoints}
+                  rightValue={opponent.totalPoints}
+                  leftData={meHasData}
+                  rightData={opponentHasData}
+                />
+                <ScoreCard
+                  title="Average points per match"
+                  subtitle="How efficiently each player turns matches into score."
+                  leftLabel={me.username}
+                  rightLabel={opponent.username}
+                  leftValue={me.averagePointsPerMatch}
+                  rightValue={opponent.averagePointsPerMatch}
+                  leftData={meHasData}
+                  rightData={opponentHasData}
+                  format={(n) => n.toFixed(1)}
+                />
+                <ScoreCard
+                  title="Win rate"
+                  subtitle="Share of scored matches that finished first."
+                  leftLabel={me.username}
+                  rightLabel={opponent.username}
+                  leftValue={me.winRate}
+                  rightValue={opponent.winRate}
+                  leftData={meHasData}
+                  rightData={opponentHasData}
+                  format={(n) => `${n.toFixed(1)}%`}
+                />
+                <ScoreCard
+                  title="Podium rate"
+                  subtitle="How often each player finishes in the top 3."
+                  leftLabel={me.username}
+                  rightLabel={opponent.username}
+                  leftValue={me.podiumRate}
+                  rightValue={opponent.podiumRate}
+                  leftData={meHasData}
+                  rightData={opponentHasData}
+                  format={(n) => `${n.toFixed(1)}%`}
+                />
               </div>
 
-              {/* Key Metrics */}
-              <div className="space-y-3">
-                <h3 className="font-semibold text-sm uppercase text-muted-foreground">Key Metrics</h3>
-                <StatRow label="Matches" meVal={me.matches} oppVal={opponent.matches} barChart />
-                <StatRow label="Win Rate" meVal={me.winRate} oppVal={opponent.winRate} format={(v) => `${v}%`} barChart />
-                <StatRow label="Podium Rate" meVal={me.podiumRate} oppVal={opponent.podiumRate} format={(v) => `${v}%`} barChart />
-                <StatRow label="Wins" meVal={me.wins} oppVal={opponent.wins} barChart />
-                <StatRow label="2nd Place" meVal={me.silver} oppVal={opponent.silver} barChart />
-                <StatRow label="3rd Place" meVal={me.bronze} oppVal={opponent.bronze} barChart />
-                <StatRow label="Top 5" meVal={me.top5} oppVal={opponent.top5} barChart />
-                <StatRow label="Avg Finish" meVal={me.averageFinish} oppVal={opponent.averageFinish} format={(v) => v.toFixed(1)} />
-                <StatRow label="Avg Points/Match" meVal={me.averagePointsPerMatch} oppVal={opponent.averagePointsPerMatch} format={(v) => v.toFixed(1)} barChart />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Performance span</p>
+                  <div className="mt-4 space-y-3">
+                    <ComparisonRow label="Matches" leftValue={me.matches} rightValue={opponent.matches} leftData={meHasData} rightData={opponentHasData} />
+                    <ComparisonRow label="Top 3 finishes" leftValue={me.top3} rightValue={opponent.top3} leftData={meHasData} rightData={opponentHasData} />
+                    <ComparisonRow label="Average finish" leftValue={me.averageFinish} rightValue={opponent.averageFinish} leftData={meHasData} rightData={opponentHasData} format={(n) => n.toFixed(1)} />
+                  </div>
+                </Card>
+
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Ceiling and floor</p>
+                  <div className="mt-4 space-y-3">
+                    <ComparisonRow label="Best single match" leftValue={me.maxPoints} rightValue={opponent.maxPoints} leftData={meHasData} rightData={opponentHasData} />
+                    <ComparisonRow label="Lowest scored match" leftValue={me.minPoints} rightValue={opponent.minPoints} leftData={meHasData} rightData={opponentHasData} />
+                  </div>
+                </Card>
               </div>
 
-              {/* Performance Range */}
-              <div className="rounded-lg bg-muted/30 p-4 space-y-3">
-                <h3 className="font-semibold text-sm">Performance Range</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="text-muted-foreground text-xs">Best Match</div>
-                    <div className="font-bold text-success mt-1">{me.maxPoints} pts</div>
+              <Card className="border border-border/60 p-4 sm:p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Comparison summary</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl bg-success/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Leader</p>
+                    <p className="mt-2 text-lg font-semibold text-success">{totalLeader}</p>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs">Best Match</div>
-                    <div className="font-bold text-accent mt-1">{opponent.maxPoints} pts</div>
+                  <div className="rounded-2xl bg-primary/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Edge</p>
+                    <p className="mt-2 text-lg font-semibold text-primary">{totalDelta === 0 ? "Even" : totalDelta > 0 ? `+${formatInt(totalDelta)}` : `-${formatInt(Math.abs(totalDelta))}`}</p>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs">Worst Match</div>
-                    <div className="font-bold text-danger mt-1">{me.minPoints} pts</div>
+                  <div className="rounded-2xl bg-muted/30 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Matches covered</p>
+                    <p className="mt-2 text-lg font-semibold">{formatInt(me.matches + opponent.matches)}</p>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs">Worst Match</div>
-                    <div className="font-bold text-danger mt-1">{opponent.minPoints} pts</div>
+                  <div className="rounded-2xl bg-muted/30 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Availability</p>
+                    <p className="mt-2 text-lg font-semibold">{meHasData || opponentHasData ? "Ready" : "Empty"}</p>
                   </div>
                 </div>
+              </Card>
+            </div>
+          )}
+
+          {tab === "breakdown" && (
+            <div className="space-y-5">
+              <Card className="border border-border/60 p-4 sm:p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Scoring mix</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  League points remain the base. Prediction, bonus, bounty, and rivalry points add or subtract from the final score.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <ComparisonRow label="League" leftValue={me.leaguePoints} rightValue={opponent.leaguePoints} leftData={meHasData} rightData={opponentHasData} />
+                  <ComparisonRow label="Predictions" leftValue={me.predictionPoints} rightValue={opponent.predictionPoints} leftData={meHasData} rightData={opponentHasData} />
+                  <ComparisonRow label="Bonus" leftValue={me.bonusPoints} rightValue={opponent.bonusPoints} leftData={meHasData} rightData={opponentHasData} />
+                  <ComparisonRow label="Bounty" leftValue={me.bountyPoints} rightValue={opponent.bountyPoints} leftData={meHasData} rightData={opponentHasData} />
+                  <ComparisonRow label="Rivalry" leftValue={me.rivalryPoints} rightValue={opponent.rivalryPoints} leftData={meHasData} rightData={opponentHasData} />
+                  <ComparisonRow label="Penalty" leftValue={me.penaltyPoints} rightValue={opponent.penaltyPoints} leftData={meHasData} rightData={opponentHasData} />
+                </div>
+              </Card>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Formula view</p>
+                  <div className="mt-4 rounded-3xl border border-border/60 bg-background/80 p-4 text-sm leading-7 text-muted-foreground">
+                    <span className="font-semibold text-foreground">Total score</span> = league + predictions + bonus + bounty + rivalry - penalty
+                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                      <div className="rounded-2xl bg-muted/40 p-3">League is the match performance baseline.</div>
+                      <div className="rounded-2xl bg-muted/40 p-3">Penalties are subtracted, so they are shown separately.</div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">What matters most</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="rounded-2xl bg-success/10 p-4">
+                      <p className="font-semibold text-success">League score</p>
+                      <p className="mt-1 text-muted-foreground">This is the primary backbone of the comparison.</p>
+                    </div>
+                    <div className="rounded-2xl bg-primary/10 p-4">
+                      <p className="font-semibold text-primary">Prediction points</p>
+                      <p className="mt-1 text-muted-foreground">Use this to see who converts pre-match reads more efficiently.</p>
+                    </div>
+                  </div>
+                </Card>
               </div>
             </div>
           )}
 
-          {/* Points Breakdown Tab */}
-          {activeTab === "breakdown" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-lg bg-muted/30 p-4 space-y-2">
-                  <h3 className="font-semibold text-sm">League Points</h3>
-                  <div className="text-2xl font-bold">{me.leaguePoints}</div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Predictions:</span>
-                      <span className="text-success">+{me.predictionPoints}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Bonus:</span>
-                      <span className="text-success">+{me.bonusPoints}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Bounty:</span>
-                      <span className="text-warning">+{me.bountyPoints}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Rivalry:</span>
-                      <span className="text-accent">+{me.rivalryPoints}</span>
-                    </div>
-                    <div className="flex justify-between border-t border-border/50 pt-1 mt-1">
-                      <span className="text-muted-foreground">Penalty:</span>
-                      <span className="text-danger">−{me.penaltyPoints}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-lg bg-muted/30 p-4 space-y-2">
-                  <h3 className="font-semibold text-sm">League Points</h3>
-                  <div className="text-2xl font-bold">{opponent.leaguePoints}</div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Predictions:</span>
-                      <span className="text-success">+{opponent.predictionPoints}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Bonus:</span>
-                      <span className="text-success">+{opponent.bonusPoints}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Bounty:</span>
-                      <span className="text-warning">+{opponent.bountyPoints}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Rivalry:</span>
-                      <span className="text-accent">+{opponent.rivalryPoints}</span>
-                    </div>
-                    <div className="flex justify-between border-t border-border/50 pt-1 mt-1">
-                      <span className="text-muted-foreground">Penalty:</span>
-                      <span className="text-danger">−{opponent.penaltyPoints}</span>
-                    </div>
-                  </div>
-                </div>
+          {tab === "form" && (
+            <div className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{me.username}</p>
+                  <p className="mt-2 text-3xl font-semibold">{formatMaybe(meHasData ? me.consistency : null, (n) => n.toFixed(1))}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Last 5-match average</p>
+                </Card>
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{opponent.username}</p>
+                  <p className="mt-2 text-3xl font-semibold">{formatMaybe(opponentHasData ? opponent.consistency : null, (n) => n.toFixed(1))}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Last 5-match average</p>
+                </Card>
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Recent form</p>
+                  <p className="mt-2 text-3xl font-semibold">{formatInt(me.recentForm.length + opponent.recentForm.length)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Scored matches shown in the chart</p>
+                </Card>
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Momentum</p>
+                  <p className="mt-2 text-3xl font-semibold">{meHasData || opponentHasData ? "Live" : "Empty"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Recent results only, no filler rows</p>
+                </Card>
               </div>
 
-              {/* Breakdown comparison */}
-              <div className="space-y-3 bg-muted/20 p-4 rounded-lg">
-                <h3 className="font-semibold text-sm uppercase">Point Sources Comparison</h3>
-                <StatRow label="League" meVal={me.leaguePoints} oppVal={opponent.leaguePoints} barChart />
-                <StatRow label="Predictions" meVal={me.predictionPoints} oppVal={opponent.predictionPoints} barChart />
-                <StatRow label="Bonus" meVal={me.bonusPoints} oppVal={opponent.bonusPoints} barChart />
-                <StatRow label="Bounty" meVal={me.bountyPoints} oppVal={opponent.bountyPoints} barChart />
-                <StatRow label="Rivalry" meVal={me.rivalryPoints} oppVal={opponent.rivalryPoints} barChart />
-                <StatRow label="Penalty" meVal={me.penaltyPoints} oppVal={opponent.penaltyPoints} barChart />
-              </div>
-            </div>
-          )}
-
-          {/* Recent Form Tab */}
-          {activeTab === "form" && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="font-semibold text-sm mb-3">Consistency Score</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-lg bg-success/10 p-4 border border-success/20">
-                    <div className="text-2xl font-bold text-success">{me.consistency}</div>
-                    <div className="text-xs text-muted-foreground mt-1">Last 5 Matches Avg</div>
-                  </div>
-                  <div className="rounded-lg bg-accent/10 p-4 border border-accent/20">
-                    <div className="text-2xl font-bold text-accent">{opponent.consistency}</div>
-                    <div className="text-xs text-muted-foreground mt-1">Last 5 Matches Avg</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Recent matches trend */}
-              {me.recentForm.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-sm mb-3">Last 5 Matches</h3>
-                  <div className="space-y-3">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-xs text-muted-foreground mb-2">Your Performance</div>
-                      <div className="flex gap-2 h-12">
-                        {me.recentForm.map((points, i) => {
-                          const maxPoints = Math.max(...me.recentForm, ...opponent.recentForm, 1);
-                          const height = (points / maxPoints) * 100;
-                          return (
-                            <div
-                              key={i}
-                              className="flex-1 rounded-sm bg-success/20 hover:bg-success/30 transition cursor-pointer relative group"
-                              style={{ height: `${height}%` }}
-                              title={`Match ${i + 1}: ${points} pts`}
-                            >
-                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition whitespace-nowrap bg-foreground text-background text-xs px-2 py-1 rounded pointer-events-none">
-                                {points} pts
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{me.username}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Last 5 scored matches</p>
                     </div>
-                    {opponent.recentForm.length > 0 && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-2">Opponent's Performance</div>
-                        <div className="flex gap-2 h-12">
-                          {opponent.recentForm.map((points, i) => {
-                            const maxPoints = Math.max(...me.recentForm, ...opponent.recentForm, 1);
-                            const height = (points / maxPoints) * 100;
-                            return (
-                              <div
-                                key={i}
-                                className="flex-1 rounded-sm bg-accent/20 hover:bg-accent/30 transition cursor-pointer relative group"
-                                style={{ height: `${height}%` }}
-                                title={`Match ${i + 1}: ${points} pts`}
-                              >
-                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition whitespace-nowrap bg-foreground text-background text-xs px-2 py-1 rounded pointer-events-none">
-                                  {points} pts
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                  </div>
+                  <div className="mt-4">
+                    {me.recentForm.length > 0 ? (
+                      <FormBars values={me.recentForm} tone="left" />
+                    ) : (
+                      <div className="rounded-3xl border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-foreground">
+                        No recent matches available yet.
                       </div>
                     )}
                   </div>
-                </div>
-              )}
+                </Card>
+
+                <Card className="border border-border/60 p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{opponent.username}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Last 5 scored matches</p>
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    {opponent.recentForm.length > 0 ? (
+                      <FormBars values={opponent.recentForm} tone="right" />
+                    ) : (
+                      <div className="rounded-3xl border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-foreground">
+                        No recent matches available yet.
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="border-t border-border p-4 flex gap-2 justify-end sticky bottom-0 bg-card">
-          <Link href={`/players/${me.userId}`}>
-            <Button size="sm" variant="outline">
-              View {me.username}
-            </Button>
-          </Link>
-          <Link href={`/players/${opponent.userId}`}>
-            <Button size="sm" variant="outline">
-              View {opponent.username}
-            </Button>
-          </Link>
-          <Button size="sm" onClick={onClose}>
-            Close
-          </Button>
+        <div className="border-t border-border bg-background/95 px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Link href={`/players/${me.userId}`}>
+              <Button size="sm" variant="outline" className="w-full sm:w-auto">
+                View {me.username}
+              </Button>
+            </Link>
+            <Link href={`/players/${opponent.userId}`}>
+              <Button size="sm" variant="outline" className="w-full sm:w-auto">
+                View {opponent.username}
+              </Button>
+            </Link>
+          </div>
         </div>
       </Card>
     </div>
