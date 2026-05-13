@@ -12,6 +12,7 @@ import { ClickableUserAvatar } from "@/components/user-avatar";
 import { PlayerCharts, type PlayerChartRow } from "@/components/player-charts";
 import { formatDate } from "@/lib/utils";
 import { PREDICTION_POINTS } from "@/lib/constants";
+import { loadCivilWarBreakdowns } from "@/lib/civil-war-breakdown";
 
 export default async function PlayerDetailPage({
   params,
@@ -40,6 +41,14 @@ export default async function PlayerDetailPage({
     if (p.matchId) predByMatch.set(String((p.matchId as { _id: unknown })._id), p);
   }
 
+  const cwMatchIds = results
+    .map((r) => {
+      const m = r.matchId as { _id?: unknown } | null;
+      return m && m._id ? String(m._id) : String(r.matchId);
+    })
+    .filter(Boolean);
+  const cwBreakdowns = await loadCivilWarBreakdowns(id, cwMatchIds);
+
   // Combine into per-match rows
   type Row = {
     matchId: string;
@@ -49,6 +58,11 @@ export default async function PlayerDetailPage({
     bonus: number;
     bounty: number;
     rivalry: number;
+    civilWar: number;
+    civilWarBase: number;
+    civilWarCaptainBonus: number;
+    civilWarLabel: string | null;
+    civilWarResult: "win" | "loss" | "draw" | "neutral" | null;
     penalty: number;
     bonuses: { type: string; points: number; reason: string }[];
     penalties: { type: string; points: number; reason: string }[];
@@ -110,6 +124,11 @@ export default async function PlayerDetailPage({
       bonus: r.bonusPoints,
       bounty: r.bountyPoints ?? 0,
       rivalry: r.rivalryPoints ?? 0,
+      civilWar: r.civilWarPoints ?? 0,
+      civilWarBase: cwBreakdowns.get(mid)?.base ?? (r.civilWarPoints ?? 0),
+      civilWarCaptainBonus: cwBreakdowns.get(mid)?.captainBonus ?? 0,
+      civilWarLabel: cwBreakdowns.get(mid)?.outcomeLabel ?? null,
+      civilWarResult: cwBreakdowns.get(mid)?.result ?? null,
       penalty: r.penaltyPoints,
       bonuses: r.bonuses ?? [],
       penalties: r.penalties ?? [],
@@ -138,6 +157,11 @@ export default async function PlayerDetailPage({
       bonus: 0,
       bounty: 0,
       rivalry: 0,
+      civilWar: 0,
+      civilWarBase: 0,
+      civilWarCaptainBonus: 0,
+      civilWarLabel: null,
+      civilWarResult: null,
       penalty: 0,
       bonuses: [],
       penalties: [],
@@ -162,11 +186,12 @@ export default async function PlayerDetailPage({
       acc.bonus += r.bonus;
       acc.bounty += r.bounty;
       acc.rivalry += r.rivalry;
+      acc.civilWar += r.civilWar;
       acc.penalty += r.penalty;
       acc.pred += r.predPoints;
       return acc;
     },
-    { league: 0, bonus: 0, bounty: 0, rivalry: 0, penalty: 0, pred: 0 }
+    { league: 0, bonus: 0, bounty: 0, rivalry: 0, civilWar: 0, penalty: 0, pred: 0 }
   );
 
   // Chart data — oldest → newest with running cumulative league points
@@ -219,7 +244,7 @@ export default async function PlayerDetailPage({
         </Link>
       </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
         <Card>
           <div className="text-xs text-muted-foreground">League</div>
           <div className="text-2xl font-bold">{totals.league}</div>
@@ -239,6 +264,21 @@ export default async function PlayerDetailPage({
         <Card>
           <div className="text-xs text-muted-foreground">Rivalry (lifetime)</div>
           <div className="text-2xl font-bold text-accent">+{totals.rivalry}</div>
+        </Card>
+        <Card>
+          <div className="text-xs text-muted-foreground">🛡️ Civil War (lifetime)</div>
+          <div
+            className={`text-2xl font-bold ${
+              totals.civilWar > 0
+                ? "text-accent"
+                : totals.civilWar < 0
+                  ? "text-danger"
+                  : ""
+            }`}
+          >
+            {totals.civilWar > 0 ? "+" : ""}
+            {totals.civilWar}
+          </div>
         </Card>
         <Card>
           <div className="text-xs text-muted-foreground">Penalty (lifetime)</div>
@@ -298,12 +338,22 @@ export default async function PlayerDetailPage({
               {r.fp > 0 && (
                 <Badge tone="default">{r.fp} Dream11 pts</Badge>
               )}
-              <Badge tone="success">League: {r.leaguePoints}</Badge>
+              <Badge tone="success">Match points: {r.leaguePoints}</Badge>
               {!r.missed && r.rank > 0 && (
                 <Badge tone="default">My11 rank pts: +{r.base}</Badge>
               )}
               {r.bounty > 0 && <Badge tone="warning">Bounty: +{r.bounty}</Badge>}
               {r.rivalry > 0 && <Badge tone="accent">Rivalry: +{r.rivalry}</Badge>}
+              {r.civilWarBase !== 0 && (
+                <Badge tone={r.civilWarBase > 0 ? "accent" : "danger"}>
+                  🛡️ Civil War{r.civilWarLabel ? ` (${r.civilWarLabel})` : ""}: {r.civilWarBase > 0 ? "+" : ""}{r.civilWarBase}
+                </Badge>
+              )}
+              {r.civilWarCaptainBonus > 0 && (
+                <Badge tone="warning">
+                  👑 Captain duel: +{r.civilWarCaptainBonus}
+                </Badge>
+              )}
               {r.predPoints > 0 && (
                 <Badge tone="accent">Prediction: +{r.predPoints}</Badge>
               )}
@@ -316,7 +366,7 @@ export default async function PlayerDetailPage({
 
             <div className="grid md:grid-cols-2 gap-2 text-xs">
               <div className="rounded-lg bg-muted/30 p-2">
-                <div className="font-medium mb-1">League points</div>
+                <div className="font-medium mb-1">Match points</div>
                 <div className="space-y-0.5">
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">Base (rank)</span>
@@ -338,6 +388,30 @@ export default async function PlayerDetailPage({
                     <div className="flex justify-between gap-3 text-accent">
                       <span>+ Rivalry win</span>
                       <span className="shrink-0">+{r.rivalry}</span>
+                    </div>
+                  )}
+                  {r.civilWarBase !== 0 && (
+                    <div
+                      className={`flex justify-between gap-3 ${
+                        r.civilWarBase > 0 ? "text-accent" : "text-danger"
+                      }`}
+                    >
+                      <span>
+                        {r.civilWarBase > 0 ? "+" : "−"} Civil War
+                        {r.civilWarLabel ? ` (${r.civilWarLabel})` : ""}
+                      </span>
+                      <span className="shrink-0">
+                        {r.civilWarBase > 0 ? "+" : ""}
+                        {r.civilWarBase}
+                      </span>
+                    </div>
+                  )}
+                  {r.civilWarCaptainBonus > 0 && (
+                    <div className="flex justify-between gap-3 text-warning">
+                      <span>+ Captain duel win</span>
+                      <span className="shrink-0">
+                        +{r.civilWarCaptainBonus}
+                      </span>
                     </div>
                   )}
                   {r.penalties.map((p, i) => (

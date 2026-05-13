@@ -24,6 +24,8 @@ export default async function LeaderboardPage() {
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">League</th>
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">Predictions</th>
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">Bonus</th>
+              <th className="p-2 sm:p-3 text-right hidden lg:table-cell" title="Rivalry duels">⚔️ Rivalry</th>
+              <th className="p-2 sm:p-3 text-right hidden lg:table-cell" title="Civil War team battles">🛡️ Civil War</th>
               <th className="p-2 sm:p-3 text-right hidden md:table-cell">Penalty</th>
               <th className="p-2 sm:p-3 text-center hidden sm:table-cell text-base" title="Gold (1st place finishes)">🥇</th>
               <th className="p-2 sm:p-3 text-center hidden sm:table-cell text-base" title="Silver (2nd place finishes)">🥈</th>
@@ -66,6 +68,26 @@ export default async function LeaderboardPage() {
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell">{r.leaguePoints}</td>
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell">{r.predictionPoints}</td>
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell text-success">+{r.bonusPoints}</td>
+                  <td className="p-2 sm:p-3 text-right hidden lg:table-cell tabular-nums">
+                    {r.rivalryPoints !== 0 ? (
+                      <span className={r.rivalryPoints > 0 ? "text-accent" : "text-danger"}>
+                        {r.rivalryPoints > 0 ? "+" : ""}
+                        {r.rivalryPoints}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="p-2 sm:p-3 text-right hidden lg:table-cell tabular-nums">
+                    {r.civilWarPoints !== 0 ? (
+                      <span className={r.civilWarPoints > 0 ? "text-accent" : "text-danger"}>
+                        {r.civilWarPoints > 0 ? "+" : ""}
+                        {r.civilWarPoints}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="p-2 sm:p-3 text-right hidden md:table-cell text-danger">{r.penaltyPoints}</td>
                   <td className="p-2 sm:p-3 text-center hidden sm:table-cell">
                     {r.wins > 0 ? <span className="font-semibold text-yellow-400 text-base sm:text-lg">🥇 {r.wins}</span> : <span className="text-muted-foreground">—</span>}

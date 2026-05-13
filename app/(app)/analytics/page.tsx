@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/utils";
 import { PREDICTION_POINTS } from "@/lib/constants";
 import Link from "next/link";
 import { CompareButton } from "@/components/compare-button";
+import { loadCivilWarBreakdowns } from "@/lib/civil-war-breakdown";
 
 export default async function AnalyticsPage() {
   const me = await requireUser();
@@ -34,6 +35,14 @@ export default async function AnalyticsPage() {
     }
   }
 
+  const cwMatchIds = results
+    .map((r) => {
+      const m = r.matchId as { _id?: unknown } | null;
+      return m && m._id ? String(m._id) : String(r.matchId);
+    })
+    .filter(Boolean);
+  const cwBreakdowns = await loadCivilWarBreakdowns(String(me._id), cwMatchIds);
+
   type Row = {
     matchId: string;
     match: { teamA: string; teamB: string; startTime: Date; matchWinner?: string } | null;
@@ -42,6 +51,11 @@ export default async function AnalyticsPage() {
     bonus: number;
     bounty: number;
     rivalry: number;
+    civilWar: number;
+    civilWarBase: number;
+    civilWarCaptainBonus: number;
+    civilWarLabel: string | null;
+    civilWarResult: "win" | "loss" | "draw" | "neutral" | null;
     penalty: number;
     bonuses: { type: string; points: number; reason: string }[];
     penalties: { type: string; points: number; reason: string }[];
@@ -103,6 +117,11 @@ export default async function AnalyticsPage() {
       bonus: r.bonusPoints,
       bounty: r.bountyPoints ?? 0,
       rivalry: r.rivalryPoints ?? 0,
+      civilWar: r.civilWarPoints ?? 0,
+      civilWarBase: cwBreakdowns.get(mid)?.base ?? (r.civilWarPoints ?? 0),
+      civilWarCaptainBonus: cwBreakdowns.get(mid)?.captainBonus ?? 0,
+      civilWarLabel: cwBreakdowns.get(mid)?.outcomeLabel ?? null,
+      civilWarResult: cwBreakdowns.get(mid)?.result ?? null,
       penalty: r.penaltyPoints,
       bonuses: r.bonuses ?? [],
       penalties: r.penalties ?? [],
@@ -349,12 +368,22 @@ export default async function AnalyticsPage() {
                 {r.fp > 0 && (
                   <Badge tone="default">{r.fp} Dream11 pts</Badge>
                 )}
-                <Badge tone="success">League: {r.leaguePoints}</Badge>
+                <Badge tone="success">Match points: {r.leaguePoints}</Badge>
                 {!r.missed && r.rank > 0 && (
                   <Badge tone="default">My11 rank pts: +{r.base}</Badge>
                 )}
                 {r.bounty > 0 && <Badge tone="warning">Bounty: +{r.bounty}</Badge>}
                 {r.rivalry > 0 && <Badge tone="accent">Rivalry: +{r.rivalry}</Badge>}
+                {r.civilWarBase !== 0 && (
+                  <Badge tone={r.civilWarBase > 0 ? "accent" : "danger"}>
+                    🛡️ Civil War{r.civilWarLabel ? ` (${r.civilWarLabel})` : ""}: {r.civilWarBase > 0 ? "+" : ""}{r.civilWarBase}
+                  </Badge>
+                )}
+                {r.civilWarCaptainBonus > 0 && (
+                  <Badge tone="warning">
+                    👑 Captain duel: +{r.civilWarCaptainBonus}
+                  </Badge>
+                )}
                 {r.predPoints > 0 && (
                   <Badge tone="accent">Prediction: +{r.predPoints}</Badge>
                 )}
@@ -367,7 +396,7 @@ export default async function AnalyticsPage() {
 
               <div className="grid md:grid-cols-2 gap-2 text-xs">
                 <div className="rounded-lg bg-muted/30 p-2">
-                  <div className="font-medium mb-1">League points</div>
+                  <div className="font-medium mb-1">Match points</div>
                   <div className="space-y-0.5">
                     <div className="flex justify-between gap-3">
                       <span className="text-muted-foreground">Base (rank)</span>
@@ -389,6 +418,30 @@ export default async function AnalyticsPage() {
                       <div className="flex justify-between gap-3 text-accent">
                         <span>+ Rivalry win</span>
                         <span className="shrink-0">+{r.rivalry}</span>
+                      </div>
+                    )}
+                    {r.civilWarBase !== 0 && (
+                      <div
+                        className={`flex justify-between gap-3 ${
+                          r.civilWarBase > 0 ? "text-accent" : "text-danger"
+                        }`}
+                      >
+                        <span>
+                          {r.civilWarBase > 0 ? "+" : "−"} Civil War
+                          {r.civilWarLabel ? ` (${r.civilWarLabel})` : ""}
+                        </span>
+                        <span className="shrink-0">
+                          {r.civilWarBase > 0 ? "+" : ""}
+                          {r.civilWarBase}
+                        </span>
+                      </div>
+                    )}
+                    {r.civilWarCaptainBonus > 0 && (
+                      <div className="flex justify-between gap-3 text-warning">
+                        <span>+ Captain duel win</span>
+                        <span className="shrink-0">
+                          +{r.civilWarCaptainBonus}
+                        </span>
                       </div>
                     )}
                     {r.penalties.map((p, i) => (
