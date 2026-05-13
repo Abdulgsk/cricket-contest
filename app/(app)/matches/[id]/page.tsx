@@ -48,7 +48,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
 
   const civilWar = match.status === "completed"
     ? await CivilWar.findOne({ matchId: id, settled: true })
-        .populate({ path: "members.userId", model: User, select: "username" })
+        .populate({ path: "members.userId", model: User, select: "username avatar" })
         .lean()
     : null;
 
@@ -322,15 +322,16 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           ? String(civilWar.result.captainBUserId)
           : null;
         const buildMember = (m: {
-          userId: { _id?: { toString(): string }; username?: string } | unknown;
+          userId: { _id?: { toString(): string }; username?: string; avatar?: string | null } | unknown;
           side: "A" | "B";
         }) => {
-          const u = m.userId as { _id?: { toString(): string }; username?: string };
+          const u = m.userId as { _id?: { toString(): string }; username?: string; avatar?: string | null };
           const uid = u?._id ? String(u._id) : String(m.userId);
           const captainId = m.side === "A" ? captainAId : captainBId;
           return {
             userId: uid,
             username: u?.username ?? "—",
+            avatar: u?.avatar ?? null,
             fantasyPoints: fpByUser.get(uid) ?? 0,
             isCaptain: uid === captainId,
             isMe: uid === myId,

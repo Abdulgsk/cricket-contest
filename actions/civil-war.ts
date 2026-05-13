@@ -334,6 +334,7 @@ export type CivilWarHistoryEntry = {
   teamAMembers: Array<{
     userId: string;
     username: string;
+    avatar: string | null;
     fantasyPoints: number;
     isCaptain: boolean;
     isMe: boolean;
@@ -341,6 +342,7 @@ export type CivilWarHistoryEntry = {
   teamBMembers: Array<{
     userId: string;
     username: string;
+    avatar: string | null;
     fantasyPoints: number;
     isCaptain: boolean;
     isMe: boolean;
@@ -486,9 +488,15 @@ export async function getMyRivalryAndCivilWarRecord(
   const [cwUsers, cwResults] = await Promise.all([
     cwUserIds.size > 0
       ? User.find({ _id: { $in: Array.from(cwUserIds) } })
-          .select("username")
+          .select("username avatar")
           .lean()
-      : Promise.resolve([] as Array<{ _id: mongoose.Types.ObjectId; username: string }>),
+      : Promise.resolve(
+          [] as Array<{
+            _id: mongoose.Types.ObjectId;
+            username: string;
+            avatar?: string | null;
+          }>
+        ),
     cwMatchIds.length > 0
       ? (
           await import("@/models/MatchResult")
@@ -507,6 +515,9 @@ export async function getMyRivalryAndCivilWarRecord(
         ),
   ]);
   const usernameMap = new Map(cwUsers.map((u) => [String(u._id), u.username]));
+  const avatarMap = new Map(
+    cwUsers.map((u) => [String(u._id), u.avatar ?? null])
+  );
   const fpKey = (matchId: string, userId: string) => `${matchId}::${userId}`;
   const fpMap = new Map<string, number>();
   for (const r of cwResults) {
@@ -563,6 +574,7 @@ export async function getMyRivalryAndCivilWarRecord(
       return {
         userId: uid,
         username: usernameMap.get(uid) ?? "—",
+        avatar: avatarMap.get(uid) ?? null,
         fantasyPoints: fpMap.get(fpKey(matchIdStr, uid)) ?? 0,
         isCaptain: uid === (m.side === "A" ? captainAId : captainBId),
         isMe: uid === userId,

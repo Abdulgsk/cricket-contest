@@ -1,4 +1,5 @@
 import type { CivilWarHistoryEntry } from "@/actions/civil-war";
+import { UserAvatar } from "@/components/user-avatar";
 
 type Verdict = {
   text: string;
@@ -218,10 +219,16 @@ export function CivilWarResult({
                   if (!m) return <span className="text-muted-foreground/60">—</span>;
                   return (
                     <span
-                      className={`inline-flex items-center gap-1 min-w-0 ${
+                      className={`inline-flex items-center gap-1.5 min-w-0 ${
                         m.isMe ? "text-primary font-semibold" : ""
                       }`}
                     >
+                      <UserAvatar
+                        src={m.avatar}
+                        name={m.username}
+                        size={20}
+                        className="ring-1 ring-border/60"
+                      />
                       {m.isCaptain && (
                         <span
                           className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500/15 text-amber-500 text-[9px] font-bold ring-1 ring-amber-500/30 shrink-0"
