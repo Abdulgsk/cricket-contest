@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { renameCivilWarTeamAction } from "@/actions/civil-war";
 import type { CivilWarMatchView } from "@/actions/civil-war";
+import { CivilWarLivePanel } from "@/components/rivalry/civil-war-live-panel";
+import { useLiveCivilWar } from "@/components/rivalry/use-live-civil-war";
 
 const OUTCOME_LABEL: Record<string, string> = {
   A_decisive: "Decisive win",
@@ -74,6 +76,19 @@ function CivilWarCard({ m }: { m: CivilWarMatchView }) {
   const teamA = members.filter((mem) => mem.side === "A");
   const teamB = members.filter((mem) => mem.side === "B");
 
+  // Live points feed — only meaningful once revealed and not yet settled.
+  const liveEnabled = showClear && !m.settled;
+  const live = useLiveCivilWar(liveEnabled ? m.matchId : "");
+  const liveByUserId = new Map<string, { fp: number; matched: boolean }>();
+  if (live.data && live.data.ok && "available" in live.data && live.data.available) {
+    for (const mem of live.data.teamA.members) {
+      liveByUserId.set(mem.userId, { fp: mem.fantasyPoints, matched: mem.matched });
+    }
+    for (const mem of live.data.teamB.members) {
+      liveByUserId.set(mem.userId, { fp: mem.fantasyPoints, matched: mem.matched });
+    }
+  }
+
   return (
     <Card>
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -96,6 +111,22 @@ function CivilWarCard({ m }: { m: CivilWarMatchView }) {
         </p>
       )}
 
+      {showClear && !m.settled && (
+        <div className="mb-3">
+          <CivilWarLivePanel
+            data={live.data}
+            loading={live.loading}
+            refresh={live.refresh}
+            canRefresh={live.canRefresh}
+            cooldownLeftMs={live.cooldownLeftMs}
+            refreshing={live.refreshing}
+            now={live.now}
+            teamAName={m.teamAName}
+            teamBName={m.teamBName}
+          />
+        </div>
+      )}
+
       <div className="relative">
         <div
           className={[
@@ -114,6 +145,7 @@ function CivilWarCard({ m }: { m: CivilWarMatchView }) {
             myUserId={m.myUserId}
             canRename={showClear && m.mySide === "A" && m.amICaptain}
             highlighted={showClear && m.mySide === "A"}
+            liveByUserId={liveEnabled ? liveByUserId : null}
           />
 
           {/* VS divider: horizontal on mobile, vertical on desktop */}
@@ -134,6 +166,7 @@ function CivilWarCard({ m }: { m: CivilWarMatchView }) {
             myUserId={m.myUserId}
             canRename={showClear && m.mySide === "B" && m.amICaptain}
             highlighted={showClear && m.mySide === "B"}
+            liveByUserId={liveEnabled ? liveByUserId : null}
           />
         </div>
 
@@ -227,6 +260,7 @@ function TeamPanel({
   myUserId,
   canRename,
   highlighted,
+  liveByUserId,
 }: {
   matchId: string;
   side: "A" | "B";
@@ -235,6 +269,7 @@ function TeamPanel({
   myUserId: string;
   canRename: boolean;
   highlighted: boolean;
+  liveByUserId: Map<string, { fp: number; matched: boolean }> | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(name);
@@ -348,6 +383,7 @@ function TeamPanel({
           )}
           {members.map((mem) => {
             const isMe = mem.userId === myUserId;
+            const live = liveByUserId?.get(mem.userId) ?? null;
             return (
               <li
                 key={mem.userId}
@@ -370,11 +406,23 @@ function TeamPanel({
                     </span>
                   )}
                 </span>
-                {isMe && (
-                  <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary text-primary-foreground shrink-0">
-                    you
-                  </span>
-                )}
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {live && live.matched && (
+                    <span
+                      className={`text-xs font-bold tabular-nums ${
+                        mem.isCaptain ? "text-amber-600 dark:text-amber-300" : ""
+                      }`}
+                      title="Live fantasy points (My11)"
+                    >
+                      {live.fp}
+                    </span>
+                  )}
+                  {isMe && (
+                    <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary text-primary-foreground">
+                      you
+                    </span>
+                  )}
+                </span>
               </li>
             );
           })}
