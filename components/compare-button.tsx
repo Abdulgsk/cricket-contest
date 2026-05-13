@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,14 +17,17 @@ interface CompareButtonProps {
 }
 
 export function CompareButton({ meId }: CompareButtonProps) {
-  const [showSelectModal, setShowSelectModal] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selecting, setSelecting] = useState(false);
   const [comparisonData, setComparisonData] = useState<{
     me: ComparisonStats;
     opponent: ComparisonStats;
   } | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = async (query: string) => {
     setSearchTerm(query);
@@ -46,75 +49,110 @@ export function CompareButton({ meId }: CompareButtonProps) {
     }
   };
 
-  const handleSelectPlayer = async (playerId: string) => {
+  const handleSelectPlayer = async (playerId: string, playerName: string) => {
+    setSelecting(true);
+    setComparisonLoading(true);
+    setIsOpen(false);
+    setSearchTerm("");
+    setPlayers([]);
+
     try {
       const res = await fetch(`/api/players/${playerId}/comparison`);
       if (res.ok) {
         const data = await res.json();
         setComparisonData(data);
-        setShowSelectModal(false);
-        setSearchTerm("");
-        setPlayers([]);
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setComparisonLoading(false);
+      setSelecting(false);
     }
   };
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   return (
     <>
-      <div className="flex gap-2">
-        <Button onClick={() => setShowSelectModal(true)} variant="outline" size="sm">
+      <div ref={dropdownRef} className="relative inline-block w-full max-w-sm">
+        <Button
+          onClick={() => setIsOpen(!isOpen)}
+          variant="outline"
+          size="sm"
+          className="w-full justify-between"
+        >
           Compare with Player
+          <span className="text-xs opacity-60">▼</span>
         </Button>
-      </div>
 
-      {/* Select Modal */}
-      {showSelectModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <Card className="w-full max-w-md space-y-4 p-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold">Select a player to compare</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSelectModal(false);
-                  setSearchTerm("");
-                  setPlayers([]);
-                }}
-                className="text-muted-foreground hover:text-foreground text-2xl leading-none"
-              >
-                ✕
-              </button>
-            </div>
-            <Input
-              placeholder="Search players..."
-              value={searchTerm}
-              onChange={(e) => handleSearch(e.target.value)}
-              autoFocus
-            />
-            <div className="max-h-60 overflow-y-auto space-y-1">
-              {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
-              {players.length === 0 && searchTerm && !loading && (
-                <div className="text-sm text-muted-foreground">No players found</div>
-              )}
-              {players.map((p) => (
-                <button
-                  key={p._id}
-                  type="button"
-                  onClick={() => handleSelectPlayer(p._id)}
-                  className="w-full text-left px-2 py-2 rounded hover:bg-muted transition"
-                >
-                  <div className="font-medium">{p.username}</div>
-                </button>
-              ))}
+        {isOpen && (
+          <Card className="absolute top-full left-0 right-0 mt-2 w-full z-50 p-0 shadow-lg">
+            <div className="p-3 border-b border-border space-y-3">
+              <Input
+                placeholder="Search players..."
+                value={searchTerm}
+                onChange={(e) => handleSearch(e.target.value)}
+                autoFocus
+                className="text-sm"
+              />
+              <div className="max-h-64 overflow-y-auto space-y-1">
+                {loading && (
+                  <div className="text-sm text-muted-foreground p-2">
+                    <div className="inline-block animate-spin">◌</div> Loading...
+                  </div>
+                )}
+                {!loading && players.length === 0 && searchTerm && (
+                  <div className="text-sm text-muted-foreground p-2">No players found</div>
+                )}
+                {!loading && players.length > 0 && (
+                  <>
+                    {players.map((p) => (
+                      <button
+                        key={p._id}
+                        type="button"
+                        onClick={() => handleSelectPlayer(p._id, p.username)}
+                        disabled={selecting}
+                        className="w-full text-left px-3 py-2 rounded hover:bg-muted transition disabled:opacity-50"
+                      >
+                        <div className="font-medium text-sm">{p.username}</div>
+                      </button>
+                    ))}
+                  </>
+                )}
+                {!loading && searchTerm.length === 0 && (
+                  <div className="text-sm text-muted-foreground p-2">
+                    Type at least 2 characters to search
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
+        )}
+      </div>
+
+      {/* Loading State */}
+      {comparisonLoading && (
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="text-center space-y-3">
+            <div className="inline-flex">
+              <div className="text-4xl animate-spin">◌</div>
+            </div>
+            <p className="text-white font-medium">Loading comparison...</p>
+          </div>
         </div>
       )}
 
       {/* Comparison Modal */}
-      {comparisonData && (
+      {comparisonData && !comparisonLoading && (
         <PlayerComparison
           me={comparisonData.me}
           opponent={comparisonData.opponent}

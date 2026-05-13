@@ -26,22 +26,37 @@ async function getPlayerStats(userId: string) {
   let wins = 0;
   let silver = 0;
   let bronze = 0;
+  let maxPoints = -Infinity;
+  let minPoints = Infinity;
   const ranks: number[] = [];
+  const recentResults: { matchPoints: number; rank: number; date: Date }[] = [];
 
   for (const r of results) {
     if (!r.missed) {
       matches++;
     }
-    leaguePoints += r.finalPoints || r.basePoints || 0;
+    const matchTotal = (r.finalPoints || r.basePoints || 0);
+    
+    leaguePoints += matchTotal;
     bonusPoints += r.bonusPoints || 0;
     bountyPoints += r.bountyPoints || 0;
     rivalryPoints += r.rivalryPoints || 0;
     penaltyPoints += r.penaltyPoints || 0;
 
+    maxPoints = Math.max(maxPoints, matchTotal);
+    minPoints = Math.min(minPoints, matchTotal);
+
     if (r.rank === 1) wins++;
     if (r.rank === 2) silver++;
     if (r.rank === 3) bronze++;
     if (r.rank > 0) ranks.push(r.rank);
+
+    // Store recent results for trend analysis
+    recentResults.push({
+      matchPoints: matchTotal,
+      rank: r.rank,
+      date: r.createdAt || new Date(),
+    });
   }
 
   for (const p of predictions) {
@@ -55,10 +70,27 @@ async function getPlayerStats(userId: string) {
     bountyPoints +
     rivalryPoints -
     penaltyPoints;
+
   const top3 = wins + silver + bronze;
   const top5 = ranks.filter((r) => r <= 5).length;
   const averageFinish =
     ranks.length > 0 ? ranks.reduce((a, b) => a + b, 0) / ranks.length : 0;
+  const averagePointsPerMatch =
+    matches > 0 ? leaguePoints / matches : 0;
+  const winRate = matches > 0 ? ((wins / matches) * 100).toFixed(1) : "0";
+  const podiumRate = matches > 0 ? ((top3 / matches) * 100).toFixed(1) : "0";
+
+  // Recent form (last 5 matches)
+  const recentFormData = recentResults
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, 5)
+    .map((r) => r.matchPoints)
+    .reverse();
+
+  const consistency =
+    recentFormData.length > 0
+      ? recentFormData.reduce((a, b) => a + b, 0) / recentFormData.length
+      : 0;
 
   return {
     userId: String(user._id),
@@ -78,6 +110,13 @@ async function getPlayerStats(userId: string) {
     top3,
     top5,
     averageFinish,
+    averagePointsPerMatch: parseFloat(averagePointsPerMatch.toFixed(2)),
+    winRate: parseFloat(winRate),
+    podiumRate: parseFloat(podiumRate),
+    maxPoints: maxPoints === -Infinity ? 0 : maxPoints,
+    minPoints: minPoints === Infinity ? 0 : minPoints,
+    recentForm: recentFormData,
+    consistency: parseFloat(consistency.toFixed(2)),
   };
 }
 
