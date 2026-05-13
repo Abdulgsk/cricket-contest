@@ -181,7 +181,7 @@ export default async function PlayerDetailPage({
   const chartData: PlayerChartRow[] = [];
   let cumulative = 0;
   for (const r of chronological) {
-    cumulative += r.leaguePoints;
+    cumulative += r.leaguePoints + r.predPoints;
     const label = r.match
       ? `${teamShort(r.match.teamA)} v ${teamShort(r.match.teamB)}`
       : "—";
@@ -306,6 +306,11 @@ export default async function PlayerDetailPage({
               {r.rivalry > 0 && <Badge tone="accent">Rivalry: +{r.rivalry}</Badge>}
               {r.predPoints > 0 && (
                 <Badge tone="accent">Prediction: +{r.predPoints}</Badge>
+              )}
+              {!r.missed && (
+                <Badge tone="default" className="font-semibold">
+                  Match total: {r.leaguePoints + r.predPoints}
+                </Badge>
               )}
             </div>
 

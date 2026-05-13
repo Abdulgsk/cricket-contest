@@ -73,7 +73,7 @@ export default async function AnalyticsPage() {
 
   let cumulative = 0;
   const chartData: PlayerChartRow[] = rows.map((r) => {
-    cumulative += r.league;
+    cumulative += r.league + r.prediction;
     return {
       label: `${teamShort(r.teamA)} v ${teamShort(r.teamB)}`,
       date: r.startTime,
