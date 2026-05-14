@@ -25,10 +25,10 @@ export function RivalryPageTabs({ tabs }: { tabs: Tab[] }) {
                 type="button"
                 onClick={() => setActive(t.id)}
                 className={
-                  "flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition " +
+                  "flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-medium transition " +
                   (isActive
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-primary/40"
-                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground")
+                    ? "border-primary/50 bg-background text-foreground shadow-sm"
+                    : "border-transparent text-muted-foreground hover:bg-background/60 hover:text-foreground")
                 }
               >
                 {t.icon ? <span>{t.icon}</span> : null}
