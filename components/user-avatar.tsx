@@ -108,16 +108,22 @@ export function ClickableUserAvatar({
             className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center gap-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="rounded-2xl overflow-hidden ring-1 ring-white/15 bg-card max-w-[90vw] max-h-[80vh] flex items-center justify-center">
+            <div className="rounded-2xl overflow-hidden ring-1 ring-white/15 bg-card flex items-center justify-center">
               {src ? (
-                // Show the original image at its native resolution.
-                // Avoids scaling a small thumbnail up to 320px (which is what
-                // caused the blur). image-rendering: auto + no forced size.
+                // Render at the image's NATURAL resolution. We never upscale —
+                // that's what was causing the previous blur. The image keeps
+                // its own width/height (capped to viewport), so a 512px source
+                // shows at 512px on a desktop, not stretched to 800px.
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={src}
                   alt={name}
-                  className="block max-w-[90vw] max-h-[80vh] w-auto h-auto object-contain"
+                  className="block w-auto h-auto object-contain"
+                  style={{
+                    maxWidth: "min(90vw, 512px)",
+                    maxHeight: "min(80vh, 512px)",
+                    imageRendering: "auto",
+                  }}
                   decoding="async"
                 />
               ) : (

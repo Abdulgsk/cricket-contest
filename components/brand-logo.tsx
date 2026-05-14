@@ -40,6 +40,7 @@ export function BrandLogo({
 }) {
   const s = SIZE[size];
   const [open, setOpen] = useState(false);
+  const [imgOk, setImgOk] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -55,7 +56,7 @@ export function BrandLogo({
     };
   }, [open]);
 
-  const mark = (
+  const mark = imgOk ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={LOGO_SRC}
@@ -65,7 +66,23 @@ export function BrandLogo({
       className="block rounded-xl shrink-0 select-none"
       style={{ width: s.mark, height: s.mark }}
       draggable={false}
+      onError={() => setImgOk(false)}
     />
+  ) : (
+    // Fallback when /gully11-logo.png isn't present — themed monogram tile.
+    <span
+      className="inline-flex items-center justify-center rounded-xl shrink-0 font-bold text-white"
+      style={{
+        width: s.mark,
+        height: s.mark,
+        fontSize: Math.floor(s.mark * 0.42),
+        background:
+          "linear-gradient(135deg, rgb(var(--primary)) 0%, rgb(var(--accent)) 100%)",
+      }}
+      aria-hidden
+    >
+      G11
+    </span>
   );
 
   const inner = (

@@ -143,11 +143,11 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
 }
 
 /**
- * Maximum stored avatar size (raw data URI string length). With JPEG quality 0.85
- * at 256x256 this stays well under 30KB for typical photos. We cap at 96 KB to
- * leave headroom while keeping User documents small.
+ * Maximum stored avatar size (raw data URI string length). With JPEG quality
+ * 0.82 at 512x512 this typically lands at 60–90 KB. We cap at 192 KB to leave
+ * headroom while keeping User documents reasonable.
  */
-const MAX_AVATAR_BYTES = 96 * 1024;
+const MAX_AVATAR_BYTES = 192 * 1024;
 const AVATAR_DATA_URI_RE = /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+$/;
 
 export async function updateAvatarAction(

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/user-avatar";
 import { updateAvatarAction } from "@/actions/auth";
 
-const TARGET = 256; // px - resize square
-const QUALITY = 0.85;
+const TARGET = 512; // px - resize square (sharp enough for the preview modal)
+const QUALITY = 0.82;
 
 async function compressToDataUri(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file);
@@ -52,7 +52,7 @@ export function AvatarUploader({
     }
     try {
       const dataUri = await compressToDataUri(file);
-      if (dataUri.length > 96 * 1024) {
+      if (dataUri.length > 192 * 1024) {
         toast.error("Compressed image still too large");
         return;
       }
