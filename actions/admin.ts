@@ -213,6 +213,8 @@ export async function submitResultsAction(payload: unknown) {
     meta: { matchId: parsed.data.matchId },
   });
   revalidatePath("/leaderboard");
+  revalidatePath("/rivalry");
+  revalidatePath("/dashboard");
   revalidatePath(`/matches/${parsed.data.matchId}`);
   return { ok: true };
 }

@@ -934,7 +934,7 @@ export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
       handle: u?.userId ?? "",
       avatar: u?.avatar ?? null,
       totalPoints: (r.totalPoints as number) + pred + pool - withdraw,
-      leaguePoints: r.totalPoints as number,
+      leaguePoints: r.basePoints as number,
       predictionPoints: pred + pool,
       customPoolPoints: pool,
       basePoints: r.basePoints as number,

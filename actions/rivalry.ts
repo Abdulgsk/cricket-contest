@@ -482,13 +482,28 @@ export async function getRivalryView() {
   };
 
   // Show all not-yet-started matches today + currently live ones that have no result yet.
-  const matches = await Match.find({
+  let matches = await Match.find({
     startTime: { $lte: endOfDay },
     status: { $in: ["upcoming", "live"] },
     resultsEntered: { $ne: true },
   })
     .sort({ startTime: 1 })
     .lean();
+
+  // Fallback: if no eligible match for today (all submitted, or none scheduled),
+  // surface the next upcoming match so users can challenge ahead of time once
+  // the current day's results are entered.
+  if (matches.length === 0) {
+    const nextUpcoming = await Match.find({
+      startTime: { $gt: endOfDay },
+      status: { $in: ["upcoming", "live"] },
+      resultsEntered: { $ne: true },
+    })
+      .sort({ startTime: 1 })
+      .limit(1)
+      .lean();
+    matches = nextUpcoming;
+  }
 
   const matchIds = matches.map((m) => new mongoose.Types.ObjectId(String(m._id)));
 
