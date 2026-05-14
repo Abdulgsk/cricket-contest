@@ -662,8 +662,8 @@ export async function fetchContestPointsAction(payload: unknown) {
 }
 
 /** Admin/superadmin: regenerate storyline facts for the most recently scored
- * match. Useful to preview/refresh the dashboard storyline card without
- * waiting for the next match to be scored. */
+ * match. Runs synchronously so the admin sees the new batch as soon as the
+ * action returns. */
 export async function regenerateLatestFactsAction() {
   await requireRole("admin", "superadmin");
   await connectDB();
@@ -674,13 +674,20 @@ export async function regenerateLatestFactsAction() {
   if (!latest) {
     return { ok: false as const, error: "No scored match found yet" };
   }
-  const { generateFactsForMatch } = await import("@/services/facts");
-  const facts = await generateFactsForMatch(String(latest._id));
-  revalidatePath("/dashboard");
+  const matchId = String(latest._id);
+  try {
+    const { generateFactsForMatch } = await import("@/services/facts");
+    await generateFactsForMatch(matchId);
+  } catch (err) {
+    console.warn("[admin] facts regeneration failed", err);
+    return {
+      ok: false as const,
+      error: err instanceof Error ? err.message : "Generation failed",
+    };
+  }
   return {
     ok: true as const,
     matchLabel: `${latest.teamA} vs ${latest.teamB}`,
-    count: facts.length,
   };
 }
 

@@ -58,6 +58,9 @@ export function useLiveCivilWar(matchId: string) {
   const [refreshing, setRefreshing] = useState(false);
   const [cooldownUntil, setCooldownUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  // Throttle win% updates: only refresh the displayed % every 3rd successful poll.
+  const pollCountRef = useRef(0);
+  const stickyWinProbRef = useRef<{ A: number; B: number } | null>(null);
 
   const fetchOnce = useCallback(
     async (manual = false) => {
@@ -68,6 +71,18 @@ export function useLiveCivilWar(matchId: string) {
           cache: "no-store",
         });
         const json = (await res.json()) as LiveResponse;
+        if (json.ok && "available" in json && json.available) {
+          pollCountRef.current += 1;
+          const shouldRefreshWinProb =
+            stickyWinProbRef.current === null ||
+            manual ||
+            pollCountRef.current % 3 === 1;
+          if (shouldRefreshWinProb) {
+            stickyWinProbRef.current = json.winProb;
+          } else if (stickyWinProbRef.current) {
+            json.winProb = stickyWinProbRef.current;
+          }
+        }
         setData(json);
         if (manual) setCooldownUntil(Date.now() + REFRESH_COOLDOWN_MS);
       } catch (e) {

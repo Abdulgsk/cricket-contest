@@ -16,6 +16,7 @@ import {
 } from "@/lib/constants";
 import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 interface AdminResultEntry {
   userId: string; // mongo id
@@ -91,6 +92,10 @@ export async function processMatchResults(
   await connectDB();
   const match = await Match.findById(matchId);
   if (!match) throw new Error("Match not found");
+  // True only the FIRST time this match is published. Edits to an already-
+  // entered result will not regenerate facts (admin can use the regenerate
+  // button on the admin page when they want a fresh AI pass).
+  const isFirstPublish = !match.resultsEntered;
   const bonusConfig = await getBonusRuntimeConfig();
 
   const doubleMul = match.doublePoints ? 2 : 1;
@@ -215,12 +220,18 @@ export async function processMatchResults(
   }
   await match.save();
 
-  // --- Generate storyline facts (best-effort, never fails the result entry) ---
-  try {
-    const { generateFactsForMatch } = await import("@/services/facts");
-    await generateFactsForMatch(matchId);
-  } catch {
-    // facts are non-critical; ignore failures
+  // --- Generate storyline facts (background, after the response is sent) ---
+  // Only on the FIRST publish — subsequent edits don't regenerate. Admins can
+  // trigger a regen manually from the admin page if needed.
+  if (isFirstPublish) {
+    after(async () => {
+      try {
+        const { generateFactsForMatch } = await import("@/services/facts");
+        await generateFactsForMatch(matchId);
+      } catch (err) {
+        console.warn("[scoring] background facts generation failed", err);
+      }
+    });
   }
 
   // Unlock the rivalry dropdown for any later same-day match that was waiting

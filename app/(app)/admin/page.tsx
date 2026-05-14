@@ -15,6 +15,7 @@ import { formatDate } from "@/lib/utils";
 import { requireRole, userHasFeature } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 import { getSettings } from "@/models/Settings";
+import { getLatestFacts } from "@/services/facts";
 import { BONUSES } from "@/lib/constants";
 
 export default async function AdminHome() {
@@ -46,6 +47,9 @@ export default async function AdminHome() {
       .lean(),
     getSettings(),
   ]);
+
+  // Latest AI-generated facts so admins can preview/verify regeneration here.
+  const latestFacts = await getLatestFacts(20);
 
   const canEditBonus = userHasFeature(me, "bonus.manage");
   const canEditCivilWar = me.role === "superadmin" || userHasFeature(me, "civilwar.points.manage");
@@ -214,6 +218,24 @@ export default async function AdminHome() {
           </div>
           <RegenerateFactsButton />
         </div>
+        {latestFacts.length > 0 && (
+          <div className="mt-3 border-t border-border/40 pt-3">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
+              Latest facts ({latestFacts.length})
+            </div>
+            <ul className="space-y-1.5 text-xs text-muted-foreground">
+              {latestFacts.map((f) => (
+                <li key={String(f._id)} className="flex gap-2">
+                  <span className="text-foreground/40 shrink-0">•</span>
+                  <span>
+                    <span className="text-foreground">{f.text}</span>
+                    <span className="ml-1 opacity-60">({f.type}, score {f.score})</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Card>
     </div>
   );

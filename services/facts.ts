@@ -5,8 +5,11 @@ import { Prediction } from "@/models/Prediction";
 import { DailyFact } from "@/models/DailyFact";
 import { Rivalry } from "@/models/Rivalry";
 import { User } from "@/models/User";
-import { computeLeaderboard, type LeaderboardRow } from "@/services/scoring";
-import { ordinal } from "@/lib/utils";
+import { BonusAuditLog } from "@/models/BonusAuditLog";
+import { computeLeaderboard } from "@/services/scoring";
+import { buildAnalyzerSnapshot } from "@/services/facts-analyzer";
+import { buildAiInput, generateAiFacts } from "@/services/facts-ai";
+import { revalidatePath } from "next/cache";
 
 interface Fact {
   text: string;
@@ -18,317 +21,81 @@ interface Fact {
 /**
  * Generate narrative storyline facts for a just-scored match and persist them.
  * Called automatically from processMatchResults() once results are entered.
+ *
+ * The Gemini-backed narrator (services/facts-ai.ts) is the SOLE generator.
+ * We gather every relevant data point — match results, per-user metrics,
+ * leaderboard changes, predictions, rivalries, bounty, next match — into a
+ * verified payload, hand it to the model, and validate that every number it
+ * emits came from that payload. No deterministic if/else fact branches.
  */
 export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
   await connectDB();
   const match = await Match.findById(matchId).lean();
   if (!match) return [];
 
-  // Snapshot leaderboards before & after this match
   const [prevLb, currLb] = await Promise.all([
     computeLeaderboard({ excludeMatchId: matchId }),
     computeLeaderboard(),
   ]);
-  const prevMap = new Map(prevLb.map((r) => [String(r.userId), r]));
-  const currMap = new Map(currLb.map((r) => [String(r.userId), r]));
 
   const results = await MatchResult.find({ matchId }).lean();
   const userIds = results.map((r) => String(r.userId));
-  const users = await User.find({ _id: { $in: userIds } })
+
+  // Pull rivalry/withdrawal/prediction data + bonus audit log in parallel.
+  const [settledRivalries, withdrawnRivalries, preds, bonusAudit] = await Promise.all([
+    Rivalry.find({ matchId, status: "accepted", settled: true }).lean(),
+    Rivalry.find({
+      matchId,
+      status: "cancelled",
+      cancelledBy: { $ne: null },
+    }).lean(),
+    Prediction.find({ matchId, scored: true }).lean(),
+    BonusAuditLog.find({ matchId }).lean(),
+  ]);
+
+  // Collect every userId we need a username for (results + rivalries + bounty).
+  const allUserIds = new Set<string>(userIds);
+  for (const r of settledRivalries) {
+    allUserIds.add(String(r.challengerId));
+    allUserIds.add(String(r.opponentId));
+    if (r.winnerId) allUserIds.add(String(r.winnerId));
+  }
+  for (const r of withdrawnRivalries) {
+    allUserIds.add(String(r.challengerId));
+    allUserIds.add(String(r.opponentId));
+    if (r.cancelledBy) allUserIds.add(String(r.cancelledBy));
+  }
+  if (match.bountyUserId) allUserIds.add(String(match.bountyUserId));
+  for (const p of preds) allUserIds.add(String(p.userId));
+  for (const c of currLb.slice(0, 10)) allUserIds.add(String(c.userId));
+  for (const c of prevLb.slice(0, 5)) allUserIds.add(String(c.userId));
+
+  const users = await User.find({ _id: { $in: [...allUserIds] } })
     .select("username userId")
     .lean();
   const nameMap = new Map(users.map((u) => [String(u._id), u.username]));
 
-  const ranked = results
-    .filter((r) => !r.missed && r.rank > 0)
-    .sort((a, b) => a.rank - b.rank);
-  const top1 = ranked[0];
-  const top2 = ranked[1];
+  const snapshot = await buildAnalyzerSnapshot(userIds, matchId);
 
-  const facts: Fact[] = [];
-
-  // ---- Match domination story ----
-  if (top1 && top2) {
-    const gap = top1.fantasyPoints - top2.fantasyPoints;
-    const winnerName = nameMap.get(String(top1.userId));
-    const winnerPrev = prevMap.get(String(top1.userId));
-    const winnerCurr = currMap.get(String(top1.userId));
-    if (winnerName && gap >= 300) {
-      const positionStory =
-        winnerPrev && winnerCurr && winnerCurr.position < winnerPrev.position
-          ? ` That domination pushed ${winnerName} from ${ordinal(winnerPrev.position)} to ${ordinal(winnerCurr.position)} on the leaderboard.`
-          : winnerCurr
-            ? ` ${winnerName} now sits at ${ordinal(winnerCurr.position)} overall.`
-            : "";
-      facts.push({
-        text: `${winnerName} dominated tonight with a ${gap}-point Dream11 win over ${nameMap.get(String(top2.userId)) ?? "the runner-up"}.${positionStory}`,
-        type: "domination",
-        score: 90 + Math.min(gap - 300, 200) / 10,
-        userId: String(top1.userId),
-      });
-    } else if (winnerName && gap <= 20) {
-      facts.push({
-        text: `Tightest finish in a while — ${winnerName} edged out ${nameMap.get(String(top2.userId)) ?? "the chaser"} by just ${gap} Dream11 points.`,
-        type: "close_finish",
-        score: 60,
-        userId: String(top1.userId),
-      });
-    }
-  }
-
-  // ---- Biggest leaderboard climb ----
-  let biggestClimb: { userId: string; from: number; to: number; delta: number } | null = null;
-  let biggestDrop: { userId: string; from: number; to: number; delta: number } | null = null;
-  for (const uid of userIds) {
-    const prev = prevMap.get(uid);
-    const curr = currMap.get(uid);
-    if (!prev || !curr) continue;
-    const delta = prev.position - curr.position; // positive = climbed
-    if (delta >= 2 && (!biggestClimb || delta > biggestClimb.delta)) {
-      biggestClimb = { userId: uid, from: prev.position, to: curr.position, delta };
-    }
-    if (delta <= -2 && (!biggestDrop || delta < biggestDrop.delta)) {
-      biggestDrop = { userId: uid, from: prev.position, to: curr.position, delta };
-    }
-  }
-  if (biggestClimb) {
-    const name = nameMap.get(biggestClimb.userId);
-    if (name) {
-      facts.push({
-        text: `${name} jumped ${biggestClimb.delta} spot${biggestClimb.delta > 1 ? "s" : ""}, climbing from ${ordinal(biggestClimb.from)} to ${ordinal(biggestClimb.to)} after this match.`,
-        type: "climb",
-        score: 70 + biggestClimb.delta * 3,
-        userId: biggestClimb.userId,
-      });
-    }
-  }
-  if (biggestDrop) {
-    const name = nameMap.get(biggestDrop.userId);
-    if (name) {
-      facts.push({
-        text: `${name} slipped ${Math.abs(biggestDrop.delta)} place${Math.abs(biggestDrop.delta) > 1 ? "s" : ""}, sliding from ${ordinal(biggestDrop.from)} to ${ordinal(biggestDrop.to)} overall.`,
-        type: "slip",
-        score: 55 + Math.abs(biggestDrop.delta) * 2,
-        userId: biggestDrop.userId,
-      });
-    }
-  }
-
-  // ---- Streaks: consecutive Top 5 / consecutive missed ----
-  for (const r of results) {
-    const name = nameMap.get(String(r.userId));
-    if (!name) continue;
-    const recent = await MatchResult.find({ userId: r.userId })
-      .populate({ path: "matchId", select: "startTime", model: Match })
-      .sort({ createdAt: -1 })
-      .limit(6)
-      .lean();
-    const ordered = recent
-      .filter((x) => x.matchId)
-      .sort((a, b) => {
-        const ad = (a.matchId as unknown as { startTime: Date }).startTime.getTime();
-        const bd = (b.matchId as unknown as { startTime: Date }).startTime.getTime();
-        return bd - ad;
-      });
-    let top5Streak = 0;
-    for (const x of ordered) {
-      if (!x.missed && x.rank > 0 && x.rank <= 5) top5Streak++;
-      else break;
-    }
-    if (top5Streak >= 3) {
-      const curr = currMap.get(String(r.userId));
-      facts.push({
-        text: `${name} has finished Top 5 in ${top5Streak} matches in a row${curr ? ` — that consistency is what put them at ${ordinal(curr.position)} overall` : ""}.`,
-        type: "streak_top5",
-        score: 65 + top5Streak * 4,
-        userId: String(r.userId),
-      });
-    }
-    let missStreak = 0;
-    for (const x of ordered) {
-      if (x.missed) missStreak++;
-      else break;
-    }
-    if (missStreak >= 2) {
-      facts.push({
-        text: `${name} has now missed ${missStreak} matches in a row — the consecutive-miss penalty is biting hard.`,
-        type: "streak_miss",
-        score: 40 + missStreak * 5,
-        userId: String(r.userId),
-      });
-    }
-  }
-
-  // ---- Highest single-match bonus / "but for the bonus" story ----
-  const bonusLeader = [...results].sort((a, b) => b.bonusPoints - a.bonusPoints)[0];
-  if (bonusLeader && bonusLeader.bonusPoints > 0) {
-    const name = nameMap.get(String(bonusLeader.userId));
-    const reasons = (bonusLeader.bonuses ?? [])
-      .filter((b) => b.points > 0 && b.type !== "cap_applied")
-      .map((b) => b.type.replace(/_/g, " "))
-      .join(" + ");
-    if (name) {
-      facts.push({
-        text: `${name} bagged the biggest bonus haul this match (+${bonusLeader.bonusPoints})${reasons ? ` — ${reasons}` : ""}.`,
-        type: "bonus_king",
-        score: 60 + bonusLeader.bonusPoints,
-        userId: String(bonusLeader.userId),
-      });
-    }
-  }
-
-  // ---- Prediction perfection ----
-  const preds = await Prediction.find({ matchId, scored: true }).lean();
-  for (const p of preds) {
-    if (p.allThreeBonus) {
-      const name = nameMap.get(String(p.userId));
-      if (name) {
-        facts.push({
-          text: `${name} nailed all three predictions and pocketed +${p.pointsAwarded} — a perfect round.`,
-          type: "prediction_perfect",
-          score: 75,
-          userId: String(p.userId),
-        });
-      }
-    }
-  }
-  const correctWinners = preds.filter((p) => p.correctWinner).length;
-  if (preds.length && correctWinners === 0) {
-    facts.push({
-      text: `Not a single correct winner prediction tonight — everyone left points on the table.`,
-      type: "prediction_blank",
-      score: 50,
-    });
-  }
-
-  // ---- Bounty story ----
+  // ---- Bounty context ----
+  let bounty: { targetUsername: string | null; beaters: number } | null = null;
   if (match.bountyUserId) {
     const bountyId = String(match.bountyUserId);
     const bountyRes = results.find((r) => String(r.userId) === bountyId);
-    const bountyName = nameMap.get(bountyId);
-    if (bountyName && bountyRes) {
-      const beaters = ranked.filter((r) => r.rank < bountyRes.rank).length;
-      if (beaters === 0) {
-        facts.push({
-          text: `${bountyName} survived the bounty target — no one beat them this match.`,
-          type: "bounty_safe",
-          score: 60,
-          userId: bountyId,
-        });
-      } else if (beaters >= 5) {
-        facts.push({
-          text: `${beaters} players beat ${bountyName} for the bounty this match — a +${beaters * 3} payout across the field.`,
-          type: "bounty_open",
-          score: 55,
-          userId: bountyId,
-        });
-      }
-    }
+    const ranked = results
+      .filter((r) => !r.missed && r.rank > 0)
+      .sort((a, b) => a.rank - b.rank);
+    const beaters = bountyRes
+      ? ranked.filter((r) => r.rank < bountyRes.rank).length
+      : 0;
+    bounty = {
+      targetUsername: nameMap.get(bountyId) ?? null,
+      beaters,
+    };
   }
 
-  // ---- Rivalry storylines ----
-  const settledRivalries = await Rivalry.find({
-    matchId,
-    status: "accepted",
-    settled: true,
-  }).lean();
-  const withdrawn = await Rivalry.find({
-    matchId,
-    status: "cancelled",
-    cancelledBy: { $ne: null },
-  }).lean();
-
-  // Ensure we have names for everyone involved in rivalries (challenger,
-  // opponent, withdrawer) even if they aren\u2019t in MatchResult yet.
-  const rivalryUserIds = new Set<string>();
-  for (const r of settledRivalries) {
-    rivalryUserIds.add(String(r.challengerId));
-    rivalryUserIds.add(String(r.opponentId));
-    if (r.winnerId) rivalryUserIds.add(String(r.winnerId));
-  }
-  for (const r of withdrawn) {
-    rivalryUserIds.add(String(r.challengerId));
-    rivalryUserIds.add(String(r.opponentId));
-    if (r.cancelledBy) rivalryUserIds.add(String(r.cancelledBy));
-  }
-  const missingIds = [...rivalryUserIds].filter((id) => !nameMap.has(id));
-  if (missingIds.length) {
-    const extraUsers = await User.find({ _id: { $in: missingIds } })
-      .select("username")
-      .lean();
-    for (const u of extraUsers) nameMap.set(String(u._id), u.username);
-  }
-
-  for (const riv of settledRivalries) {
-    const cName = nameMap.get(String(riv.challengerId));
-    const oName = nameMap.get(String(riv.opponentId));
-    if (!cName || !oName) continue;
-    const isRevenge = riv.pointsAwarded > 3;
-    if (riv.winnerId) {
-      const winName = nameMap.get(String(riv.winnerId));
-      const loseName =
-        String(riv.winnerId) === String(riv.challengerId) ? oName : cName;
-      if (!winName) continue;
-      facts.push({
-        text: isRevenge
-          ? `Revenge served \u2014 ${winName} beat ${loseName} in the rematch and pocketed +${riv.pointsAwarded} (rivalry + revenge bonus).`
-          : `${winName} won the 1v1 rivalry against ${loseName} this match (+${riv.pointsAwarded}).`,
-        type: isRevenge ? "rivalry_revenge" : "rivalry_win",
-        score: isRevenge ? 80 : 65,
-        userId: String(riv.winnerId),
-      });
-    } else {
-      facts.push({
-        text: `${cName} vs ${oName} rivalry ended in a dead heat \u2014 no rivalry points awarded.`,
-        type: "rivalry_tie",
-        score: 45,
-      });
-    }
-  }
-
-  // Withdrawals (cancelled by someone) for this match \u2014 highlight if anyone bailed.
-  for (const riv of withdrawn) {
-    const byId = String(riv.cancelledBy);
-    const byName = nameMap.get(byId);
-    const otherId =
-      String(riv.challengerId) === byId
-        ? String(riv.opponentId)
-        : String(riv.challengerId);
-    const otherName = nameMap.get(otherId);
-    if (!byName || !otherName) continue;
-    facts.push({
-      text: `${byName} chickened out of the rivalry with ${otherName} this match \u2014 \u22122 point penalty applied.`,
-      type: "rivalry_withdraw",
-      score: 50,
-      userId: byId,
-    });
-  }
-
-  // ---- New leader / leadership change ----
-  const prevLeader = prevLb[0];
-  const currLeader = currLb[0];
-  if (
-    prevLeader &&
-    currLeader &&
-    String(prevLeader.userId) !== String(currLeader.userId)
-  ) {
-    const name = nameMap.get(String(currLeader.userId)) ?? currLeader.username;
-    const oldName = nameMap.get(String(prevLeader.userId)) ?? prevLeader.username;
-    facts.push({
-      text: `New #1: ${name} has taken over the top spot from ${oldName}.`,
-      type: "leader_change",
-      score: 95,
-      userId: String(currLeader.userId),
-    });
-  }
-
-  // ---- Table toppers heading into the NEXT match on the same day ----
-  // The rivalry dropdown for any later same-day match unlocks the moment this
-  // result is entered \u2014 so surface the current top of the table so people
-  // know who to target.
+  // ---- Next same-day match (so the model can tee up rivalry targets) ----
   const matchStart = new Date(match.startTime);
-  const dayStart = new Date(matchStart);
-  dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(matchStart);
   dayEnd.setHours(23, 59, 59, 999);
   const nextSameDay = await Match.findOne({
@@ -337,26 +104,132 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
     resultsEntered: { $ne: true },
   })
     .sort({ startTime: 1 })
-    .select("teamA teamB startTime")
+    .select("teamA teamB")
     .lean();
-  if (nextSameDay && currLb.length) {
-    const topThree = currLb.slice(0, 3);
-    const list = topThree
-      .map(
-        (r, i) =>
-          `${i + 1}. ${nameMap.get(String(r.userId)) ?? r.username} (${r.totalPoints})`
-      )
-      .join(", ");
-    facts.push({
-      text: `Heading into ${nextSameDay.teamA} vs ${nextSameDay.teamB}: ${list}. Rivalry challenges are now open \u2014 pick your target.`,
-      type: "next_match_toppers",
-      score: 88,
+  const nextSameDayMatch = nextSameDay
+    ? {
+        teamA: nextSameDay.teamA,
+        teamB: nextSameDay.teamB,
+        topThree: currLb.slice(0, 3).map((r) => ({
+          username: nameMap.get(String(r.userId)) ?? r.username,
+          totalPoints: r.totalPoints,
+        })),
+      }
+    : null;
+
+  // ---- Predictions summary ----
+  const perfectRounds = preds
+    .filter((p) => p.allThreeBonus)
+    .map((p) => ({
+      username: nameMap.get(String(p.userId)) ?? "Unknown",
+      pointsAwarded: p.pointsAwarded,
+    }));
+  const correctWinners = preds.filter((p) => p.correctWinner).length;
+
+  // ---- Rivalry summaries ----
+  const settled = settledRivalries
+    .map((riv) => {
+      const challenger = nameMap.get(String(riv.challengerId));
+      const opponent = nameMap.get(String(riv.opponentId));
+      if (!challenger || !opponent) return null;
+      const winner = riv.winnerId
+        ? nameMap.get(String(riv.winnerId)) ?? null
+        : null;
+      return {
+        challenger,
+        opponent,
+        winner,
+        pointsAwarded: riv.pointsAwarded,
+        isRevenge: riv.pointsAwarded > 3,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+
+  const withdrawn = withdrawnRivalries
+    .map((riv) => {
+      const byId = String(riv.cancelledBy);
+      const withdrawer = nameMap.get(byId);
+      const otherId =
+        String(riv.challengerId) === byId
+          ? String(riv.opponentId)
+          : String(riv.challengerId);
+      const opponent = nameMap.get(otherId);
+      if (!withdrawer || !opponent) return null;
+      return { withdrawer, opponent };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+
+  // ---- Build the payload and call the AI narrator ----
+  const facts: Fact[] = [];
+  try {
+    const aiInput = buildAiInput({
+      match: {
+        teamA: match.teamA,
+        teamB: match.teamB,
+        winner: match.matchWinner,
+        bountyUserName: bounty?.targetUsername ?? undefined,
+      },
+      results: results.map((r) => ({
+        userId: String(r.userId),
+        rank: r.rank,
+        fantasyPoints: r.fantasyPoints,
+        finalPoints: r.finalPoints,
+        bonusPoints: r.bonusPoints,
+        rivalryPoints: r.rivalryPoints,
+        civilWarPoints: r.civilWarPoints,
+        penaltyPoints: r.penaltyPoints,
+        missed: r.missed,
+        bonusReasons: (r.bonuses ?? [])
+          .filter((b) => b.points > 0 && b.type !== "cap_applied")
+          .map((b) => b.type.replace(/_/g, " ")),
+      })),
+      snapshot,
+      prevLb,
+      currLb,
+      nameMap,
+      predictions: {
+        total: preds.length,
+        correctWinners,
+        perfectRounds,
+      },
+      rivalries: { settled, withdrawn },
+      bounty,
+      nextSameDayMatch,
+      bonusAuditEntries: bonusAudit
+        .map((b) => ({
+          username: nameMap.get(String(b.userId)) ?? null,
+          bonusType: b.bonusType,
+          points: b.points,
+          explanation: b.explanation,
+        }))
+        .filter(
+          (b): b is { username: string; bonusType: string; points: number; explanation: string } =>
+            !!b.username
+        ),
     });
+    const aiFacts = await generateAiFacts(aiInput);
+    const idByName = new Map<string, string>();
+    for (const [id, name] of nameMap.entries()) idByName.set(name, id);
+    for (const f of aiFacts) {
+      facts.push({
+        text: f.text,
+        type: f.type,
+        score: f.score,
+        userId: f.username ? idByName.get(f.username) : undefined,
+      });
+    }
+  } catch (err) {
+    console.warn("[facts] AI narrator failed", err);
   }
 
-  // Persist (replace any existing facts for this match so re-entry refreshes them)
-  await DailyFact.deleteMany({ matchId });
+  // Persist (append-only — never delete prior facts). Each generation gets
+  // its own batchNumber within the match; the dashboard only shows the latest.
   if (facts.length) {
+    const prev = await DailyFact.findOne({ matchId })
+      .sort({ batchNumber: -1 })
+      .select("batchNumber")
+      .lean();
+    const nextBatch = (prev?.batchNumber ?? 0) + 1;
     await DailyFact.insertMany(
       facts.map((f) => ({
         matchId,
@@ -364,28 +237,38 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
         type: f.type,
         score: f.score,
         userId: f.userId,
+        batchNumber: nextBatch,
       }))
     );
+  }
+
+  // Refresh the dashboard so members see the new storylines on next visit.
+  // (We're typically running inside an after() callback, so this fires after
+  // the original response was sent.)
+  try {
+    revalidatePath("/dashboard");
+    revalidatePath("/admin");
+  } catch {
+    // revalidation is best-effort
   }
   return facts;
 }
 
-/** All facts for the most recently scored match, highest-interest first. */
+/** Facts from the latest generation batch of the most recently scored match,
+ * highest-interest first. Older batches stay in the DB for history. */
 export async function getLatestFacts(limit?: number) {
   await connectDB();
   const latest = await DailyFact.findOne().sort({ createdAt: -1 }).lean();
   if (!latest) return [];
-  const q = DailyFact.find({ matchId: latest.matchId }).sort({
-    score: -1,
-    createdAt: -1,
-  });
+  const newest = await DailyFact.findOne({ matchId: latest.matchId })
+    .sort({ batchNumber: -1 })
+    .select("batchNumber")
+    .lean();
+  const batchNumber = newest?.batchNumber ?? latest.batchNumber ?? 1;
+  const q = DailyFact.find({
+    matchId: latest.matchId,
+    batchNumber,
+  }).sort({ score: -1, createdAt: -1 });
   if (limit && limit > 0) q.limit(limit);
   return q.lean();
 }
-
-interface LeaderboardSnapshot {
-  prev: LeaderboardRow | undefined;
-  curr: LeaderboardRow | undefined;
-}
-// (kept for future use / typing reference)
-export type { LeaderboardSnapshot };

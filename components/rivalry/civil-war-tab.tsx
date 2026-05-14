@@ -127,6 +127,7 @@ function CivilWarCard({ m }: { m: CivilWarMatchView }) {
         </div>
       )}
 
+      {!m.settled && (
       <div className="relative">
         <div
           className={[
@@ -195,6 +196,7 @@ function CivilWarCard({ m }: { m: CivilWarMatchView }) {
           </div>
         )}
       </div>
+      )}
 
       {m.settled && m.result && showClear && (
         <div className="mt-3 rounded-md border bg-background p-3 text-xs sm:text-sm">
