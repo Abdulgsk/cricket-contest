@@ -65,7 +65,10 @@ export function BrandLogo({
 }
 
 function BrandMark({ size = 28 }: { size?: number }) {
-  // 32x32 viewBox. Uses currentColor for stumps + container, var(--accent) for the ball.
+  // 32x32 viewBox. A monogram "G" formed by an arc + a horizontal bar that
+  // doubles as a cricket bat. A small ball sits in the negative space, with
+  // a single seam stroke for cricket recognition.
+  // All strokes use currentColor (theme primary); ball fill uses --accent.
   return (
     <svg
       width={size}
@@ -78,46 +81,54 @@ function BrandMark({ size = 28 }: { size?: number }) {
       className="shrink-0"
       style={{ color: "rgb(var(--primary))" }}
     >
-      {/* Rounded badge */}
-      <rect
-        x="1.5"
-        y="1.5"
-        width="29"
-        height="29"
-        rx="8"
-        fill="currentColor"
-        fillOpacity="0.08"
+      {/* Soft tonal disc behind the mark for depth */}
+      <defs>
+        <linearGradient id="gxi-disc" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="currentColor" stopOpacity="0.04" />
+        </linearGradient>
+      </defs>
+      <circle cx="16" cy="16" r="14.5" fill="url(#gxi-disc)" />
+      <circle
+        cx="16"
+        cy="16"
+        r="14.5"
         stroke="currentColor"
-        strokeOpacity="0.45"
-        strokeWidth="1.25"
+        strokeOpacity="0.35"
+        strokeWidth="1"
       />
-      {/* Three stumps */}
-      <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <line x1="10.5" y1="11" x2="10.5" y2="24" />
-        <line x1="15.5" y1="11" x2="15.5" y2="24" />
-        <line x1="20.5" y1="11" x2="20.5" y2="24" />
-      </g>
-      {/* Two bails */}
-      <g stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-        <line x1="9.5" y1="10.25" x2="16.5" y2="10.25" />
-        <line x1="15.5" y1="10.25" x2="21.5" y2="10.25" />
-      </g>
-      {/* Cricket ball with seam */}
+
+      {/* The "G" — a 270° arc opening to the right, finished by a horizontal
+          inner bar (the bat handle line) that gives the letter its anchor. */}
+      <path
+        d="M22.5 10
+           A 7 7 0 1 0 22.5 22
+           L 17 22
+           L 17 16.25
+           L 22.5 16.25"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+
+      {/* Cricket ball nested in the G's mouth — accent color with a seam */}
       <g>
         <circle
-          cx="24.5"
-          cy="8.5"
-          r="3"
+          cx="22.6"
+          cy="19.4"
+          r="2.1"
           fill="rgb(var(--accent))"
           stroke="currentColor"
           strokeOpacity="0.55"
-          strokeWidth="0.75"
+          strokeWidth="0.6"
         />
         <path
-          d="M22.2 7.6c1.4.4 3 .4 4.6 0"
+          d="M21 19.1c1-.25 2.2-.25 3.2 0"
           stroke="rgb(var(--background))"
           strokeOpacity="0.85"
-          strokeWidth="0.5"
+          strokeWidth="0.45"
           strokeLinecap="round"
           fill="none"
         />

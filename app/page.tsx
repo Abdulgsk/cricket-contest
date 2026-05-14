@@ -58,7 +58,16 @@ export default async function Landing() {
                   Season Live
                 </div>
                 <h2 className="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight">
-                  Predict. Battle. <span className="bg-gradient-to-r from-pink-400 to-sky-400 bg-clip-text text-transparent">Banter.</span>
+                  Predict. Battle.{" "}
+                  <span
+                    className="bg-clip-text text-transparent"
+                    style={{
+                      backgroundImage:
+                        "linear-gradient(135deg, rgb(var(--primary)) 0%, rgb(var(--accent)) 100%)",
+                    }}
+                  >
+                    Banter.
+                  </span>
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Lock in your call before toss. Pick a rival. Watch the leaderboard flip after every match.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   THEMES,
   THEME_LABEL,
@@ -23,27 +24,25 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<Theme>("sand");
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setTheme(readStoredTheme());
     setMounted(true);
   }, []);
 
-  // Close popover on outside click + Escape.
+  // Close modal on Escape + lock body scroll while open.
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
-    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
     document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("mousedown", onClick);
       document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
     };
   }, [open]);
 
@@ -101,11 +100,11 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div ref={containerRef} className={compact ? "relative" : "relative w-full"}>
+    <>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Theme: ${THEME_LABEL[theme]}. Click to choose.`}
         className={triggerClass}
@@ -122,60 +121,106 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
         )}
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          aria-label="Choose theme"
-          className={
-            (compact
-              ? "absolute right-0 top-full mt-2 w-64 "
-              : "absolute left-0 right-0 top-full mt-2 ") +
-            "z-50 rounded-xl border border-border bg-card shadow-lg p-1.5"
-          }
-        >
-          <div className="px-2 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Theme
-          </div>
-          {THEMES.map((t) => {
-            const active = t === theme;
-            const swatches = THEME_SWATCHES[t];
-            return (
-              <button
-                key={t}
-                type="button"
-                role="menuitemradio"
-                aria-checked={active}
-                onClick={() => choose(t)}
-                className={
-                  "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-sm transition " +
-                  (active
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground")
-                }
-              >
-                <span className="flex items-center -space-x-1 shrink-0">
-                  {swatches.map((c, i) => (
-                    <span
-                      key={i}
-                      className="inline-block h-4 w-4 rounded-full border border-border/60"
-                      style={{ background: c }}
-                      aria-hidden
+      {open &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose theme"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          >
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+              onClick={() => setOpen(false)}
+              aria-hidden
+            />
+            {/* Modal */}
+            <div
+              ref={dialogRef}
+              className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl"
+            >
+              <div className="flex items-start justify-between px-5 pt-4 pb-2">
+                <div>
+                  <h2 className="text-base font-semibold text-foreground">
+                    Choose a theme
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Pick a palette — applies instantly across the app.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition"
+                  aria-label="Close"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    aria-hidden
+                  >
+                    <path
+                      d="M3.5 3.5l9 9m0-9l-9 9"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
                     />
-                  ))}
-                </span>
-                <span className="flex-1 text-left font-medium">
-                  {THEME_LABEL[t]}
-                </span>
-                {active && (
-                  <span className="text-[10px] uppercase tracking-wider text-foreground/70">
-                    Active
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+                  </svg>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 pt-2">
+                {THEMES.map((t) => {
+                  const active = t === theme;
+                  const swatches = THEME_SWATCHES[t];
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => choose(t)}
+                      className={
+                        "group flex flex-col gap-2 rounded-xl border p-3 text-left transition " +
+                        (active
+                          ? "border-primary/70 bg-muted ring-2 ring-primary/30"
+                          : "border-border hover:border-primary/40 hover:bg-muted/60")
+                      }
+                    >
+                      {/* Preview strip */}
+                      <span
+                        className="flex h-10 w-full overflow-hidden rounded-lg border border-border/60"
+                        aria-hidden
+                      >
+                        {swatches.map((c, i) => (
+                          <span
+                            key={i}
+                            className="flex-1"
+                            style={{ background: c }}
+                          />
+                        ))}
+                      </span>
+                      <span className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-foreground">
+                          {THEME_LABEL[t]}
+                        </span>
+                        {active && (
+                          <span className="rounded-full bg-primary/15 text-primary text-[10px] font-bold uppercase tracking-wider px-2 py-0.5">
+                            Active
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
