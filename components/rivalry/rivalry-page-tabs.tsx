@@ -15,7 +15,7 @@ export function RivalryPageTabs({ tabs }: { tabs: Tab[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-card p-1.5">
+      <div className="rounded-xl border border-border/60 bg-muted/40 p-2">
         <div className="grid grid-cols-2 gap-1.5">
           {tabs.map((t) => {
             const isActive = t.id === current?.id;
@@ -27,8 +27,8 @@ export function RivalryPageTabs({ tabs }: { tabs: Tab[] }) {
                 className={
                   "flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition " +
                   (isActive
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-                    : "text-muted-foreground hover:bg-muted/50")
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-primary/40"
+                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground")
                 }
               >
                 {t.icon ? <span>{t.icon}</span> : null}
