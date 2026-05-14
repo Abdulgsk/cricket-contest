@@ -104,7 +104,7 @@ export default async function RivalryPage() {
     <div className="space-y-6">
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">🛡️ Upcoming Civil Wars</h2>
-        <CivilWarTab matches={civilWar} />
+        <CivilWarTab matches={civilWar.filter((m) => !m.settled)} />
       </section>
 
       <section className="space-y-3">
@@ -124,7 +124,7 @@ export default async function RivalryPage() {
         ) : (
           <div className="space-y-4">
             {record.recentCivilWars.map((cw) => (
-              <CivilWarResult key={cw.matchId} entry={cw} />
+              <CivilWarResult key={cw.matchId} entry={cw} compact />
             ))}
           </div>
         )}
