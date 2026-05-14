@@ -1,17 +1,18 @@
 @import "tailwindcss";
 
 /* -------------------------------------------------------------------------
- * Five first-class themes. Selected by adding `.theme-sand` / `.theme-mist`
- * / `.theme-wine` / `.theme-paper` / `.theme-ink` to <html>. The dark themes
- * (`.theme-wine`, `.theme-ink`) also get the `dark` class so existing
- * Tailwind `dark:` utilities keep working.
+ * Five first-class themes. Selected by adding `.theme-sand` / `.theme-paper`
+ * / `.theme-mist` / `.theme-ink` / `.theme-google` to <html>. The dark theme
+ * (`.theme-ink`) also gets the `dark` class so existing Tailwind `dark:`
+ * utilities keep working.
  *
  * Palette sources (user-provided), then lifted/desaturated for readability:
- *   sand:  272727 d4aa7d efd09e d2d8b3 90a9b7
- *   mist:  f4faff dee7e7 b7adcf 4f646f 535657
- *   wine:  100007 200116 2d0605 4c0827 454A47  (+cream/rose for legibility)
- *   paper: tonal light — warm off-white, soft graphite, muted teal
- *   ink:   tonal dark  — near-black slate, parchment text, copper accent
+ *   sand:   272727 d4aa7d efd09e d2d8b3 90a9b7
+ *   mist:   f4faff dee7e7 b7adcf 4f646f 535657
+ *   paper:  tonal light — warm off-white, soft graphite, muted teal
+ *   ink:    tonal dark  — near-black slate, parchment text, copper accent
+ *   google: Material You light — white surface, Google Blue primary, with
+ *           red/yellow/green semantic accents.
  * ----------------------------------------------------------------------- */
 
 :root,
@@ -51,22 +52,22 @@
   --danger: 188 60 70;
 }
 
-.theme-wine {
-  /* Midnight wine — dark */
-  --background: 16 0 7;             /* 100007                     */
-  --foreground: 240 222 218;        /* added cream — readable     */
-  --card: 32 1 22;                  /* 200116                     */
-  --card-foreground: 240 222 218;
-  --primary: 222 88 124;            /* lifted from 4c0827         */
-  --primary-foreground: 16 0 7;
-  --accent: 158 163 152;            /* lifted from 454A47         */
-  --muted: 45 6 5;                  /* 2d0605                     */
-  --muted-foreground: 196 178 172;
-  --border: 76 8 39;                /* 4c0827                     */
-  --ring: 222 88 124;
-  --success: 110 196 140;
-  --warning: 232 178 96;
-  --danger: 240 110 110;
+.theme-google {
+  /* Material-style light. White surface, Google Blue primary, soft border. */
+  --background: 255 255 255;
+  --foreground: 32 33 36;            /* Google grey 900            */
+  --card: 255 255 255;
+  --card-foreground: 32 33 36;
+  --primary: 26 115 232;             /* Google Blue 600            */
+  --primary-foreground: 255 255 255;
+  --accent: 234 67 53;               /* Google Red 500             */
+  --muted: 241 243 244;              /* Google grey 100            */
+  --muted-foreground: 95 99 104;     /* Google grey 700            */
+  --border: 218 220 224;             /* Google grey 300            */
+  --ring: 26 115 232;
+  --success: 52 168 83;              /* Google Green 500           */
+  --warning: 251 188 5;              /* Google Yellow 500          */
+  --danger: 234 67 53;               /* Google Red 500             */
 }
 
 .theme-paper {
@@ -146,11 +147,9 @@ html, body {
     radial-gradient(900px 500px at 110% 10%, rgba(79,100,111,0.08), transparent 60%),
     rgb(var(--background));
 }
-.theme-wine html, .theme-wine body, html.theme-wine, body.theme-wine {
-  background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(222,88,124,0.18), transparent 60%),
-    radial-gradient(900px 500px at 110% 10%, rgba(158,163,152,0.10), transparent 60%),
-    rgb(var(--background));
+.theme-google html, .theme-google body, html.theme-google, body.theme-google {
+  /* Google theme: clean white surface, no radial atmosphere. */
+  background: rgb(var(--background));
 }
 .theme-paper html, .theme-paper body, html.theme-paper, body.theme-paper {
   background:
@@ -170,7 +169,7 @@ html, body {
   backdrop-filter: blur(12px);
   border: 1px solid rgb(var(--border) / 0.6);
 }
-.theme-wine .glass, .dark .glass {
+.dark .glass {
   background: linear-gradient(180deg, rgb(var(--card) / 0.6), rgb(var(--card) / 0.4));
   border: 1px solid rgb(var(--border) / 0.5);
 }
@@ -180,16 +179,12 @@ html, body {
     0 0 0 1px rgb(var(--primary) / 0.18),
     0 8px 30px -12px rgb(var(--primary) / 0.35);
 }
-.theme-wine .glow, .dark .glow {
-  box-shadow:
-    0 0 0 1px rgb(var(--primary) / 0.30),
-    0 8px 40px -10px rgb(var(--primary) / 0.50);
-}
-/* Ink theme: aesthetic dark, no glow — replace with a flat hairline ring. */
-.theme-ink .glow {
+/* Ink + Google: aesthetic flat — replace glow with a hairline ring. */
+.theme-ink .glow,
+.theme-google .glow {
   box-shadow:
     0 0 0 1px rgb(var(--border) / 0.9),
-    0 1px 0 0 rgb(255 255 255 / 0.02) inset;
+    0 1px 2px 0 rgb(0 0 0 / 0.04);
 }
 
 .shimmer {

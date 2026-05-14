@@ -2,30 +2,30 @@
 
 import { useEffect } from "react";
 
-export const THEMES = ["sand", "paper", "mist", "ink", "wine"] as const;
+export const THEMES = ["sand", "paper", "mist", "google", "ink"] as const;
 export type Theme = (typeof THEMES)[number];
 export const THEME_LABEL: Record<Theme, string> = {
   sand: "Sand",
   paper: "Paper",
   mist: "Mist",
+  google: "Google",
   ink: "Ink",
-  wine: "Wine",
 };
 export const THEME_ICON: Record<Theme, string> = {
   sand: "🏜️",
   paper: "📜",
   mist: "🌫️",
+  google: "🔍",
   ink: "🖋️",
-  wine: "🍷",
 };
 
 export function applyTheme(theme: Theme) {
   const root = document.documentElement;
   for (const t of THEMES) root.classList.remove(`theme-${t}`);
   root.classList.add(`theme-${theme}`);
-  // Dark themes (wine, ink) keep the `dark` class so existing Tailwind
+  // Ink is the only dark theme — keep `dark` class so existing Tailwind
   // `dark:` utilities continue to apply.
-  root.classList.toggle("dark", theme === "wine" || theme === "ink");
+  root.classList.toggle("dark", theme === "ink");
 }
 
 export function readStoredTheme(): Theme {
@@ -35,13 +35,13 @@ export function readStoredTheme(): Theme {
       t === "sand" ||
       t === "paper" ||
       t === "mist" ||
-      t === "ink" ||
-      t === "wine"
+      t === "google" ||
+      t === "ink"
     ) {
       return t;
     }
-    // Migrate the old light/dark values.
-    if (t === "dark") return "wine";
+    // Migrate legacy values.
+    if (t === "dark" || t === "wine") return "ink";
     if (t === "light") return "sand";
   } catch {
     /* ignore */

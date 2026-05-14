@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { getSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default async function Landing() {
   const s = await getSession();
   return (
     <main className="flex flex-1 flex-col">
       <header className="flex items-center justify-between p-6 max-w-6xl mx-auto w-full">
-        <Link href="/" className="font-bold text-xl tracking-tight">
-          🏏 <span className="bg-gradient-to-r from-pink-400 to-sky-400 bg-clip-text text-transparent">GullyXI</span>
+        <Link href="/" className="inline-block">
+          <BrandLogo size="lg" />
         </Link>
         <div className="flex items-center gap-3">
           {s ? (

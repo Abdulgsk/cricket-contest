@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/actions/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BrandLogo } from "@/components/brand-logo";
 
 const NAV = [
   { href: "/dashboard", label: "Home" },
@@ -93,8 +94,8 @@ export function Nav({
     <>
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border p-4 gap-2 sticky top-0 h-screen">
-        <Link href="/" className="font-bold text-lg mb-6 px-2">
-          🏏 <span className="bg-gradient-to-r from-pink-400 to-sky-400 bg-clip-text text-transparent">GullyXI</span>
+        <Link href="/" className="mb-6 px-2 inline-block">
+          <BrandLogo size="md" />
         </Link>
         {renderLinks()}
         <div className="mt-auto pt-4">
