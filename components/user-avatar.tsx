@@ -108,8 +108,26 @@ export function ClickableUserAvatar({
             className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center gap-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="rounded-2xl overflow-hidden ring-1 ring-white/15 bg-card">
-              <UserAvatar src={src} name={name} size={320} className="!rounded-2xl" />
+            <div className="rounded-2xl overflow-hidden ring-1 ring-white/15 bg-card max-w-[90vw] max-h-[80vh] flex items-center justify-center">
+              {src ? (
+                // Show the original image at its native resolution.
+                // Avoids scaling a small thumbnail up to 320px (which is what
+                // caused the blur). image-rendering: auto + no forced size.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={src}
+                  alt={name}
+                  className="block max-w-[90vw] max-h-[80vh] w-auto h-auto object-contain"
+                  decoding="async"
+                />
+              ) : (
+                <UserAvatar
+                  src={null}
+                  name={name}
+                  size={320}
+                  className="!rounded-2xl"
+                />
+              )}
             </div>
             <div className="text-white text-sm font-medium">{name}</div>
             <button

@@ -5,9 +5,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <main className="flex flex-1 items-center justify-center p-6">
       <div className="w-full max-w-md">
-        <Link href="/" className="flex justify-center mb-6">
-          <BrandLogo size="lg" />
-        </Link>
+        <div className="flex justify-center mb-6">
+          <BrandLogo size="xl" clickable />
+        </div>
         <div className="glass rounded-2xl p-6">{children}</div>
       </div>
     </main>

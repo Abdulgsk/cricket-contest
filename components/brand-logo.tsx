@@ -1,36 +1,74 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
-type Size = "sm" | "md" | "lg";
+type Size = "sm" | "md" | "lg" | "xl";
 
 const SIZE = {
-  sm: { mark: 22, gap: "gap-2", text: "text-sm sm:text-base" },
-  md: { mark: 28, gap: "gap-2.5", text: "text-base sm:text-lg" },
-  lg: { mark: 36, gap: "gap-3", text: "text-lg sm:text-2xl" },
+  sm: { mark: 28, text: "text-sm sm:text-base", gap: "gap-2" },
+  md: { mark: 36, text: "text-base sm:text-lg", gap: "gap-2.5" },
+  lg: { mark: 48, text: "text-lg sm:text-2xl", gap: "gap-3" },
+  xl: { mark: 72, text: "text-xl sm:text-3xl", gap: "gap-3.5" },
 } as const;
 
+const LOGO_SRC = "/gully11-logo.png";
+
 /**
- * GullyXI brand mark — a minimal, professional logo:
- *   - A rounded badge containing three stumps with bails (the wicket silhouette)
- *     and a cricket ball arcing in.
- *   - A bold wordmark where "Gully" sits in the foreground and "XI" reads as a
- *     two-stop primary→accent gradient, evoking a crest.
+ * Gully11 brand mark — image-based logo from /public/gully11-logo.png.
  *
- * Uses theme tokens via `currentColor` and `var(--accent)`, so it adapts to
- * every theme (sand, paper, mist, halo, ink) without per-theme overrides.
+ *   - Renders the PNG brand mark.
+ *   - When `clickable` is true, the mark opens a centered preview modal
+ *     (same UX as the profile-picture preview).
+ *   - Sizes scale responsively. The PNG is square so it fits any size.
+ *
+ * The wordmark is OFF by default because the image already contains the
+ * "GULLY 11" lockup. Pass showWordmark to add a text label next to it.
  */
 export function BrandLogo({
   size = "md",
-  showWordmark = true,
+  showWordmark = false,
+  clickable = false,
   className,
-  href,
+  alt = "Gully11",
 }: {
   size?: Size;
   showWordmark?: boolean;
+  clickable?: boolean;
   className?: string;
-  href?: string;
+  alt?: string;
 }) {
   const s = SIZE[size];
-  const content = (
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  const mark = (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={LOGO_SRC}
+      alt={alt}
+      width={s.mark}
+      height={s.mark}
+      className="block rounded-xl shrink-0 select-none"
+      style={{ width: s.mark, height: s.mark }}
+      draggable={false}
+    />
+  );
+
+  const inner = (
     <span
       className={cn(
         "inline-flex items-center font-semibold tracking-tight",
@@ -39,7 +77,7 @@ export function BrandLogo({
         className,
       )}
     >
-      <BrandMark size={s.mark} />
+      {mark}
       {showWordmark && (
         <span className="leading-none">
           <span className="text-foreground">Gully</span>
@@ -50,128 +88,63 @@ export function BrandLogo({
                 "linear-gradient(135deg, rgb(var(--primary)) 0%, rgb(var(--accent)) 100%)",
             }}
           >
-            XI
+            11
           </span>
         </span>
       )}
     </span>
   );
 
-  if (href) {
-    // Caller can wrap with <Link>; this just returns the visual.
-    return content;
-  }
-  return content;
-}
+  if (!clickable) return inner;
 
-function BrandMark({ size = 28 }: { size?: number }) {
-  // 36x36 viewBox. Concept: "The Six" — a kinetic trajectory mark.
-  //   • A circular crest with a primary→accent gradient ring (sport identity).
-  //   • Inside: a thick arc rising from bottom-left to top-right (a ball's
-  //     flight path after being hit for six). Stroke is solid → dashed at the
-  //     tail to imply motion, finishing in the cricket ball itself.
-  //   • A short horizontal line (the boundary) anchors the composition.
-  // All colors come from CSS variables so it adapts to every theme.
-  // The viewBox + scaling SVG make it inherently responsive.
-  const id = "gxi-ring";
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 36 36"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      role="img"
-      aria-label="GullyXI"
-      className="shrink-0"
-      style={{ color: "rgb(var(--primary))" }}
-    >
-      <defs>
-        <linearGradient id={id} x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor="rgb(var(--primary))" />
-          <stop offset="100%" stopColor="rgb(var(--accent))" />
-        </linearGradient>
-      </defs>
-
-      {/* Crest disc — soft tonal fill + gradient ring */}
-      <circle
-        cx="18"
-        cy="18"
-        r="16.5"
-        fill="currentColor"
-        fillOpacity="0.06"
-      />
-      <circle
-        cx="18"
-        cy="18"
-        r="16.5"
-        fill="none"
-        stroke={`url(#${id})`}
-        strokeWidth="1.5"
-      />
-
-      {/* Boundary line — sits low in the crest */}
-      <line
-        x1="7"
-        y1="26.5"
-        x2="29"
-        y2="26.5"
-        stroke="currentColor"
-        strokeOpacity="0.45"
-        strokeWidth="1"
-        strokeLinecap="round"
-      />
-
-      {/* Tiny stumps at launch point (subtle, just two short ticks) */}
-      <g
-        stroke="currentColor"
-        strokeOpacity="0.55"
-        strokeWidth="1.1"
-        strokeLinecap="round"
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        className="inline-flex items-center bg-transparent border-0 p-0 cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
+        aria-label={`View ${alt} logo`}
       >
-        <line x1="9.5" y1="22" x2="9.5" y2="26" />
-        <line x1="11.8" y1="22" x2="11.8" y2="26" />
-      </g>
+        {inner}
+      </button>
 
-      {/* Trajectory: dashed tail → solid arc → ball.
-          Painted in two passes so dashes only appear at the start. */}
-      <path
-        d="M 9.5 23 Q 16 4 26 11"
-        stroke={`url(#${id})`}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeDasharray="1.5 2.2"
-        strokeOpacity="0.55"
-        fill="none"
-      />
-      <path
-        d="M 17 9.5 Q 22 6.5 26 11"
-        stroke={`url(#${id})`}
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        fill="none"
-      />
-
-      {/* The ball — at the arc's leading tip */}
-      <g>
-        <circle
-          cx="26"
-          cy="11"
-          r="3"
-          fill="rgb(var(--accent))"
-          stroke="currentColor"
-          strokeOpacity="0.5"
-          strokeWidth="0.6"
-        />
-        <path
-          d="M23.7 10.4c1.4.35 3.2.35 4.6 0"
-          stroke="rgb(var(--background))"
-          strokeOpacity="0.85"
-          strokeWidth="0.5"
-          strokeLinecap="round"
-          fill="none"
-        />
-      </g>
-    </svg>
+      {open && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Brand logo preview"
+        >
+          <div
+            className="relative max-w-[92vw] max-h-[88vh] flex flex-col items-center gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rounded-2xl overflow-hidden ring-1 ring-white/15 bg-card max-w-[92vw] max-h-[80vh] flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={LOGO_SRC}
+                alt={alt}
+                className="block max-w-[92vw] max-h-[80vh] w-auto h-auto object-contain"
+                decoding="async"
+              />
+            </div>
+            <div className="text-white text-sm font-medium">{alt}</div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="absolute -top-3 -right-3 h-9 w-9 rounded-full bg-card border border-border text-foreground flex items-center justify-center shadow-md hover:bg-muted"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

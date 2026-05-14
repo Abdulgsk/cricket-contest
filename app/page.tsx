@@ -8,9 +8,7 @@ export default async function Landing() {
   return (
     <main className="flex flex-1 flex-col">
       <header className="flex items-center justify-between p-6 max-w-6xl mx-auto w-full">
-        <Link href="/" className="inline-block">
-          <BrandLogo size="lg" />
-        </Link>
+        <BrandLogo size="lg" clickable />
         <div className="flex items-center gap-3">
           {s ? (
             <Link href="/dashboard"><Button variant="glow" size="sm">Dashboard</Button></Link>
