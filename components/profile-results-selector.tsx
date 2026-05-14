@@ -5,6 +5,7 @@ import type {
   RivalryHistoryEntry,
   CivilWarHistoryEntry,
 } from "@/actions/civil-war";
+import { CivilWarResult } from "@/components/rivalry/civil-war-result";
 
 type Mode = "rivalry" | "civilwar";
 
@@ -125,20 +126,22 @@ function RivalryTable({ entries }: { entries: RivalryHistoryEntry[] }) {
   }
   return (
     <div className="rounded-xl border border-border bg-card overflow-x-auto">
-      <table className="w-full text-sm min-w-[520px]">
+      <table className="w-full text-sm min-w-[600px]">
         <thead className="text-[11px] uppercase tracking-wider text-muted-foreground">
           <tr className="text-left border-b border-border">
             <th className="p-2 sm:p-3">Date</th>
             <th className="p-2 sm:p-3">Match</th>
             <th className="p-2 sm:p-3">Opponent</th>
-            <th className="p-2 sm:p-3">Role</th>
             <th className="p-2 sm:p-3 text-center">Result</th>
+            <th className="p-2 sm:p-3 text-right">FP (you – opp)</th>
             <th className="p-2 sm:p-3 text-right">Pts</th>
           </tr>
         </thead>
         <tbody>
           {entries.map((r, i) => {
             const net = r.pointsAwarded - r.penalty;
+            const hasFp = r.myFp !== null && r.opponentFp !== null;
+            const diff = hasFp ? (r.myFp ?? 0) - (r.opponentFp ?? 0) : null;
             return (
               <tr
                 key={r.rivalryId}
@@ -151,13 +154,32 @@ function RivalryTable({ entries }: { entries: RivalryHistoryEntry[] }) {
                 <td className="p-2 sm:p-3 truncate max-w-[140px]">
                   {r.opponentUsername}
                 </td>
-                <td className="p-2 sm:p-3 capitalize text-muted-foreground text-xs">
-                  {r.myRole}
-                </td>
                 <td
                   className={`p-2 sm:p-3 text-center font-semibold text-xs ${OUTCOME_TONE[r.outcome] ?? ""}`}
                 >
                   {OUTCOME_LABEL[r.outcome] ?? r.outcome}
+                </td>
+                <td className="p-2 sm:p-3 text-right tabular-nums text-xs whitespace-nowrap">
+                  {hasFp ? (
+                    <>
+                      <span className="font-semibold">{r.myFp}</span>
+                      <span className="text-muted-foreground/60 mx-1">–</span>
+                      <span className="text-muted-foreground">{r.opponentFp}</span>
+                      {diff !== null && diff !== 0 && (
+                        <span
+                          className={
+                            "ml-1 text-[10px] " +
+                            (diff > 0 ? "text-success" : "text-destructive")
+                          }
+                        >
+                          ({diff > 0 ? "+" : ""}
+                          {Math.round(diff * 10) / 10})
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground/60">—</span>
+                  )}
                 </td>
                 <td
                   className={`p-2 sm:p-3 text-right font-bold tabular-nums ${
@@ -189,70 +211,10 @@ function CivilWarTable({ entries }: { entries: CivilWarHistoryEntry[] }) {
     );
   }
   return (
-    <div className="rounded-xl border border-border bg-card overflow-x-auto">
-      <table className="w-full text-sm min-w-[560px]">
-        <thead className="text-[11px] uppercase tracking-wider text-muted-foreground">
-          <tr className="text-left border-b border-border">
-            <th className="p-2 sm:p-3">Date</th>
-            <th className="p-2 sm:p-3">Match</th>
-            <th className="p-2 sm:p-3">My team</th>
-            <th className="p-2 sm:p-3">Type</th>
-            <th className="p-2 sm:p-3 text-center">Result</th>
-            <th className="p-2 sm:p-3 text-right">Pts</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((c, i) => {
-            const res = cwUserResult(c);
-            const tone =
-              res === "win"
-                ? "text-success"
-                : res === "loss"
-                  ? "text-destructive"
-                  : "text-muted-foreground";
-            const label =
-              res === "win"
-                ? "Win"
-                : res === "loss"
-                  ? "Loss"
-                  : res === "draw"
-                    ? "Draw"
-                    : "—";
-            return (
-              <tr key={c.matchId} className={i % 2 ? "bg-muted/20" : ""}>
-                <td className="p-2 sm:p-3 text-muted-foreground whitespace-nowrap text-xs">
-                  {formatDate(c.startTime)}
-                </td>
-                <td className="p-2 sm:p-3 truncate max-w-[180px]">{c.matchLabel}</td>
-                <td className="p-2 sm:p-3 truncate max-w-[140px]">
-                  {c.wasCaptain && <span className="text-amber-500 mr-1">👑</span>}
-                  {c.myTeamName}
-                </td>
-                <td className="p-2 sm:p-3 text-muted-foreground text-xs">
-                  {CW_OUTCOME_LABEL[c.outcome] ?? c.outcome}
-                </td>
-                <td
-                  className={`p-2 sm:p-3 text-center font-semibold text-xs ${tone}`}
-                >
-                  {label}
-                </td>
-                <td
-                  className={`p-2 sm:p-3 text-right font-bold tabular-nums ${
-                    c.myPoints > 0
-                      ? "text-success"
-                      : c.myPoints < 0
-                        ? "text-destructive"
-                        : "text-muted-foreground"
-                  }`}
-                >
-                  {c.myPoints > 0 ? "+" : ""}
-                  {c.myPoints}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-3">
+      {entries.map((c) => (
+        <CivilWarResult key={c.matchId} entry={c} compact />
+      ))}
     </div>
   );
 }

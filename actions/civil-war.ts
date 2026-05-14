@@ -74,6 +74,10 @@ export type CivilWarMatchView = {
     leaderTopperUserId: string | null;
     leaderTopperBonus: number;
   } | null;
+  // Full breakdown for the rich "Civil War result" panel — only populated
+  // when settled. Same shape as CivilWarHistoryEntry returned from
+  // getMyRivalryAndCivilWarRecord, so the same component can render both.
+  historyEntry: CivilWarHistoryEntry | null;
 };
 
 export async function getCivilWarView(): Promise<CivilWarMatchView[]> {
@@ -92,9 +96,35 @@ export async function getCivilWarView(): Promise<CivilWarMatchView[]> {
   const allUserIds = new Set<string>();
   for (const cw of cws) for (const m of cw.members) allUserIds.add(String(m.userId));
   const users = await User.find({ _id: { $in: Array.from(allUserIds) } })
-    .select("username")
+    .select("username avatar")
     .lean();
   const userMap = new Map(users.map((u) => [String(u._id), u.username]));
+  const avatarMap = new Map(
+    users.map((u) => [String(u._id), u.avatar ?? null])
+  );
+
+  // Per-user fantasy points for settled wars only — needed for the rich
+  // result panel that shows the squad-by-squad FP table.
+  const settledMatchIds: mongoose.Types.ObjectId[] = [];
+  for (const cw of cws) {
+    if (cw.settled && cw.result) {
+      settledMatchIds.push(cw.matchId as unknown as mongoose.Types.ObjectId);
+    }
+  }
+  const cwFpResults = settledMatchIds.length
+    ? await (
+        await import("@/models/MatchResult")
+      ).MatchResult.find({
+        matchId: { $in: settledMatchIds },
+        userId: { $in: Array.from(allUserIds) },
+      })
+        .select("matchId userId fantasyPoints")
+        .lean()
+    : [];
+  const cwFpMap = new Map<string, number>();
+  for (const r of cwFpResults) {
+    cwFpMap.set(`${String(r.matchId)}::${String(r.userId)}`, r.fantasyPoints ?? 0);
+  }
 
   // Pre-match leaderboard order (best→worst) for captain computation.
   const { computeLeaderboard } = await import("@/services/scoring");
@@ -152,6 +182,81 @@ export async function getCivilWarView(): Promise<CivilWarMatchView[]> {
     }));
     const myId = String(me._id);
     const amICaptain = myId === captainAId || myId === captainBId;
+
+    // Build the full historyEntry for settled wars so the rich result panel
+    // can render in-line on the civil war tab (same component used in profile
+    // and matches detail).
+    let historyEntry: CivilWarHistoryEntry | null = null;
+    if (cw.settled && cw.result && myMember) {
+      const matchIdStr = String(match._id);
+      const myPts =
+        (myMember.side === "A"
+          ? cw.result.teamAPointsPerMember
+          : cw.result.teamBPointsPerMember) ?? 0;
+      const wasCaptain =
+        (myMember.side === "A" ? captainAId : captainBId) === myId;
+      const captainBonusApplied =
+        cw.result.captainWinnerSide === myMember.side &&
+        (cw.result.captainBonusPerMember ?? 0) > 0;
+      const totalWithBonus =
+        myPts +
+        (captainBonusApplied ? cw.result.captainBonusPerMember ?? 0 : 0);
+      const buildHEMember = (m: {
+        userId: mongoose.Types.ObjectId;
+        side: "A" | "B";
+      }) => {
+        const uid = String(m.userId);
+        return {
+          userId: uid,
+          username: userMap.get(uid) ?? "—",
+          avatar: avatarMap.get(uid) ?? null,
+          fantasyPoints: cwFpMap.get(`${matchIdStr}::${uid}`) ?? 0,
+          isCaptain:
+            uid === (m.side === "A" ? captainAId : captainBId),
+          isMe: uid === myId,
+        };
+      };
+      const heTeamA = cw.members
+        .filter((m) => m.side === "A")
+        .map(buildHEMember)
+        .sort((a, b) => b.fantasyPoints - a.fantasyPoints);
+      const heTeamB = cw.members
+        .filter((m) => m.side === "B")
+        .map(buildHEMember)
+        .sort((a, b) => b.fantasyPoints - a.fantasyPoints);
+      const leaderTopperId = cw.result.leaderTopperUserId
+        ? String(cw.result.leaderTopperUserId)
+        : null;
+      historyEntry = {
+        matchId: matchIdStr,
+        matchLabel: `${match.teamA} vs ${match.teamB}`,
+        startTime: new Date(match.startTime).toISOString(),
+        mySide: myMember.side,
+        myTeamName: myMember.side === "A" ? cw.teamAName : cw.teamBName,
+        oppTeamName: myMember.side === "A" ? cw.teamBName : cw.teamAName,
+        outcome: cw.result.outcome,
+        myPoints: totalWithBonus,
+        wasCaptain,
+        captainBonusApplied,
+        teamAName: cw.teamAName,
+        teamBName: cw.teamBName,
+        teamAPointsPerMember: cw.result.teamAPointsPerMember ?? 0,
+        teamBPointsPerMember: cw.result.teamBPointsPerMember ?? 0,
+        captainAUserId: captainAId,
+        captainBUserId: captainBId,
+        captainAFp: cw.result.captainAFp ?? 0,
+        captainBFp: cw.result.captainBFp ?? 0,
+        captainBonusPerMember: cw.result.captainBonusPerMember ?? 0,
+        leaderTopperUserId: leaderTopperId,
+        leaderTopperBonus: cw.result.leaderTopperBonus ?? 0,
+        teamAMembers: heTeamA,
+        teamBMembers: heTeamB,
+        leaderTopperUsername: leaderTopperId
+          ? userMap.get(leaderTopperId) ?? null
+          : null,
+      };
+    }
+
     out.push({
       matchId: String(match._id),
       teamLabel: `${match.teamA} vs ${match.teamB}`,
@@ -194,6 +299,7 @@ export async function getCivilWarView(): Promise<CivilWarMatchView[]> {
             leaderTopperBonus: cw.result.leaderTopperBonus ?? 0,
           }
         : null,
+      historyEntry,
     });
   }
 
@@ -306,6 +412,11 @@ export type RivalryHistoryEntry = {
   outcome: "win" | "loss" | "tie" | "pending" | "cancelled";
   pointsAwarded: number;
   penalty: number;
+  // Fantasy points for both players in this match — populated for settled
+  // rivalries so the result UI can show "how he won" (FP diff). null when
+  // the match isn't scored yet (pending/cancelled).
+  myFp: number | null;
+  opponentFp: number | null;
 };
 
 export type CivilWarHistoryEntry = {
@@ -392,6 +503,34 @@ export async function getMyRivalryAndCivilWarRecord(
     .sort({ createdAt: -1 })
     .lean();
 
+  // Fantasy points lookup for both players in each rivalry's match — used to
+  // show the FP diff ("how he won") in the rivalry result UI.
+  const rivalryMatchIds: mongoose.Types.ObjectId[] = [];
+  const rivalryUserIds = new Set<string>();
+  for (const r of rivalries) {
+    const match = r.matchId as unknown as { _id?: mongoose.Types.ObjectId } | null;
+    if (match?._id) rivalryMatchIds.push(match._id);
+    rivalryUserIds.add(String(r.challengerId?._id ?? r.challengerId));
+    rivalryUserIds.add(String(r.opponentId?._id ?? r.opponentId));
+  }
+  const rivalryFpResults = rivalryMatchIds.length
+    ? await (
+        await import("@/models/MatchResult")
+      ).MatchResult.find({
+        matchId: { $in: rivalryMatchIds },
+        userId: { $in: Array.from(rivalryUserIds) },
+      })
+        .select("matchId userId fantasyPoints")
+        .lean()
+    : [];
+  const rivalryFpMap = new Map<string, number>();
+  for (const r of rivalryFpResults) {
+    rivalryFpMap.set(
+      `${String(r.matchId)}::${String(r.userId)}`,
+      r.fantasyPoints ?? 0
+    );
+  }
+
   const rivalryRecord = {
     wins: 0,
     losses: 0,
@@ -465,6 +604,21 @@ export async function getMyRivalryAndCivilWarRecord(
         outcome === "cancelled" && String(r.cancelledBy ?? "") === userId
           ? r.pointsPenalty ?? 0
           : 0,
+      myFp: (() => {
+        if (outcome !== "win" && outcome !== "loss" && outcome !== "tie") return null;
+        const fp = rivalryFpMap.get(`${String(match._id)}::${userId}`);
+        return typeof fp === "number" ? fp : null;
+      })(),
+      opponentFp: (() => {
+        if (outcome !== "win" && outcome !== "loss" && outcome !== "tie") return null;
+        const oppId = String(
+          isChallenger
+            ? r.opponentId?._id ?? r.opponentId
+            : r.challengerId?._id ?? r.challengerId
+        );
+        const fp = rivalryFpMap.get(`${String(match._id)}::${oppId}`);
+        return typeof fp === "number" ? fp : null;
+      })(),
     });
   }
 

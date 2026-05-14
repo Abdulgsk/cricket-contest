@@ -8,18 +8,8 @@ import { Input } from "@/components/ui/input";
 import { renameCivilWarTeamAction } from "@/actions/civil-war";
 import type { CivilWarMatchView } from "@/actions/civil-war";
 import { CivilWarLivePanel } from "@/components/rivalry/civil-war-live-panel";
+import { CivilWarResult } from "@/components/rivalry/civil-war-result";
 import { useLiveCivilWar } from "@/components/rivalry/use-live-civil-war";
-
-const OUTCOME_LABEL: Record<string, string> = {
-  A_decisive: "Decisive win",
-  B_decisive: "Decisive win",
-  A_split: "Split win (more 1v1 wins)",
-  B_split: "Split win (more 1v1 wins)",
-  A_fp_tiebreak: "FP tiebreak win",
-  B_fp_tiebreak: "FP tiebreak win",
-  draw: "Draw — no points",
-  not_eligible: "Cancelled — not enough rivalries",
-};
 
 const REVEAL_KEY = (matchId: string) => `civilwar:revealed:${matchId}`;
 
@@ -128,7 +118,29 @@ function CivilWarCard({ m }: { m: CivilWarMatchView }) {
       )}
 
       {!m.settled && (
-      <div className="relative">
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-card to-muted/30 shadow-sm">
+        {/* glow accents (match the live panel) */}
+        <div className="pointer-events-none absolute -top-16 -left-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 -right-16 h-40 w-40 rounded-full bg-accent/10 blur-3xl" />
+
+        {showClear && (
+          <div className="relative flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border/60">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground">
+                🛡️ Lineup
+              </span>
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              {liveEnabled
+                ? live.data && live.data.ok && "available" in live.data && live.data.available
+                  ? "Live points attached"
+                  : "Awaiting live points"
+                : "Locked in"}
+            </span>
+          </div>
+        )}
+
+        <div className="relative p-3 sm:p-4">
         <div
           className={[
             "grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 md:gap-4 items-stretch transition-all duration-700 ease-out",
@@ -195,59 +207,22 @@ function CivilWarCard({ m }: { m: CivilWarMatchView }) {
             </div>
           </div>
         )}
+        </div>
       </div>
       )}
 
-      {m.settled && m.result && showClear && (
-        <div className="mt-3 rounded-md border bg-background p-3 text-xs sm:text-sm">
-          <p className="font-semibold mb-1">⚔️ Result</p>
-          {m.result.outcome === "draw" ? (
-            <p className="text-muted-foreground">
-              Both teams ended dead even — no points awarded.
-            </p>
-          ) : m.result.outcome === "not_eligible" ? (
-            <p className="text-muted-foreground">
-              Civil War was cancelled — not enough accepted rivalries this match.
-            </p>
-          ) : (
-            <>
-              <p>
-                {OUTCOME_LABEL[m.result.outcome] ?? m.result.outcome} —{" "}
-                <strong>
-                  {m.result.outcome.startsWith("A_") ? m.teamAName : m.teamBName}
-                </strong>{" "}
-                takes it.
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                1v1 winners: {m.result.teamAWinners} – {m.result.teamBWinners} ·
-                FP: {m.result.teamAFp} – {m.result.teamBFp}
-              </p>
-              <p className="text-[11px] mt-1">
-                Per-member points · {m.teamAName}:{" "}
-                <span
-                  className={
-                    m.result.teamAPointsPerMember >= 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }
-                >
-                  {m.result.teamAPointsPerMember >= 0 ? "+" : ""}
-                  {m.result.teamAPointsPerMember}
-                </span>{" "}
-                · {m.teamBName}:{" "}
-                <span
-                  className={
-                    m.result.teamBPointsPerMember >= 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }
-                >
-                  {m.result.teamBPointsPerMember >= 0 ? "+" : ""}
-                  {m.result.teamBPointsPerMember}
-                </span>
-              </p>
-            </>
-          )}
+      {m.settled && m.historyEntry && showClear && (
+        <div className="mt-3">
+          <CivilWarResult entry={m.historyEntry} showHeader={false} />
+        </div>
+      )}
+      {m.settled && !m.historyEntry && showClear && m.result && (
+        <div className="mt-3 rounded-md border bg-background p-3 text-xs sm:text-sm text-muted-foreground">
+          {m.result.outcome === "draw"
+            ? "Both teams ended dead even — no points awarded."
+            : m.result.outcome === "not_eligible"
+            ? "Civil War was cancelled — not enough accepted rivalries this match."
+            : "Result details unavailable."}
         </div>
       )}
     </Card>

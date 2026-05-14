@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type { CivilWarHistoryEntry } from "@/actions/civil-war";
 import { UserAvatar } from "@/components/user-avatar";
 
@@ -95,10 +98,13 @@ function fmtPpm(n: number): { text: string; cls: string } {
 export function CivilWarResult({
   entry,
   showHeader = true,
+  compact = false,
 }: {
   entry: CivilWarHistoryEntry;
   showHeader?: boolean;
+  compact?: boolean;
 }) {
+  const [squadOpen, setSquadOpen] = useState(!compact);
   const verdict = getVerdict(entry);
   const teamATotalFp = entry.teamAMembers.reduce((s, m) => s + m.fantasyPoints, 0);
   const teamBTotalFp = entry.teamBMembers.reduce((s, m) => s + m.fantasyPoints, 0);
@@ -193,9 +199,24 @@ export function CivilWarResult({
 
       {/* Member breakdown */}
       <div className="px-4 sm:px-5 py-3 sm:py-4 border-t border-border/60">
-        <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-          Squad fantasy points
-        </div>
+        <button
+          type="button"
+          onClick={compact ? () => setSquadOpen((v) => !v) : undefined}
+          className={
+            "w-full flex items-center justify-between gap-2 text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 " +
+            (compact ? "hover:text-foreground transition-colors" : "cursor-default")
+          }
+          aria-expanded={squadOpen}
+        >
+          <span>Squad fantasy points</span>
+          {compact && (
+            <span className="text-[10px] normal-case tracking-normal text-muted-foreground/80">
+              {squadOpen ? "Hide ▲" : "Show ▼"}
+            </span>
+          )}
+        </button>
+        {squadOpen && (
+        <>
         <div className="overflow-x-auto -mx-4 sm:-mx-5 px-4 sm:px-5">
           <table className="w-full text-xs sm:text-sm min-w-[420px] border-separate border-spacing-y-1">
             <thead>
@@ -309,6 +330,8 @@ export function CivilWarResult({
           marks each side&apos;s captain. Captains aren&apos;t paired against
           each other — they just lead their team.
         </p>
+        </>
+        )}
       </div>
 
       {/* Leader topper override */}

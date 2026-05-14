@@ -157,6 +157,43 @@ export function RivalryResult({ entry }: { entry: RivalryHistoryEntry }) {
             </div>
           </div>
         </div>
+
+        {/* FP comparison — explains "how he won" */}
+        {entry.myFp !== null && entry.opponentFp !== null && (
+          <div className="mt-2.5 pt-2.5 border-t border-border/40 flex items-center justify-between gap-2 text-[10px] sm:text-[11px]">
+            <span className="text-muted-foreground">
+              Fantasy points
+            </span>
+            <span className="tabular-nums">
+              <span
+                className={
+                  iWon ? "font-semibold text-success" : "font-medium"
+                }
+              >
+                {entry.myFp}
+              </span>
+              <span className="text-muted-foreground/50 mx-1.5">vs</span>
+              <span
+                className={
+                  oppWon ? "font-semibold text-destructive" : "text-muted-foreground"
+                }
+              >
+                {entry.opponentFp}
+              </span>
+              {(() => {
+                const diff = (entry.myFp ?? 0) - (entry.opponentFp ?? 0);
+                if (diff === 0) return null;
+                const tone = diff > 0 ? "text-success" : "text-destructive";
+                return (
+                  <span className={`ml-1.5 font-semibold ${tone}`}>
+                    ({diff > 0 ? "+" : ""}
+                    {Math.round(diff * 10) / 10})
+                  </span>
+                );
+              })()}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
