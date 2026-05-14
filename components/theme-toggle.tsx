@@ -1,31 +1,40 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  THEMES,
+  THEME_LABEL,
+  THEME_ICON,
+  applyTheme,
+  readStoredTheme,
+  type Theme,
+} from "@/components/theme-init";
 
-type Theme = "light" | "dark";
-
-function getNextTheme(current: Theme): Theme {
-  return current === "dark" ? "light" : "dark";
+function nextTheme(current: Theme): Theme {
+  const i = THEMES.indexOf(current);
+  return THEMES[(i + 1) % THEMES.length];
 }
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   // Avoid hydration mismatch: render a neutral placeholder on the server and
   // the first client render, then sync with the document on mount.
   const [mounted, setMounted] = useState(false);
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>("sand");
 
   useEffect(() => {
-    setTheme(
-      document.documentElement.classList.contains("dark") ? "dark" : "light"
-    );
+    setTheme(readStoredTheme());
     setMounted(true);
   }, []);
 
-  const toggle = () => {
-    const next = getNextTheme(theme);
+  const cycle = () => {
+    const next = nextTheme(theme);
     setTheme(next);
-    document.documentElement.classList.toggle("dark", next === "dark");
-    localStorage.setItem("theme", next);
+    applyTheme(next);
+    try {
+      localStorage.setItem("theme", next);
+    } catch {
+      /* ignore */
+    }
   };
 
   const baseClass = compact
@@ -36,26 +45,31 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
     return (
       <button
         type="button"
-        aria-label="Toggle theme"
+        aria-label="Cycle theme"
         className={baseClass}
         suppressHydrationWarning
       >
-        <span aria-hidden>🌓</span>
+        <span aria-hidden>🎨</span>
         {!compact && <span>Theme</span>}
       </button>
     );
   }
 
+  const upcoming = nextTheme(theme);
   return (
     <button
       type="button"
-      onClick={toggle}
-      aria-label="Toggle theme"
+      onClick={cycle}
+      aria-label={`Theme: ${THEME_LABEL[theme]}. Click to switch to ${THEME_LABEL[upcoming]}`}
       className={baseClass}
-      title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      title={`Theme: ${THEME_LABEL[theme]} → ${THEME_LABEL[upcoming]}`}
     >
-      {theme === "dark" ? "☀️" : "🌙"}
-      {!compact && <span>{theme === "dark" ? "Light theme" : "Dark theme"}</span>}
+      <span aria-hidden>{THEME_ICON[theme]}</span>
+      {!compact && (
+        <span>
+          {THEME_LABEL[theme]} theme
+        </span>
+      )}
     </button>
   );
 }
