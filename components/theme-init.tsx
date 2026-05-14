@@ -2,20 +2,20 @@
 
 import { useEffect } from "react";
 
-export const THEMES = ["sand", "paper", "mist", "google", "ink"] as const;
+export const THEMES = ["sand", "paper", "mist", "halo", "ink"] as const;
 export type Theme = (typeof THEMES)[number];
 export const THEME_LABEL: Record<Theme, string> = {
   sand: "Sand",
   paper: "Paper",
   mist: "Mist",
-  google: "Google",
+  halo: "Halo",
   ink: "Ink",
 };
 export const THEME_ICON: Record<Theme, string> = {
   sand: "🏜️",
   paper: "📜",
   mist: "🌫️",
-  google: "🔍",
+  halo: "🔍",
   ink: "🖋️",
 };
 
@@ -35,7 +35,7 @@ export function readStoredTheme(): Theme {
       t === "sand" ||
       t === "paper" ||
       t === "mist" ||
-      t === "google" ||
+      t === "halo" ||
       t === "ink"
     ) {
       return t;

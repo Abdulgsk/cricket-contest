@@ -2,7 +2,7 @@
 
 /* -------------------------------------------------------------------------
  * Five first-class themes. Selected by adding `.theme-sand` / `.theme-paper`
- * / `.theme-mist` / `.theme-ink` / `.theme-google` to <html>. The dark theme
+ * / `.theme-mist` / `.theme-ink` / `.theme-halo` to <html>. The dark theme
  * (`.theme-ink`) also gets the `dark` class so existing Tailwind `dark:`
  * utilities keep working.
  *
@@ -11,7 +11,7 @@
  *   mist:   f4faff dee7e7 b7adcf 4f646f 535657
  *   paper:  tonal light — warm off-white, soft graphite, muted teal
  *   ink:    tonal dark  — near-black slate, parchment text, copper accent
- *   google: Material You light — white surface, Google Blue primary, with
+ *   halo: Material You light — white surface, Halo Blue primary, with
  *           red/yellow/green semantic accents.
  * ----------------------------------------------------------------------- */
 
@@ -52,22 +52,22 @@
   --danger: 188 60 70;
 }
 
-.theme-google {
-  /* Material-style light. White surface, Google Blue primary, soft border. */
+.theme-halo {
+  /* Material-style light. White surface, Halo Blue primary, soft border. */
   --background: 255 255 255;
-  --foreground: 32 33 36;            /* Google grey 900            */
+  --foreground: 32 33 36;            /* Halo grey 900            */
   --card: 255 255 255;
   --card-foreground: 32 33 36;
-  --primary: 26 115 232;             /* Google Blue 600            */
+  --primary: 26 115 232;             /* Halo Blue 600            */
   --primary-foreground: 255 255 255;
-  --accent: 234 67 53;               /* Google Red 500             */
-  --muted: 241 243 244;              /* Google grey 100            */
-  --muted-foreground: 95 99 104;     /* Google grey 700            */
-  --border: 218 220 224;             /* Google grey 300            */
+  --accent: 234 67 53;               /* Halo Red 500             */
+  --muted: 241 243 244;              /* Halo grey 100            */
+  --muted-foreground: 95 99 104;     /* Halo grey 700            */
+  --border: 218 220 224;             /* Halo grey 300            */
   --ring: 26 115 232;
-  --success: 52 168 83;              /* Google Green 500           */
-  --warning: 251 188 5;              /* Google Yellow 500          */
-  --danger: 234 67 53;               /* Google Red 500             */
+  --success: 52 168 83;              /* Halo Green 500           */
+  --warning: 251 188 5;              /* Halo Yellow 500          */
+  --danger: 234 67 53;               /* Halo Red 500             */
 }
 
 .theme-paper {
@@ -147,8 +147,8 @@ html, body {
     radial-gradient(900px 500px at 110% 10%, rgba(79,100,111,0.08), transparent 60%),
     rgb(var(--background));
 }
-.theme-google html, .theme-google body, html.theme-google, body.theme-google {
-  /* Google theme: clean white surface, no radial atmosphere. */
+.theme-halo html, .theme-halo body, html.theme-halo, body.theme-halo {
+  /* Halo theme: clean white surface, no radial atmosphere. */
   background: rgb(var(--background));
 }
 .theme-paper html, .theme-paper body, html.theme-paper, body.theme-paper {
@@ -179,9 +179,9 @@ html, body {
     0 0 0 1px rgb(var(--primary) / 0.18),
     0 8px 30px -12px rgb(var(--primary) / 0.35);
 }
-/* Ink + Google: aesthetic flat — replace glow with a hairline ring. */
+/* Ink + Halo: aesthetic flat — replace glow with a hairline ring. */
 .theme-ink .glow,
-.theme-google .glow {
+.theme-halo .glow {
   box-shadow:
     0 0 0 1px rgb(var(--border) / 0.9),
     0 1px 2px 0 rgb(0 0 0 / 0.04);

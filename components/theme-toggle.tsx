@@ -16,7 +16,7 @@ const THEME_SWATCHES: Record<Theme, string[]> = {
   sand:   ["#faf0da", "#cfb890", "#a87546", "#6d8ea1", "#272727"],
   paper:  ["#f8f5f0", "#dad3c6", "#465c66", "#a88a64", "#262a2e"],
   mist:   ["#f4faff", "#dee7e7", "#4f646f", "#8474ad", "#3c4042"],
-  google: ["#ffffff", "#dadce0", "#1a73e8", "#ea4335", "#202124"],
+  halo: ["#ffffff", "#dadce0", "#1a73e8", "#ea4335", "#202124"],
   ink:    ["#121417", "#34383e", "#c48e5a", "#90a9b7", "#e8e2d4"],
 };
 

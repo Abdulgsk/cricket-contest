@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // Inline script: applies the saved theme class before first paint to avoid
   // a flash of the wrong colours. Mirrors the logic in components/theme-init.
-  const themeBootScript = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||t==='wine')t='ink';if(t==='light')t='sand';var ok={sand:1,paper:1,mist:1,google:1,ink:1};if(!ok[t])t='sand';var r=document.documentElement;r.classList.remove('theme-sand','theme-paper','theme-mist','theme-google','theme-ink','theme-wine');r.classList.add('theme-'+t);r.classList.toggle('dark',t==='ink');}catch(e){}})();`;
+  const themeBootScript = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||t==='wine')t='ink';if(t==='light')t='sand';var ok={sand:1,paper:1,mist:1,halo:1,ink:1};if(!ok[t])t='sand';var r=document.documentElement;r.classList.remove('theme-sand','theme-paper','theme-mist','theme-halo','theme-ink','theme-wine');r.classList.add('theme-'+t);r.classList.toggle('dark',t==='ink');}catch(e){}})();`;
   return (
     <html
       lang="en"
