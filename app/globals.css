@@ -1,14 +1,17 @@
 @import "tailwindcss";
 
 /* -------------------------------------------------------------------------
- * Three first-class themes. Selected by adding `.theme-sand` / `.theme-mist`
- * / `.theme-wine` to <html>. The `.theme-wine` theme also gets the `dark`
- * class so existing Tailwind `dark:` utilities keep working.
+ * Five first-class themes. Selected by adding `.theme-sand` / `.theme-mist`
+ * / `.theme-wine` / `.theme-paper` / `.theme-ink` to <html>. The dark themes
+ * (`.theme-wine`, `.theme-ink`) also get the `dark` class so existing
+ * Tailwind `dark:` utilities keep working.
  *
  * Palette sources (user-provided), then lifted/desaturated for readability:
- *   sand: 272727 d4aa7d efd09e d2d8b3 90a9b7
- *   mist: f4faff dee7e7 b7adcf 4f646f 535657
- *   wine: 100007 200116 2d0605 4c0827 454A47  (+cream/rose for legibility)
+ *   sand:  272727 d4aa7d efd09e d2d8b3 90a9b7
+ *   mist:  f4faff dee7e7 b7adcf 4f646f 535657
+ *   wine:  100007 200116 2d0605 4c0827 454A47  (+cream/rose for legibility)
+ *   paper: tonal light — warm off-white, soft graphite, muted teal
+ *   ink:   tonal dark  — near-black slate, parchment text, copper accent
  * ----------------------------------------------------------------------- */
 
 :root,
@@ -66,6 +69,42 @@
   --danger: 240 110 110;
 }
 
+.theme-paper {
+  /* Tonal light — warm off-white paper, soft graphite text, muted teal accent */
+  --background: 248 245 240;        /* warm off-white             */
+  --foreground: 38 42 46;           /* soft graphite              */
+  --card: 255 253 249;
+  --card-foreground: 38 42 46;
+  --primary: 70 92 102;             /* deep slate-teal            */
+  --primary-foreground: 248 245 240;
+  --accent: 168 138 100;             /* warm tan                   */
+  --muted: 233 228 219;
+  --muted-foreground: 96 100 106;
+  --border: 218 211 198;
+  --ring: 70 92 102;
+  --success: 64 124 92;
+  --warning: 168 124 36;
+  --danger: 178 60 60;
+}
+
+.theme-ink {
+  /* Tonal dark — slate ink with parchment text and copper accent. No glow. */
+  --background: 18 20 23;           /* near-black slate           */
+  --foreground: 232 226 212;        /* warm parchment             */
+  --card: 26 29 33;
+  --card-foreground: 232 226 212;
+  --primary: 196 142 90;            /* warm copper                */
+  --primary-foreground: 18 20 23;
+  --accent: 144 169 183;             /* dusted slate-blue (palette 1) */
+  --muted: 35 39 44;
+  --muted-foreground: 174 170 158;
+  --border: 52 56 62;
+  --ring: 196 142 90;
+  --success: 120 178 132;
+  --warning: 220 174 96;
+  --danger: 220 110 110;
+}
+
 @theme inline {
   --color-background: rgb(var(--background));
   --color-foreground: rgb(var(--foreground));
@@ -113,6 +152,18 @@ html, body {
     radial-gradient(900px 500px at 110% 10%, rgba(158,163,152,0.10), transparent 60%),
     rgb(var(--background));
 }
+.theme-paper html, .theme-paper body, html.theme-paper, body.theme-paper {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(70,92,102,0.06), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(168,138,100,0.07), transparent 60%),
+    rgb(var(--background));
+}
+/* Ink — flat, aesthetic, no glow. Subtle vignette only. */
+.theme-ink html, .theme-ink body, html.theme-ink, body.theme-ink {
+  background:
+    radial-gradient(1400px 800px at 50% 120%, rgba(0,0,0,0.35), transparent 60%),
+    rgb(var(--background));
+}
 
 .glass {
   background: linear-gradient(180deg, rgb(var(--card) / 0.92), rgb(var(--card) / 0.84));
@@ -133,6 +184,12 @@ html, body {
   box-shadow:
     0 0 0 1px rgb(var(--primary) / 0.30),
     0 8px 40px -10px rgb(var(--primary) / 0.50);
+}
+/* Ink theme: aesthetic dark, no glow — replace with a flat hairline ring. */
+.theme-ink .glow {
+  box-shadow:
+    0 0 0 1px rgb(var(--border) / 0.9),
+    0 1px 0 0 rgb(255 255 255 / 0.02) inset;
 }
 
 .shimmer {
