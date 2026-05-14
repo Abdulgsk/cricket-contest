@@ -27,7 +27,7 @@ const LOGO_SRC = "/gully11-logo.png";
  */
 export function BrandLogo({
   size = "md",
-  showWordmark = false,
+  showWordmark = true,
   clickable = false,
   className,
   alt = "Gully11",
