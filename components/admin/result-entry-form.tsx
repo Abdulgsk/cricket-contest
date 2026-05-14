@@ -72,6 +72,8 @@ export function ResultEntryForm({
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [fetchingContestPoints, setFetchingContestPoints] = useState(false);
   const [fetchContestStatus, setFetchContestStatus] = useState<string | null>(null);
+  const [fetchingTeamDetails, setFetchingTeamDetails] = useState(false);
+  const [fetchTeamStatus, setFetchTeamStatus] = useState<string | null>(null);
   const [my11Session, setMy11Session] = useState<{
     hasCookie: boolean;
     loggedIn: boolean;
@@ -249,6 +251,37 @@ export function ResultEntryForm({
     } finally {
       setFetchingContestPoints(false);
       window.setTimeout(() => setFetchContestStatus(null), 2500);
+    }
+  };
+
+  const fetchTeamDetails = async () => {
+    setFetchingTeamDetails(true);
+    setFetchTeamStatus("Fetching My11 teams for all mapped users...");
+    try {
+      const response = await fetch("/api/admin/fetch-my11-team-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        const msg = data.error || `Request failed (${response.status})`;
+        toast.error(msg);
+        setFetchTeamStatus(msg);
+        return;
+      }
+      const fetched = data.fetched ?? 0;
+      const total = data.totalUsers ?? 0;
+      const skipped = data.skipped ?? 0;
+      toast.success(`Stored ${fetched}/${total} teams${skipped ? ` (${skipped} skipped)` : ""}`);
+      setFetchTeamStatus(`Stored ${fetched}/${total} teams${skipped ? ` · ${skipped} skipped` : ""}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to fetch team details";
+      toast.error(msg);
+      setFetchTeamStatus(msg);
+    } finally {
+      setFetchingTeamDetails(false);
+      window.setTimeout(() => setFetchTeamStatus(null), 4000);
     }
   };
 
@@ -593,10 +626,22 @@ export function ResultEntryForm({
             >
               {fetchingContestPoints ? "Fetching My11 points..." : "🔄 Fetch My11 Points"}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchTeamDetails}
+              loading={fetchingTeamDetails}
+              disabled={!contestLinked}
+            >
+              {fetchingTeamDetails ? "Fetching teams..." : "👥 Fetch My11 Teams"}
+            </Button>
           </div>
         </div>
         {fetchContestStatus && (
           <p className="mb-3 text-xs text-muted-foreground">{fetchContestStatus}</p>
+        )}
+        {fetchTeamStatus && (
+          <p className="mb-3 text-xs text-muted-foreground">{fetchTeamStatus}</p>
         )}
         {!contestLinked && (
           <p className="mb-3 text-xs text-muted-foreground">

@@ -62,6 +62,7 @@ export interface ISettings {
   civilWarConfig?: Partial<ICivilWarConfig>;
   my11sessionCookie?: string;
   my11cookieExpiresAt?: Date;
+  my11LiveRefreshSec?: number;
   updatedAt: Date;
 }
 
@@ -70,6 +71,7 @@ const SettingsSchema = new Schema<ISettings>(
     bountyHolderUserId: { type: Schema.Types.ObjectId, ref: "User" },
     my11sessionCookie: { type: String, select: false },
     my11cookieExpiresAt: { type: Date },
+    my11LiveRefreshSec: { type: Number, default: 30, min: 5, max: 600 },
     announcement: { type: String, default: "" },
     seasonName: { type: String, default: "IPL 2026" },
     bonusConfig: {

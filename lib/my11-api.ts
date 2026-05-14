@@ -39,6 +39,7 @@ export interface My11LeaderboardRow {
   username: string;
   totalScore: number;
   rank: number | null;
+  teamId: number | null;
 }
 
 export interface My11LeaderboardResult {
@@ -337,10 +338,11 @@ export async function getLeaderboard(
       if (!username) continue;
       const totalScore = pickNum(row, "totalScore") ?? 0;
       const rank = pickNum(row, "rank");
+      const teamId = pickNum(row, "teamId");
       const key = username.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
       const existing = bestByUser.get(key);
       if (!existing || totalScore > existing.totalScore) {
-        bestByUser.set(key, { username, totalScore, rank });
+        bestByUser.set(key, { username, totalScore, rank, teamId });
       }
     }
 
@@ -366,6 +368,144 @@ export async function fetchLeaderboardFromContestUrl(
     throw new Error("Contest URL must contain /leaderboard/<matchId>/<contestId>");
   }
   return getLeaderboard(Number(m[1]), Number(m[2]));
+}
+
+// ---------- user team details ----------
+
+export interface My11TeamPlayer {
+  id: number;
+  name: string;
+  dName: string;
+  sName: string;
+  role: string;
+  roleName: string;
+  roleSubType: string;
+  teamId: number | null;
+  teamName: string;
+  imgURL: string;
+  points: number;
+  credits: number;
+  isCaptain: boolean;
+  isViceCaptain: boolean;
+  isWicketKeeper: boolean;
+  isTopPlayer: boolean;
+  selectedBy: number | null;
+  selCapPerc: number | null;
+  selVcPerc: number | null;
+}
+
+export interface My11UserTeamDetails {
+  matchId: number;
+  contestId: number;
+  userTeamId: number;
+  userTeamName: string;
+  uName: string;
+  rank: number | null;
+  score: number | null;
+  captainName: string;
+  viceCaptainName: string;
+  captainIds: number[];
+  viceCaptainIds: number[];
+  players: My11TeamPlayer[];
+  updatedAt: number | null;
+}
+
+interface RawTeamDetailsResponse {
+  uName?: string;
+  rank?: number;
+  score?: number;
+  captainName?: string[];
+  viceCaptainName?: string[];
+  captainIds?: number[];
+  viceCaptainIds?: number[];
+  userTeamId?: number;
+  userTeamName?: string;
+  updAt?: number;
+  players?: Array<Record<string, unknown>>;
+  errorCode?: number;
+  errorMessage?: string;
+}
+
+function normalizeTeamPlayer(
+  raw: Record<string, unknown>,
+  captainIds: Set<number>,
+  vcIds: Set<number>
+): My11TeamPlayer | null {
+  const id = pickNum(raw, "id");
+  if (id == null) return null;
+  return {
+    id,
+    name: pickStr(raw, "name"),
+    dName: pickStr(raw, "dName"),
+    sName: pickStr(raw, "sName"),
+    role: pickStr(raw, "role"),
+    roleName: pickStr(raw, "roleName"),
+    roleSubType: pickStr(raw, "roleSubType"),
+    teamId: pickNum(raw, "teamId"),
+    teamName: pickStr(raw, "teamName"),
+    imgURL: pickStr(raw, "imgURL"),
+    points: pickNum(raw, "points") ?? 0,
+    credits: pickNum(raw, "credits") ?? 0,
+    // Captain / Vice are the USER's fantasy picks (from captainIds / vcIds on
+    // the team payload). The per-player `raw.isCaptain` flag refers to the
+    // on-field match captain — ignore it here.
+    isCaptain: captainIds.has(id),
+    isViceCaptain: vcIds.has(id),
+    // Same for `raw.isWicketKeeper` — that's the match wicketkeeper. Role
+    // bucketing for layout uses the player's `role` / `roleName` string.
+    isWicketKeeper: false,
+    isTopPlayer: raw.isTopPlayer === true,
+    selectedBy: pickNum(raw, "selectedBy"),
+    selCapPerc: pickNum(raw, "selCapPerc"),
+    selVcPerc: pickNum(raw, "selVcPerc"),
+  };
+}
+
+/** Fetch full team details (11 players + points + C/VC) for a single user team. */
+export async function getUserTeamDetails(args: {
+  matchId: number;
+  contestId: number;
+  teamId: number;
+}): Promise<My11UserTeamDetails> {
+  const { matchId, contestId, teamId } = args;
+  const referer = `${BASE}/mecspa/lobby/leaderboard/${matchId}/${contestId}`;
+  const data = await call<RawTeamDetailsResponse>(
+    "/api/lobbyApi/userteams/v1/getTeamDetails",
+    { matchId, teamId, contestId, nonCashAppVersion: true },
+    { referer }
+  );
+  if (typeof data.errorCode === "number" && data.errorCode !== 0) {
+    if (data.errorCode === 141) {
+      throw new My11NotReadyError(data.errorMessage);
+    }
+    throw new Error(
+      `My11 getTeamDetails error ${data.errorCode}: ${data.errorMessage ?? ""}`
+    );
+  }
+  const captainIds = new Set<number>(
+    Array.isArray(data.captainIds) ? data.captainIds.filter((n) => typeof n === "number") : []
+  );
+  const vcIds = new Set<number>(
+    Array.isArray(data.viceCaptainIds) ? data.viceCaptainIds.filter((n) => typeof n === "number") : []
+  );
+  const players = asArray(data.players)
+    .map((p) => normalizeTeamPlayer(p, captainIds, vcIds))
+    .filter((p): p is My11TeamPlayer => p !== null);
+  return {
+    matchId,
+    contestId,
+    userTeamId: typeof data.userTeamId === "number" ? data.userTeamId : teamId,
+    userTeamName: typeof data.userTeamName === "string" ? data.userTeamName : "",
+    uName: typeof data.uName === "string" ? data.uName : "",
+    rank: typeof data.rank === "number" ? data.rank : null,
+    score: typeof data.score === "number" ? data.score : null,
+    captainName: Array.isArray(data.captainName) ? data.captainName[0] ?? "" : "",
+    viceCaptainName: Array.isArray(data.viceCaptainName) ? data.viceCaptainName[0] ?? "" : "",
+    captainIds: Array.from(captainIds),
+    viceCaptainIds: Array.from(vcIds),
+    players,
+    updatedAt: typeof data.updAt === "number" ? data.updAt : null,
+  };
 }
 
 // ---------- cookie storage ----------

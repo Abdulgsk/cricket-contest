@@ -10,6 +10,7 @@ import { RivalryWithdrawalQueue } from "@/components/admin/rivalry-withdrawal-qu
 import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
 import { BonusSettingsPanel } from "@/components/admin/bonus-settings-panel";
 import { CivilWarSettingsPanel } from "@/components/admin/civil-war-settings-panel";
+import { My11LiveSettingsPanel } from "@/components/admin/my11-live-settings-panel";
 import { CIVIL_WAR_DEFAULTS } from "@/services/civil-war";
 import { formatDate } from "@/lib/utils";
 import { requireRole, userHasFeature } from "@/lib/rbac";
@@ -208,6 +209,9 @@ export default async function AdminHome() {
   const toolsTab = (
     <div className="space-y-4">
       <AutomationTools canForceComplete={me.role === "superadmin"} />
+      {me.role === "superadmin" && (
+        <My11LiveSettingsPanel initial={settings.my11LiveRefreshSec ?? 30} />
+      )}
       <Card className="border-border/70">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>

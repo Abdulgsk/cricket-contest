@@ -558,6 +558,16 @@ export async function setMatchContestUrlAction(matchId: string, contestUrl: stri
   return { ok: true as const };
 }
 
+export async function updateMy11LiveRefreshAction(seconds: number) {
+  await requireRole("superadmin");
+  const value = Math.max(5, Math.min(600, Math.round(Number(seconds) || 30)));
+  await connectDB();
+  await Settings.updateOne({}, { $set: { my11LiveRefreshSec: value } }, { upsert: true });
+  revalidatePath("/admin");
+  revalidatePath("/contests");
+  return { ok: true as const, value };
+}
+
 // ---- IPL auto-import ----
 
 export async function syncIplMatchesAction() {
