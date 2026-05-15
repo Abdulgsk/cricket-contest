@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { CivilWar } from "@/models/CivilWar";
+import type { CivilWarSide } from "@/models/CivilWar";
 import { getSettings } from "@/models/Settings";
 
 export const CIVIL_WAR_DEFAULTS = {
@@ -14,7 +15,11 @@ export const CIVIL_WAR_MIN_RIVALRIES = 2;
 
 /**
  * Ensure both players of an accepted rivalry are in this match's CivilWar
- * doc on OPPOSITE sides. Random which one to which.
+ * doc on OPPOSITE sides. After every attach we re-shuffle the entire
+ * lineup with `randomizeCivilWarSides()` so the assignment isn't biased
+ * by the order rivalries were accepted (otherwise a player who issues
+ * many challenges would always end up on the same side as their first
+ * acceptor's opposite, clustering all their rivals together).
  * Idempotent — safe to call repeatedly.
  */
 export async function attachRivalryToCivilWar(rivalry: {
@@ -30,41 +35,25 @@ export async function attachRivalryToCivilWar(rivalry: {
   }
   const challengerStr = String(rivalry.challengerId);
   const opponentStr = String(rivalry.opponentId);
-  const memberMap = new Map(cw.members.map((m) => [String(m.userId), m]));
-  const challengerExists = memberMap.has(challengerStr);
-  const opponentExists = memberMap.has(opponentStr);
+  const memberIds = new Set(cw.members.map((m) => String(m.userId)));
 
-  let challengerSide: "A" | "B" | null = challengerExists
-    ? memberMap.get(challengerStr)!.side
-    : null;
-  let opponentSide: "A" | "B" | null = opponentExists
-    ? memberMap.get(opponentStr)!.side
-    : null;
-
-  if (!challengerSide && !opponentSide) {
-    const flip = Math.random() < 0.5;
-    challengerSide = flip ? "A" : "B";
-    opponentSide = flip ? "B" : "A";
-  } else if (!challengerSide && opponentSide) {
-    challengerSide = opponentSide === "A" ? "B" : "A";
-  } else if (challengerSide && !opponentSide) {
-    opponentSide = challengerSide === "A" ? "B" : "A";
-  }
-
-  if (!challengerExists) {
+  // Push the new members with a placeholder side; randomizeCivilWarSides
+  // below will overwrite all sides consistently.
+  if (!memberIds.has(challengerStr)) {
     cw.members.push({
       userId: rivalry.challengerId,
-      side: challengerSide!,
+      side: "A",
       rivalryId: rivalry._id,
     });
   }
-  if (!opponentExists) {
+  if (!memberIds.has(opponentStr)) {
     cw.members.push({
       userId: rivalry.opponentId,
-      side: opponentSide!,
+      side: "A",
       rivalryId: rivalry._id,
     });
   }
+  randomizeCivilWarSides(cw.members);
   await cw.save();
 }
 
@@ -77,7 +66,73 @@ export async function detachRivalryFromCivilWar(rivalry: {
   const cw = await CivilWar.findOne({ matchId: rivalry.matchId });
   if (!cw) return;
   cw.members = cw.members.filter((m) => String(m.rivalryId) !== String(rivalry._id));
+  // Re-shuffle the remaining members so the leftover lineup stays unbiased.
+  randomizeCivilWarSides(cw.members);
   await cw.save();
+}
+
+/**
+ * Random 2-coloring of the rivalry graph: each rivalry forces its two
+ * members onto opposite sides; within each connected component we pick
+ * the starting side at random so the assignment isn't predictable from
+ * who challenged whom or in what order. Mutates the input array in place.
+ */
+export function randomizeCivilWarSides(
+  members: Array<{
+    userId: mongoose.Types.ObjectId;
+    side: CivilWarSide;
+    rivalryId: mongoose.Types.ObjectId;
+  }>
+) {
+  if (members.length === 0) return;
+  // Build adjacency: each rivalryId connects its two members.
+  const byRivalry = new Map<string, typeof members>();
+  for (const m of members) {
+    const key = String(m.rivalryId);
+    const arr = byRivalry.get(key) ?? [];
+    arr.push(m);
+    byRivalry.set(key, arr);
+  }
+  const adj = new Map<string, Set<string>>();
+  const memberById = new Map<string, (typeof members)[number]>();
+  for (const m of members) memberById.set(String(m.userId), m);
+  for (const pair of byRivalry.values()) {
+    if (pair.length !== 2) continue;
+    const [a, b] = pair;
+    const aId = String(a.userId);
+    const bId = String(b.userId);
+    if (!adj.has(aId)) adj.set(aId, new Set());
+    if (!adj.has(bId)) adj.set(bId, new Set());
+    adj.get(aId)!.add(bId);
+    adj.get(bId)!.add(aId);
+  }
+
+  // BFS each connected component, randomizing the starting side.
+  const visited = new Set<string>();
+  for (const startId of adj.keys()) {
+    if (visited.has(startId)) continue;
+    const startSide: CivilWarSide = Math.random() < 0.5 ? "A" : "B";
+    const queue: Array<{ id: string; side: CivilWarSide }> = [
+      { id: startId, side: startSide },
+    ];
+    while (queue.length) {
+      const { id, side } = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const m = memberById.get(id);
+      if (m) m.side = side;
+      const opp: CivilWarSide = side === "A" ? "B" : "A";
+      for (const nb of adj.get(id) ?? []) {
+        if (!visited.has(nb)) queue.push({ id: nb, side: opp });
+      }
+    }
+  }
+  // Any orphans (member with no rivalry partner present) — randomize too.
+  for (const m of members) {
+    if (!visited.has(String(m.userId))) {
+      m.side = Math.random() < 0.5 ? "A" : "B";
+    }
+  }
 }
 
 export async function getCivilWarConfig() {
