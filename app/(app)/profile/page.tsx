@@ -32,6 +32,20 @@ export default async function ProfilePage() {
           my11circleName: me.my11circleName,
           avatar: me.avatar ?? null,
           bio: me.bio ?? null,
+          my11NameRequest: me.my11NameRequest
+            ? {
+                requested: me.my11NameRequest.requested,
+                requestedAt: new Date(me.my11NameRequest.requestedAt).toISOString(),
+                status: me.my11NameRequest.status,
+                decidedAt: me.my11NameRequest.decidedAt
+                  ? new Date(me.my11NameRequest.decidedAt).toISOString()
+                  : null,
+                deniedReason: me.my11NameRequest.deniedReason ?? null,
+              }
+            : null,
+          my11NameChangeGraceUntil: me.my11NameChangeGraceUntil
+            ? new Date(me.my11NameChangeGraceUntil).toISOString()
+            : null,
         }}
       />
 

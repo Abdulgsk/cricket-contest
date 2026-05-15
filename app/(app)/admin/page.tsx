@@ -7,6 +7,7 @@ import { Card, Badge } from "@/components/ui/card";
 import { AutomationTools } from "@/components/admin/automation-tools";
 import { RegenerateFactsButton } from "@/components/admin/regenerate-facts-button";
 import { RivalryWithdrawalQueue } from "@/components/admin/rivalry-withdrawal-queue";
+import { My11NameChangeQueue } from "@/components/admin/my11-name-change-queue";
 import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
 import { BonusSettingsPanel } from "@/components/admin/bonus-settings-panel";
 import { CivilWarSettingsPanel } from "@/components/admin/civil-war-settings-panel";
@@ -24,7 +25,7 @@ export default async function AdminHome() {
   await connectDB();
 
   await autoUpdateMatchStatuses();
-  const [total, users, pending, upcoming, live, completed, next3, withdrawalRequests, settings] = await Promise.all([
+  const [total, users, pending, upcoming, live, completed, next3, withdrawalRequests, my11NameRequests, settings] = await Promise.all([
     Match.countDocuments(),
     User.countDocuments(),
     Match.countDocuments({ resultsEntered: false, status: { $ne: "upcoming" } }),
@@ -46,6 +47,11 @@ export default async function AdminHome() {
       .sort({ withdrawalRequestedAt: -1 })
       .limit(10)
       .lean(),
+    User.find({ "my11NameRequest.status": "pending" })
+      .select("username userId my11circleName my11NameRequest")
+      .sort({ "my11NameRequest.requestedAt": -1 })
+      .limit(20)
+      .lean(),
     getSettings(),
   ]);
 
@@ -56,6 +62,7 @@ export default async function AdminHome() {
   const canEditCivilWar = me.role === "superadmin" || userHasFeature(me, "civilwar.points.manage");
   const showCivilWarTab = me.role === "superadmin" || canEditCivilWar;
   const canApproveRivalryWithdrawals = userHasFeature(me, "rivalry.withdraw.approve");
+  const canApproveMy11NameChange = userHasFeature(me, "users.manage");
   const canManageResults = userHasFeature(me, "results.manage");
   const canSeeMatches =
     userHasFeature(me, "matches.manage") ||
@@ -122,6 +129,17 @@ export default async function AdminHome() {
       status: r.status,
     };
   });
+
+  const my11NameRows = my11NameRequests.map((u) => ({
+    userId: String(u._id),
+    username: u.username,
+    handle: u.userId,
+    currentMy11Name: u.my11circleName ?? null,
+    requested: u.my11NameRequest?.requested ?? "",
+    requestedAt: u.my11NameRequest?.requestedAt
+      ? new Date(u.my11NameRequest.requestedAt).toISOString()
+      : new Date().toISOString(),
+  }));
 
   const dashboardTab = (
     <div className="space-y-4">
@@ -204,7 +222,12 @@ export default async function AdminHome() {
     </div>
   );
 
-  const requestsTab = <RivalryWithdrawalQueue rows={withdrawalRows} />;
+  const requestsTab = (
+    <div className="space-y-4">
+      {canApproveRivalryWithdrawals && <RivalryWithdrawalQueue rows={withdrawalRows} />}
+      {canApproveMy11NameChange && <My11NameChangeQueue rows={my11NameRows} />}
+    </div>
+  );
 
   const toolsTab = (
     <div className="space-y-4">
@@ -272,8 +295,15 @@ export default async function AdminHome() {
     <AdminOverviewTabs
       tabs={[
         { id: "dashboard", label: "Overview", content: dashboardTab },
-        ...(canApproveRivalryWithdrawals
-          ? [{ id: "requests", label: "Rivalry Approvals", badge: withdrawalRows.length, content: requestsTab }]
+        ...(canApproveRivalryWithdrawals || canApproveMy11NameChange
+          ? [
+              {
+                id: "requests",
+                label: "Approvals",
+                badge: withdrawalRows.length + my11NameRows.length,
+                content: requestsTab,
+              },
+            ]
           : []),
         ...(canEditBonus ? [{ id: "bonus", label: "Bonus Rules", content: bonusTab }] : []),
         ...(showCivilWarTab
