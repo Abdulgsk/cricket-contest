@@ -91,6 +91,21 @@ export interface AiFactInput {
     points: number;
     explanation: string;
   }>;
+  /** Per-user Dream11 team breakdown (only users who had a mapped team).
+   * The model can use these to narrate WHY someone scored what they did:
+   * captain/VC choice, top pick, biggest flop, what they would have scored
+   * had they captained the highest scorer in their own team. */
+  teams: Array<{
+    username: string;
+    captain: string | null;
+    captainPoints: number | null;
+    viceCaptain: string | null;
+    viceCaptainPoints: number | null;
+    topPick: { name: string; points: number } | null;
+    flopPick: { name: string; points: number } | null;
+    bestPossibleCaptain: { name: string; points: number } | null;
+    captainGainIfBest: number | null;
+  }>;
   populationStats: {
     avgTop1Top2Gap: number | null;
     recentTop1Top2Gap: number | null;
@@ -160,6 +175,7 @@ export function buildAiInput(args: {
     points: number;
     explanation: string;
   }>;
+  teams: AiFactInput["teams"];
 }): AiFactInput {
   const {
     match,
@@ -173,6 +189,7 @@ export function buildAiInput(args: {
     bounty,
     nextSameDayMatch,
     bonusAuditEntries,
+    teams,
   } = args;
   const prevPosById = new Map(prevLb.map((r) => [String(r.userId), r.position]));
 
@@ -276,6 +293,28 @@ export function buildAiInput(args: {
       points: r(b.points),
       explanation: b.explanation,
     })),
+    teams: teams.map((t) => ({
+      username: t.username,
+      captain: t.captain,
+      captainPoints: t.captainPoints == null ? null : r(t.captainPoints),
+      viceCaptain: t.viceCaptain,
+      viceCaptainPoints:
+        t.viceCaptainPoints == null ? null : r(t.viceCaptainPoints),
+      topPick: t.topPick
+        ? { name: t.topPick.name, points: r(t.topPick.points) }
+        : null,
+      flopPick: t.flopPick
+        ? { name: t.flopPick.name, points: r(t.flopPick.points) }
+        : null,
+      bestPossibleCaptain: t.bestPossibleCaptain
+        ? {
+            name: t.bestPossibleCaptain.name,
+            points: r(t.bestPossibleCaptain.points),
+          }
+        : null,
+      captainGainIfBest:
+        t.captainGainIfBest == null ? null : r(t.captainGainIfBest),
+    })),
     populationStats: {
       avgTop1Top2Gap:
         snapshot.avgTop1Top2Gap == null ? null : r(snapshot.avgTop1Top2Gap),
@@ -348,12 +387,13 @@ HOW TO READ THE PAYLOAD
 - "nextSameDayMatch": if there is another match later TODAY, this is the current top-3 — useful to set up "watch out for X" stories.
 - "bonusAuditEntries": one row per bonus actually awarded this match, with the engine's own "explanation" string. Use these to narrate WHY a bonus was awarded (e.g. "earned the King Slayer for outscoring pre-match #1 by 18 fantasy points"). Trust the explanation strings verbatim — they are the ground truth from the scoring engine.
 - "populationStats.recentTop1Top2Gap": average winning margin across the last 10 matches — use it as the bar for whether tonight's win counts as "dominant" or "tight".
+- "teams": ONLY the players who had a Dream11 team mapped for this match (some users won't appear). Each entry exposes the actual cricketer they captained, vice-captained, the top fantasy scorer in their 11, the biggest flop they picked, and what their captaincy would have been worth if they had captained their own top pick (captainGainIfBest = bestPossibleCaptain.points - captainPoints, both at 1x). Use this to narrate captaincy decisions, e.g. "Mithun's captain pick (Rohit, 28 fantasy pts) cost him 50 fantasy pts versus captaining his own top scorer Bumrah". Only the cricketer NAMES from these team entries are valid IPL-player names you may quote in facts.
 
 ==================================================
 ABSOLUTE RULES — breaking any of these is failure
 ==================================================
 1. You may ONLY use numbers and names that appear in the JSON payload. Do not invent, estimate, average, or extrapolate any number — even if it seems obvious.
-2. Do NOT mention real IPL players, real teams' actual cricket stats, or real-world cricket events. The only people that exist for you are the usernames in the payload.
+2. Do NOT mention real IPL players, real teams' actual cricket stats, or real-world cricket events EXCEPT when narrating a user's own Dream11 picks (captain, vice-captain, topPick, flopPick, bestPossibleCaptain) from the "teams" payload. The fantasy-player names in "teams" are the ONLY real cricketer names you may use, and you may only quote their fantasy point values from that payload.
 3. Every fact must be VERIFIABLE from a specific field. If you can't point to it, do not write it.
 4. No vague form claims like "in great form lately" without citing the supporting number (e.g. "recentAvgFinal is 25 above their career mark").
 5. Keep each fact to one sentence, max ~160 chars. Casual, witty, like a friend in the group chat — but never cruel.
@@ -436,6 +476,14 @@ function collectAllowedNumbers(input: AiFactInput): Set<string> {
   for (const s of input.rivalries.settled) add(s.pointsAwarded);
   for (const b of input.bonusAuditEntries) add(b.points);
   if (input.bounty) add(input.bounty.beaters);
+  for (const t of input.teams) {
+    add(t.captainPoints);
+    add(t.viceCaptainPoints);
+    if (t.topPick) add(t.topPick.points);
+    if (t.flopPick) add(t.flopPick.points);
+    if (t.bestPossibleCaptain) add(t.bestPossibleCaptain.points);
+    add(t.captainGainIfBest);
+  }
   if (input.nextSameDayMatch) {
     for (const t of input.nextSameDayMatch.topThree) add(t.totalPoints);
   }
@@ -472,6 +520,16 @@ function validateFacts(facts: AiFact[], input: AiFactInput): AiFact[] {
   if (input.leaderChange.currentLeader)
     allowedNames.add(input.leaderChange.currentLeader);
   for (const b of input.bonusAuditEntries) allowedNames.add(b.username);
+  // Allow the cricketer names from team picks too — these are real IPL players
+  // and we explicitly let the model quote them.
+  for (const t of input.teams) {
+    allowedNames.add(t.username);
+    if (t.captain) allowedNames.add(t.captain);
+    if (t.viceCaptain) allowedNames.add(t.viceCaptain);
+    if (t.topPick) allowedNames.add(t.topPick.name);
+    if (t.flopPick) allowedNames.add(t.flopPick.name);
+    if (t.bestPossibleCaptain) allowedNames.add(t.bestPossibleCaptain.name);
+  }
 
   const out: AiFact[] = [];
   for (const f of facts) {

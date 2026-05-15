@@ -6,6 +6,7 @@ import { DailyFact } from "@/models/DailyFact";
 import { Rivalry } from "@/models/Rivalry";
 import { User } from "@/models/User";
 import { BonusAuditLog } from "@/models/BonusAuditLog";
+import { UserMatchTeam } from "@/models/UserMatchTeam";
 import { computeLeaderboard } from "@/services/scoring";
 import { buildAnalyzerSnapshot } from "@/services/facts-analyzer";
 import { buildAiInput, generateAiFacts } from "@/services/facts-ai";
@@ -41,8 +42,9 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
   const results = await MatchResult.find({ matchId }).lean();
   const userIds = results.map((r) => String(r.userId));
 
-  // Pull rivalry/withdrawal/prediction data + bonus audit log in parallel.
-  const [settledRivalries, withdrawnRivalries, preds, bonusAudit] = await Promise.all([
+  // Pull rivalry/withdrawal/prediction data + bonus audit log + mapped
+  // Dream11 teams in parallel.
+  const [settledRivalries, withdrawnRivalries, preds, bonusAudit, mappedTeams] = await Promise.all([
     Rivalry.find({ matchId, status: "accepted", settled: true }).lean(),
     Rivalry.find({
       matchId,
@@ -51,6 +53,7 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
     }).lean(),
     Prediction.find({ matchId, scored: true }).lean(),
     BonusAuditLog.find({ matchId }).lean(),
+    UserMatchTeam.find({ matchId }).lean(),
   ]);
 
   // Collect every userId we need a username for (results + rivalries + bounty).
@@ -69,6 +72,7 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
   for (const p of preds) allUserIds.add(String(p.userId));
   for (const c of currLb.slice(0, 10)) allUserIds.add(String(c.userId));
   for (const c of prevLb.slice(0, 5)) allUserIds.add(String(c.userId));
+  for (const t of mappedTeams) allUserIds.add(String(t.userId));
 
   const users = await User.find({ _id: { $in: [...allUserIds] } })
     .select("username userId")
@@ -159,6 +163,40 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
 
+  // ---- Per-user mapped Dream11 team breakdowns ----
+  // Each row exposes the user's captain pick (real fantasy points at 1x),
+  // VC pick, top scorer in their picked 11, biggest flop, and what they
+  // would have gained had they captained their own top scorer instead.
+  const teams = mappedTeams
+    .map((t) => {
+      const username = nameMap.get(String(t.userId));
+      if (!username) return null;
+      const players = (t.players ?? []).filter((p) => p && typeof p.points === "number");
+      if (players.length === 0) return null;
+      const findCap = players.find((p) => p.isCaptain) ?? null;
+      const findVc = players.find((p) => p.isViceCaptain) ?? null;
+      const sorted = [...players].sort((a, b) => b.points - a.points);
+      const top = sorted[0] ?? null;
+      const flop = sorted[sorted.length - 1] ?? null;
+      const captainPoints = findCap ? findCap.points : null;
+      const captainGainIfBest =
+        top && captainPoints != null ? top.points - captainPoints : null;
+      return {
+        username,
+        captain: findCap?.dName || findCap?.name || t.captainName || null,
+        captainPoints,
+        viceCaptain: findVc?.dName || findVc?.name || t.viceCaptainName || null,
+        viceCaptainPoints: findVc ? findVc.points : null,
+        topPick: top ? { name: top.dName || top.name, points: top.points } : null,
+        flopPick: flop ? { name: flop.dName || flop.name, points: flop.points } : null,
+        bestPossibleCaptain: top
+          ? { name: top.dName || top.name, points: top.points }
+          : null,
+        captainGainIfBest,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+
   // ---- Build the payload and call the AI narrator ----
   const facts: Fact[] = [];
   try {
@@ -206,6 +244,7 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
           (b): b is { username: string; bonusType: string; points: number; explanation: string } =>
             !!b.username
         ),
+      teams,
     });
     const aiFacts = await generateAiFacts(aiInput);
     const idByName = new Map<string, string>();
