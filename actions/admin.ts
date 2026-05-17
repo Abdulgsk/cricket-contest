@@ -183,7 +183,7 @@ const ResultSchema = z.object({
     .array(
       z.object({
         userId: z.string().min(1),
-        rank: z.number().int().min(0).max(13),
+        rank: z.number().int().min(0).max(20), // Increased from 13 to 20 to support more users
         fantasyPoints: z.number(),
       })
     )
