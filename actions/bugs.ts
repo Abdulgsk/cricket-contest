@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { connectDB } from "@/lib/db";
 import { BugReport } from "@/models/BugReport";
+import { User } from "@/models/User";
 import { requireUser, requireAdminFeature } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 
@@ -100,5 +101,122 @@ export async function deleteBugReportAction(id: string) {
     targetId: id,
   });
   revalidatePath("/admin");
+  return { ok: true as const };
+}
+
+const AssignSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1).nullable(),
+});
+
+export async function assignBugReportAction(payload: unknown) {
+  const me = await requireAdminFeature("bugs.manage");
+  const parsed = AssignSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  await connectDB();
+
+  if (parsed.data.userId === null) {
+    await BugReport.updateOne(
+      { _id: parsed.data.id },
+      {
+        $set: {
+          assignedTo: null,
+          assignedToHandle: null,
+          assignedToName: null,
+          assignedAt: null,
+          assignedBy: null,
+        },
+      },
+    );
+    await recordAudit({
+      category: "update",
+      action: "bug.report.unassign",
+      actor: me,
+      targetType: "BugReport",
+      targetId: parsed.data.id,
+    });
+    revalidatePath("/admin");
+    revalidatePath("/my-bugs");
+    return { ok: true as const };
+  }
+
+  const target = await User.findById(parsed.data.userId).select("userId username").lean();
+  if (!target) return { ok: false as const, error: "User not found" };
+
+  await BugReport.updateOne(
+    { _id: parsed.data.id },
+    {
+      $set: {
+        assignedTo: target._id,
+        assignedToHandle: target.userId,
+        assignedToName: target.username,
+        assignedAt: new Date(),
+        assignedBy: me._id,
+      },
+    },
+  );
+  // If still "open", promote to in_progress for clarity.
+  await BugReport.updateOne(
+    { _id: parsed.data.id, status: "open" },
+    { $set: { status: "in_progress" } },
+  );
+
+  await recordAudit({
+    category: "update",
+    action: "bug.report.assign",
+    actor: me,
+    targetType: "BugReport",
+    targetId: parsed.data.id,
+    meta: { assignee: target.userId },
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/my-bugs");
+  return { ok: true as const };
+}
+
+const ResolutionSchema = z.object({
+  id: z.string().min(1),
+  resolutionNote: z.string().trim().min(3).max(4000),
+});
+
+export async function submitBugResolutionAction(payload: unknown) {
+  const me = await requireUser();
+  const parsed = ResolutionSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ok: false as const, error: "Add a short note describing your fix (3+ chars)." };
+  }
+  await connectDB();
+  const bug = await BugReport.findById(parsed.data.id).select("assignedTo status").lean();
+  if (!bug) return { ok: false as const, error: "Bug not found" };
+  if (!bug.assignedTo || String(bug.assignedTo) !== String(me._id)) {
+    return { ok: false as const, error: "This bug isn't assigned to you." };
+  }
+  if (bug.status === "resolved" || bug.status === "wont_fix") {
+    return { ok: false as const, error: "This bug is already closed." };
+  }
+
+  await BugReport.updateOne(
+    { _id: parsed.data.id },
+    {
+      $set: {
+        status: "resolved",
+        resolutionNote: parsed.data.resolutionNote,
+        resolvedAt: new Date(),
+        resolvedBy: me._id,
+      },
+    },
+  );
+
+  await recordAudit({
+    category: "update",
+    action: "bug.report.resolve",
+    actor: me,
+    targetType: "BugReport",
+    targetId: parsed.data.id,
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/my-bugs");
   return { ok: true as const };
 }

@@ -12,7 +12,7 @@ import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
 import { BonusSettingsPanel } from "@/components/admin/bonus-settings-panel";
 import { CivilWarSettingsPanel } from "@/components/admin/civil-war-settings-panel";
 import { My11LiveSettingsPanel } from "@/components/admin/my11-live-settings-panel";
-import { BugReportsAdmin, type BugRow } from "@/components/admin/bug-reports-admin";
+import { BugReportsAdmin, type BugRow, type BugAssignee } from "@/components/admin/bug-reports-admin";
 import { BugReport } from "@/models/BugReport";
 import { CIVIL_WAR_DEFAULTS } from "@/services/civil-war";
 import { formatDate } from "@/lib/utils";
@@ -90,10 +90,22 @@ export default async function AdminHome() {
         reporterHandle: b.reporterHandle ?? "—",
         pageUrl: b.pageUrl ?? null,
         adminNotes: b.adminNotes ?? null,
+        assignedToId: b.assignedTo ? String(b.assignedTo) : null,
+        assignedToHandle: b.assignedToHandle ?? null,
+        assignedToName: b.assignedToName ?? null,
+        resolutionNote: b.resolutionNote ?? null,
         createdAt: new Date(b.createdAt).toISOString(),
       }))
     : [];
   const openBugCount = bugRows.filter((b) => b.status === "open").length;
+
+  const bugAssignees: BugAssignee[] = canManageBugs
+    ? (await User.find().select("userId username").sort({ username: 1 }).lean()).map((u) => ({
+        id: String(u._id),
+        handle: u.userId,
+        name: u.username,
+      }))
+    : [];
 
   const bonusTab = (
     <BonusSettingsPanel
@@ -431,7 +443,7 @@ export default async function AdminHome() {
                 id: "bugs",
                 label: "Bugs",
                 badge: openBugCount,
-                content: <BugReportsAdmin initial={bugRows} canManage={canManageBugs} />,
+                content: <BugReportsAdmin initial={bugRows} canManage={canManageBugs} assignees={bugAssignees} />,
               },
             ]
           : []),

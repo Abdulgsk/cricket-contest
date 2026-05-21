@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/card";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate, ordinal } from "@/lib/utils";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
+import { NotificationBell } from "@/components/notification-bell";
 
 export default async function Dashboard() {
   const me = await requireUser();
@@ -26,9 +27,14 @@ export default async function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl md:text-3xl font-bold">Hey, {me.username} 👋</h1>
-        <p className="text-muted-foreground text-sm">Your fantasy command centre.</p>
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl md:text-3xl font-bold">Hey, {me.username} 👋</h1>
+          <p className="text-muted-foreground text-sm">Your fantasy command centre.</p>
+        </div>
+        <div className="shrink-0">
+          <NotificationBell />
+        </div>
       </header>
 
       <div className="grid md:grid-cols-3 gap-4">

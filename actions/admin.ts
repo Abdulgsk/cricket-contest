@@ -208,6 +208,38 @@ export async function submitResultsAction(payload: unknown) {
   if (parsed.data.customPoolResults?.length) {
     await scoreCustomPools(parsed.data.matchId, parsed.data.customPoolResults);
   }
+  // Fire a single broadcast notification announcing that results are in.
+  try {
+    const { Match } = await import("@/models/Match");
+    const { Notification } = await import("@/models/Notification");
+    const { generateNotificationLine } = await import("@/services/notification-ai");
+    const m = await Match.findById(parsed.data.matchId).select("teamA teamB matchWinner").lean();
+    if (m) {
+      const sorted = [...parsed.data.entries].sort((a, b) => a.rank - b.rank);
+      const top = sorted.find((e) => e.rank > 0) ?? null;
+      const body = await generateNotificationLine(
+        {
+          occasion: "Results are in — leaderboard updated",
+          facts: {
+            teams: `${m.teamA} vs ${m.teamB}`,
+            match_winner: m.matchWinner ?? null,
+            top_player_rank: top ? 1 : null,
+            top_player_points: top ? top.fantasyPoints : null,
+          },
+        },
+        `Results in for ${m.teamA} vs ${m.teamB} — check the leaderboard.`,
+      );
+      await Notification.create({
+        userId: undefined,
+        kind: "result_published",
+        title: `Results: ${m.teamA} vs ${m.teamB}`,
+        body,
+        link: `/matches/${parsed.data.matchId}`,
+      });
+    }
+  } catch {
+    // Notifications are best-effort and must never block result submission.
+  }
   await AuditLog.create({
     actorId: me._id,
     action: "match.results",
@@ -847,24 +879,11 @@ export async function regenerateLatestFactsAction() {
  * the WhatsApp Cloud API is wired correctly without waiting for cron. */
 export async function sendTestReminderAction() {
   const me = await requireRole("superadmin");
-  const { Notification } = await import("@/models/Notification");
   const { sendWhatsApp } = await import("@/lib/whatsapp");
-
-  const text = `🏏 Test reminder · ${new Date().toLocaleString()} · If you receive this on WhatsApp, the Cloud API is wired correctly.`;
-
-  await connectDB();
-  await Notification.create({
-    userId: me._id,
-    title: "Test reminder",
-    body: text,
-  });
-
   let whatsappOk = false;
   let whatsappError: string | null = null;
   if (me.whatsapp) {
     try {
-      // Use approved template variables; for the default hello_world template
-      // these are ignored. For prediction_reminder they fill the body.
       whatsappOk = await sendWhatsApp(me.whatsapp, {
         teamA: "Test",
         teamB: "Reminder",
@@ -879,16 +898,14 @@ export async function sendTestReminderAction() {
   } else {
     whatsappError = "No WhatsApp number on your profile";
   }
-
   await AuditLog.create({
     actorId: me._id,
     action: "reminder.test",
     meta: { whatsappOk, whatsappError },
   });
-
   return {
     ok: true as const,
-    notification: true,
+    notification: false,
     whatsappOk,
     whatsappError,
     sentTo: me.whatsapp ?? null,

@@ -45,6 +45,13 @@ export interface IMatch {
   predictionsLocked: boolean;
   resultsEntered: boolean;
   contestUrl?: string;
+  /** Pre-match reminder thresholds (minutes-before-start) already announced. */
+  remindersSent?: number[];
+  /** Once true, the contest+team auto-mapper considers this match wired up. */
+  autoMapDone?: boolean;
+  autoMapAttempts?: number;
+  lastAutoMapAt?: Date | null;
+  autoMapLastError?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -102,6 +109,11 @@ const MatchSchema = new Schema<IMatch>(
     predictionsLocked: { type: Boolean, default: false },
     resultsEntered: { type: Boolean, default: false },
     contestUrl: { type: String },
+    remindersSent: { type: [Number], default: [] },
+    autoMapDone: { type: Boolean, default: false, index: true },
+    autoMapAttempts: { type: Number, default: 0 },
+    lastAutoMapAt: { type: Date, default: null },
+    autoMapLastError: { type: String, default: null },
   },
   { timestamps: true }
 );

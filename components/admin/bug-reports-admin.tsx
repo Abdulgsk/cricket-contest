@@ -4,10 +4,16 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Card, Badge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { updateBugReportAction, deleteBugReportAction } from "@/actions/bugs";
+import {
+  updateBugReportAction,
+  deleteBugReportAction,
+  assignBugReportAction,
+} from "@/actions/bugs";
 
 type BugStatus = "open" | "in_progress" | "resolved" | "wont_fix";
 type Severity = "low" | "medium" | "high";
+
+export type BugAssignee = { id: string; handle: string; name: string };
 
 export type BugRow = {
   id: string;
@@ -19,6 +25,10 @@ export type BugRow = {
   reporterHandle: string;
   pageUrl: string | null;
   adminNotes: string | null;
+  assignedToId: string | null;
+  assignedToHandle: string | null;
+  assignedToName: string | null;
+  resolutionNote: string | null;
   createdAt: string;
 };
 
@@ -44,9 +54,11 @@ const severityTone = (s: Severity) =>
 export function BugReportsAdmin({
   initial,
   canManage,
+  assignees,
 }: {
   initial: BugRow[];
   canManage: boolean;
+  assignees: BugAssignee[];
 }) {
   const [rows, setRows] = useState(initial);
   const [filter, setFilter] = useState<BugStatus | "all">("all");
@@ -109,7 +121,7 @@ export function BugReportsAdmin({
       ) : (
         <div className="space-y-2.5">
           {filtered.map((r) => (
-            <BugCard key={r.id} row={r} canManage={canManage} onUpdated={onUpdated} onDeleted={onDeleted} />
+            <BugCard key={r.id} row={r} canManage={canManage} assignees={assignees} onUpdated={onUpdated} onDeleted={onDeleted} />
           ))}
         </div>
       )}
@@ -120,20 +132,24 @@ export function BugReportsAdmin({
 function BugCard({
   row,
   canManage,
+  assignees,
   onUpdated,
   onDeleted,
 }: {
   row: BugRow;
   canManage: boolean;
+  assignees: BugAssignee[];
   onUpdated: (id: string, patch: Partial<BugRow>) => void;
   onDeleted: (id: string) => void;
 }) {
   const [status, setStatus] = useState<BugStatus>(row.status);
   const [notes, setNotes] = useState(row.adminNotes ?? "");
+  const [assignedToId, setAssignedToId] = useState<string>(row.assignedToId ?? "");
   const [pending, start] = useTransition();
   const [expanded, setExpanded] = useState(false);
 
   const dirty = status !== row.status || (notes ?? "") !== (row.adminNotes ?? "");
+  const assigneeDirty = (assignedToId || null) !== (row.assignedToId || null);
 
   const save = () => {
     start(async () => {
@@ -144,6 +160,27 @@ function BugCard({
       }
       toast.success("Bug updated");
       onUpdated(row.id, { status, adminNotes: notes });
+    });
+  };
+
+  const saveAssignee = () => {
+    const next = assignedToId || null;
+    start(async () => {
+      const res = await assignBugReportAction({ id: row.id, userId: next });
+      if (!res.ok) {
+        toast.error(res.error ?? "Failed to assign");
+        return;
+      }
+      const picked = assignees.find((a) => a.id === next);
+      const patch: Partial<BugRow> = {
+        assignedToId: next,
+        assignedToHandle: picked?.handle ?? null,
+        assignedToName: picked?.name ?? null,
+      };
+      if (next && row.status === "open") patch.status = "in_progress";
+      onUpdated(row.id, patch);
+      if (next && row.status === "open") setStatus("in_progress");
+      toast.success(next ? `Assigned to @${picked?.handle ?? "user"}` : "Unassigned");
     });
   };
 
@@ -175,6 +212,12 @@ function BugCard({
             {new Date(row.createdAt).toLocaleString()}
             {row.pageUrl ? <span className="ml-1">· {row.pageUrl}</span> : null}
           </div>
+          {row.assignedToHandle && (
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              assigned to <span className="text-foreground">{row.assignedToName}</span>{" "}
+              <span className="opacity-70">@{row.assignedToHandle}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -193,8 +236,43 @@ function BugCard({
         )}
       </div>
 
+      {row.resolutionNote && (
+        <div className="rounded-lg border border-success/30 bg-success/5 p-2.5 text-xs">
+          <div className="text-[10px] uppercase tracking-wider text-success font-semibold mb-1">
+            Resolution note from {row.assignedToName ?? "assignee"}
+          </div>
+          <div className="whitespace-pre-wrap text-foreground/90">{row.resolutionNote}</div>
+        </div>
+      )}
+
       {canManage && (
         <div className="border-t border-border/40 pt-2.5 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              Assignee
+            </label>
+            <select
+              value={assignedToId}
+              onChange={(e) => setAssignedToId(e.target.value)}
+              disabled={pending}
+              className="h-9 rounded-lg border border-border bg-card px-2 text-xs min-w-[160px]"
+            >
+              <option value="">— Unassigned —</option>
+              {assignees.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} (@{a.handle})
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={saveAssignee}
+              disabled={pending || !assigneeDirty}
+            >
+              {assignedToId ? "Assign" : "Unassign"}
+            </Button>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-[11px] uppercase tracking-wider text-muted-foreground">
               Status

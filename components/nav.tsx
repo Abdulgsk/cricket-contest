@@ -24,16 +24,22 @@ export function Nav({
   role,
   hasAdminAccess = false,
   rivalryUnseen = 0,
+  assignedBugs = 0,
 }: {
   role: "user" | "admin" | "superadmin";
   hasAdminAccess?: boolean;
   rivalryUnseen?: number;
+  assignedBugs?: number;
 }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [showMenuButton, setShowMenuButton] = useState(true);
   const showAdmin = role === "superadmin" || hasAdminAccess;
-  const items = showAdmin ? [...NAV, { href: "/admin", label: "Admin" }] : NAV;
+  const items = [
+    ...NAV,
+    ...(assignedBugs > 0 ? [{ href: "/my-bugs", label: "My bugs" }] : []),
+    ...(showAdmin ? [{ href: "/admin", label: "Admin" }] : []),
+  ];
 
   // Close drawer when route changes
   useEffect(() => {
@@ -92,6 +98,14 @@ export function Nav({
             {rivalryUnseen > 9 ? "9+" : rivalryUnseen}
           </span>
         )}
+        {it.href === "/my-bugs" && assignedBugs > 0 && (
+          <span
+            aria-label={`${assignedBugs} bug${assignedBugs === 1 ? "" : "s"} assigned to you`}
+            className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-warning text-white text-[10px] font-semibold"
+          >
+            {assignedBugs > 9 ? "9+" : assignedBugs}
+          </span>
+        )}
       </Link>
     ));
 
@@ -144,7 +158,7 @@ export function Nav({
       {/* Mobile drawer - only render when open */}
       {open && (
         <aside
-          className="md:hidden fixed top-0 left-0 z-50 h-full w-56 flex flex-col p-4 gap-3 border-r border-border bg-card animate-in slide-in-from-left duration-200"
+          className="md:hidden fixed top-0 left-0 z-50 h-full w-56 flex flex-col p-4 gap-3 border-r border-border bg-card animate-in slide-in-from-left duration-200 overflow-y-auto"
           role="dialog"
           aria-modal="true"
           aria-label="Navigation"

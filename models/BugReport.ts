@@ -17,6 +17,12 @@ export interface IBugReport {
   adminNotes?: string | null;
   resolvedAt?: Date | null;
   resolvedBy?: mongoose.Types.ObjectId | null;
+  assignedTo?: mongoose.Types.ObjectId | null;
+  assignedToHandle?: string | null;
+  assignedToName?: string | null;
+  assignedAt?: Date | null;
+  assignedBy?: mongoose.Types.ObjectId | null;
+  resolutionNote?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +51,12 @@ const BugReportSchema = new Schema<IBugReport>(
     adminNotes: { type: String, default: null, maxlength: 2000 },
     resolvedAt: { type: Date, default: null },
     resolvedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    assignedTo: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    assignedToHandle: { type: String, default: null },
+    assignedToName: { type: String, default: null },
+    assignedAt: { type: Date, default: null },
+    assignedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    resolutionNote: { type: String, default: null, maxlength: 4000 },
   },
   { timestamps: true }
 );
