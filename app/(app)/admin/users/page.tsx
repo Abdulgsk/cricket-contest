@@ -1,7 +1,8 @@
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { Role } from "@/models/Role";
-import { requireAdminAccess } from "@/lib/rbac";
+import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
+import { redirect } from "next/navigation";
 import { Card, Badge } from "@/components/ui/card";
 import { UserRoleAssign } from "@/components/admin/user-role-assign";
 import { UserFeatureControls } from "@/components/admin/user-feature-controls";
@@ -11,6 +12,16 @@ import type { FeatureKey } from "@/lib/features";
 
 export default async function AdminUsers() {
   const me = await requireAdminAccess();
+  const canAssignRoles = me.role === "superadmin" || userHasFeature(me, "users.roles.assign");
+  const canDeleteUsers = me.role === "superadmin" || userHasFeature(me, "users.delete");
+  const canManageRoleCatalog = me.role === "superadmin" || userHasFeature(me, "users.roles.assign");
+  if (
+    !canAssignRoles &&
+    !canDeleteUsers &&
+    !userHasFeature(me, "users.manage")
+  ) {
+    redirect("/admin");
+  }
   await connectDB();
   const [users, roles] = await Promise.all([
     User.find().sort({ createdAt: -1 }).lean(),
@@ -35,7 +46,7 @@ export default async function AdminUsers() {
 
   return (
     <div className="space-y-4">
-      {me.role === "superadmin" && (
+      {canManageRoleCatalog && (
         <Card className="border-border/70">
           <RolesEditor initial={editorRoles} />
         </Card>
@@ -94,28 +105,34 @@ export default async function AdminUsers() {
                     <div className="text-foreground">{new Date(u.createdAt).toLocaleDateString()}</div>
                   </div>
                 </div>
-                {me.role === "superadmin" && (
+                {(canAssignRoles || canDeleteUsers) && (
                   <div className="border-t border-border/40 pt-3 space-y-2">
-                    <UserRoleAssign
-                      userId={String(u._id)}
-                      currentSystemRole={u.role}
-                      currentCustomRoleId={customId}
-                      customRoles={customRoleOptions}
-                      self={isSelf}
-                    />
-                    <UserFeatureControls
-                      userId={String(u._id)}
-                      initial={(u.enabledFeatures as FeatureKey[] | undefined) ?? []}
-                      self={isSelf}
-                      systemRole={u.role}
-                      hasCustomRole={Boolean(customName)}
-                    />
-                    <DeleteUserButton
-                      userId={String(u._id)}
-                      username={u.username}
-                      handle={u.userId}
-                      self={isSelf}
-                    />
+                    {canAssignRoles && (
+                      <>
+                        <UserRoleAssign
+                          userId={String(u._id)}
+                          currentSystemRole={u.role}
+                          currentCustomRoleId={customId}
+                          customRoles={customRoleOptions}
+                          self={isSelf}
+                        />
+                        <UserFeatureControls
+                          userId={String(u._id)}
+                          initial={(u.enabledFeatures as FeatureKey[] | undefined) ?? []}
+                          self={isSelf}
+                          systemRole={u.role}
+                          hasCustomRole={Boolean(customName)}
+                        />
+                      </>
+                    )}
+                    {canDeleteUsers && (
+                      <DeleteUserButton
+                        userId={String(u._id)}
+                        username={u.username}
+                        handle={u.userId}
+                        self={isSelf}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -133,7 +150,7 @@ export default async function AdminUsers() {
                 <th className="p-2">My11Circle</th>
                 <th className="p-2">WhatsApp</th>
                 <th className="p-2">Joined</th>
-                {me.role === "superadmin" && <th className="p-2 w-[360px]">Role &amp; Permissions</th>}
+                {(canAssignRoles || canDeleteUsers) && <th className="p-2 w-[360px]">Role &amp; Permissions</th>}
               </tr>
             </thead>
             <tbody>
@@ -163,29 +180,35 @@ export default async function AdminUsers() {
                     <td className="p-2 text-muted-foreground text-xs">
                       {new Date(u.createdAt).toLocaleDateString()}
                     </td>
-                    {me.role === "superadmin" && (
+                    {(canAssignRoles || canDeleteUsers) && (
                       <td className="p-2">
                         <div className="space-y-2">
-                          <UserRoleAssign
-                            userId={String(u._id)}
-                            currentSystemRole={u.role}
-                            currentCustomRoleId={customId}
-                            customRoles={customRoleOptions}
-                            self={isSelf}
-                          />
-                          <UserFeatureControls
-                            userId={String(u._id)}
-                            initial={(u.enabledFeatures as FeatureKey[] | undefined) ?? []}
-                            self={isSelf}
-                            systemRole={u.role}
-                            hasCustomRole={Boolean(customName)}
-                          />
-                          <DeleteUserButton
-                            userId={String(u._id)}
-                            username={u.username}
-                            handle={u.userId}
-                            self={isSelf}
-                          />
+                          {canAssignRoles && (
+                            <>
+                              <UserRoleAssign
+                                userId={String(u._id)}
+                                currentSystemRole={u.role}
+                                currentCustomRoleId={customId}
+                                customRoles={customRoleOptions}
+                                self={isSelf}
+                              />
+                              <UserFeatureControls
+                                userId={String(u._id)}
+                                initial={(u.enabledFeatures as FeatureKey[] | undefined) ?? []}
+                                self={isSelf}
+                                systemRole={u.role}
+                                hasCustomRole={Boolean(customName)}
+                              />
+                            </>
+                          )}
+                          {canDeleteUsers && (
+                            <DeleteUserButton
+                              userId={String(u._id)}
+                              username={u.username}
+                              handle={u.userId}
+                              self={isSelf}
+                            />
+                          )}
                         </div>
                       </td>
                     )}

@@ -31,7 +31,7 @@ export function Nav({
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [showMenuButton, setShowMenuButton] = useState(true);
-  const showAdmin = role === "admin" || role === "superadmin" || hasAdminAccess;
+  const showAdmin = role === "superadmin" || hasAdminAccess;
   const items = showAdmin ? [...NAV, { href: "/admin", label: "Admin" }] : NAV;
 
   // Close drawer when route changes

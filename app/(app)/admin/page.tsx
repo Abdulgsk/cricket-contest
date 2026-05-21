@@ -64,14 +64,16 @@ export default async function AdminHome() {
   const canApproveRivalryWithdrawals = userHasFeature(me, "rivalry.withdraw.approve");
   const canApproveMy11NameChange = userHasFeature(me, "users.manage");
   const canManageResults = userHasFeature(me, "results.manage");
+  const canRunAutomations = userHasFeature(me, "automation.run");
+  const canRegenerateFacts = userHasFeature(me, "facts.regenerate");
   const canSeeMatches =
     userHasFeature(me, "matches.manage") ||
     userHasFeature(me, "results.manage") ||
     userHasFeature(me, "match.lock.extend");
   // Plain users who only have specific features granted should see ONLY the
   // tabs that map to those features — not the general Overview / Operations /
-  // Docs tabs that are meant for actual admins.
-  const isAdminRole = me.role === "admin" || me.role === "superadmin";
+  // Docs tabs that are meant for superadmins.
+  const isAdminRole = me.role === "superadmin";
 
   const bonusTab = (
     <BonusSettingsPanel
@@ -235,39 +237,46 @@ export default async function AdminHome() {
 
   const toolsTab = (
     <div className="space-y-4">
-      <AutomationTools canForceComplete={me.role === "superadmin"} />
+      {canRunAutomations && <AutomationTools canForceComplete={me.role === "superadmin"} />}
       {me.role === "superadmin" && (
         <My11LiveSettingsPanel initial={settings.my11LiveRefreshSec ?? 30} />
       )}
-      <Card className="border-border/70">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="font-semibold text-sm sm:text-base">Dashboard storylines</h2>
-            <p className="text-xs text-muted-foreground mt-1">
-              Regenerate &ldquo;Today&apos;s storylines&rdquo; from the most recently scored match.
-            </p>
-          </div>
-          <RegenerateFactsButton />
-        </div>
-        {latestFacts.length > 0 && (
-          <div className="mt-3 border-t border-border/40 pt-3">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
-              Latest facts ({latestFacts.length})
+      {canRegenerateFacts && (
+        <Card className="border-border/70">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold text-sm sm:text-base">Dashboard storylines</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                Regenerate &ldquo;Today&apos;s storylines&rdquo; from the most recently scored match.
+              </p>
             </div>
-            <ul className="space-y-1.5 text-xs text-muted-foreground">
-              {latestFacts.map((f) => (
-                <li key={String(f._id)} className="flex gap-2">
-                  <span className="text-foreground/40 shrink-0">•</span>
-                  <span>
-                    <span className="text-foreground">{f.text}</span>
-                    <span className="ml-1 opacity-60">({f.type}, score {f.score})</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <RegenerateFactsButton />
           </div>
-        )}
-      </Card>
+          {latestFacts.length > 0 && (
+            <div className="mt-3 border-t border-border/40 pt-3">
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
+                Latest facts ({latestFacts.length})
+              </div>
+              <ul className="space-y-1.5 text-xs text-muted-foreground">
+                {latestFacts.map((f) => (
+                  <li key={String(f._id)} className="flex gap-2">
+                    <span className="text-foreground/40 shrink-0">•</span>
+                    <span>
+                      <span className="text-foreground">{f.text}</span>
+                      <span className="ml-1 opacity-60">({f.type}, score {f.score})</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
+      )}
+      {!canRunAutomations && !canRegenerateFacts && me.role !== "superadmin" && (
+        <Card className="border-border/70 text-sm text-muted-foreground">
+          No operations tools are enabled for your account.
+        </Card>
+      )}
     </div>
   );
 

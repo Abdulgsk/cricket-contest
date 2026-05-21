@@ -20,8 +20,8 @@ export default async function AdminAuditLogsPage({
   searchParams: SearchParams;
 }) {
   const me = await requireAdminAccess();
-  // Audit log is sensitive — only superadmin or users.manage feature.
-  if (me.role !== "superadmin" && !userHasFeature(me, "users.manage")) {
+  // Audit log is gated by the dedicated `audit.view` feature.
+  if (!userHasFeature(me, "audit.view")) {
     redirect("/admin");
   }
   const sp = await searchParams;

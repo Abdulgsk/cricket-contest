@@ -17,13 +17,16 @@ export async function requireRole(...roles: Role[]) {
 
 /**
  * Allows access to the admin console for:
- *  - superadmin / admin (legacy full access)
- *  - any plain user that has at least one feature flag granted to them
- *    (so they can use the specific tools that were enabled for them).
+ *  - superadmin (legacy full access)
+ *  - any user (any role) that has at least one feature flag granted to them,
+ *    either directly or via a custom role.
+ *
+ * Note: the legacy "admin" system role no longer grants implicit access — it
+ * must be paired with explicit features or a custom role.
  */
 export async function requireAdminAccess() {
   const u = await requireUser();
-  if (u.role === "admin" || u.role === "superadmin") return u;
+  if (u.role === "superadmin") return u;
   if ((u.enabledFeatures ?? []).length > 0) return u;
   redirect("/");
 }
@@ -36,14 +39,14 @@ export async function requireAdminFeature(feature: FeatureKey) {
 
 export async function isAdmin() {
   const s = await getSession();
-  return s?.role === "admin" || s?.role === "superadmin";
+  return s?.role === "superadmin";
 }
 
 /**
  * Non-redirecting visibility check used to gate UI sections by feature.
  *  - superadmin: always true
- *  - admin with no explicit assignments: legacy full access (true)
- *  - admin or plain user with explicit assignments: must include the feature
+ *  - everyone else (including the legacy "admin" role): must have the feature
+ *    listed in `enabledFeatures`
  */
 export function userHasFeature(
   user: { role: Role; enabledFeatures?: string[] | null } | null | undefined,
@@ -52,7 +55,6 @@ export function userHasFeature(
   if (!user) return false;
   if (user.role === "superadmin") return true;
   const enabled = user.enabledFeatures ?? [];
-  if (user.role === "admin" && enabled.length === 0) return true;
   return enabled.includes(feature);
 }
 
@@ -63,6 +65,6 @@ export function userHasAdminAccess(
   user: { role: Role; enabledFeatures?: string[] | null } | null | undefined,
 ): boolean {
   if (!user) return false;
-  if (user.role === "admin" || user.role === "superadmin") return true;
+  if (user.role === "superadmin") return true;
   return (user.enabledFeatures ?? []).length > 0;
 }

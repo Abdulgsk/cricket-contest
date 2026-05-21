@@ -53,7 +53,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
     : null;
 
   const predictionLocked = isModuleLocked(match, "predictions");
-  const isAdmin = me.role === "admin" || me.role === "superadmin";
+  const isAdmin = me.role === "superadmin";
 
   return (
     <div className="space-y-6">

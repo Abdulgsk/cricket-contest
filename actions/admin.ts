@@ -220,8 +220,8 @@ export async function submitResultsAction(payload: unknown) {
   return { ok: true };
 }
 
-export async function setRoleAction(targetUserId: string, role: "user" | "admin" | "superadmin") {
-  const me = await requireRole("superadmin");
+export async function setRoleAction(targetUserId: string, role: "user" | "superadmin") {
+  const me = await requireAdminFeature("users.roles.assign");
   await connectDB();
   // Clear any custom role mapping when switching to a system role so the
   // user's effective features come from the role's defaults alone.
@@ -238,12 +238,12 @@ export async function setRoleAction(targetUserId: string, role: "user" | "admin"
 const AssignRoleSchema = z.object({
   targetUserId: z.string().min(1),
   kind: z.enum(["system", "custom"]),
-  systemRole: z.enum(["user", "admin", "superadmin"]).optional(),
+  systemRole: z.enum(["user", "superadmin"]).optional(),
   customRoleId: z.string().optional(),
 });
 
 export async function assignUserRoleAction(payload: unknown) {
-  const me = await requireRole("superadmin");
+  const me = await requireAdminFeature("users.roles.assign");
   const parsed = AssignRoleSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
@@ -283,7 +283,7 @@ const RoleNameSchema = z.string().trim().min(1).max(40);
 const RoleFeaturesSchema = z.array(z.enum(FEATURE_KEYS)).default([]);
 
 export async function createRoleAction(payload: unknown) {
-  const me = await requireRole("superadmin");
+  const me = await requireAdminFeature("users.roles.assign");
   const parsed = z
     .object({ name: RoleNameSchema, features: RoleFeaturesSchema })
     .safeParse(payload);
@@ -309,7 +309,7 @@ export async function createRoleAction(payload: unknown) {
 }
 
 export async function updateRoleAction(payload: unknown) {
-  const me = await requireRole("superadmin");
+  const me = await requireAdminFeature("users.roles.assign");
   const parsed = z
     .object({ id: z.string().min(1), name: RoleNameSchema, features: RoleFeaturesSchema })
     .safeParse(payload);
@@ -342,7 +342,7 @@ export async function updateRoleAction(payload: unknown) {
 }
 
 export async function deleteRoleAction(payload: unknown) {
-  const me = await requireRole("superadmin");
+  const me = await requireAdminFeature("users.roles.assign");
   const parsed = z.object({ id: z.string().min(1) }).safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
 
@@ -367,7 +367,7 @@ export async function deleteRoleAction(payload: unknown) {
 }
 
 export async function deleteUserCascadeAction(targetUserId: string, confirmText: string) {
-  const me = await requireRole("superadmin");
+  const me = await requireAdminFeature("users.delete");
   if (confirmText !== "DELETE") {
     return { ok: false as const, error: "Confirmation text must be exactly 'DELETE'" };
   }
@@ -607,7 +607,7 @@ const UserFeaturesSchema = z.object({
 });
 
 export async function setUserFeaturesAction(payload: unknown) {
-  const me = await requireRole("superadmin");
+  const me = await requireAdminFeature("users.roles.assign");
   const parsed = UserFeaturesSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
 
@@ -816,7 +816,7 @@ export async function fetchContestPointsAction(payload: unknown) {
  * match. Runs synchronously so the admin sees the new batch as soon as the
  * action returns. */
 export async function regenerateLatestFactsAction() {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("facts.regenerate");
   await connectDB();
   const latest = await Match.findOne({ resultsEntered: true })
     .sort({ startTime: -1 })

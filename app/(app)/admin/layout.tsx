@@ -11,8 +11,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     userHasFeature(me, "matches.manage") ||
     userHasFeature(me, "results.manage") ||
     userHasFeature(me, "match.lock.extend");
-  const canSeeUsers = userHasFeature(me, "users.manage");
-  const canSeeLogs = me.role === "superadmin" || userHasFeature(me, "users.manage");
+  const canSeeUsers =
+    userHasFeature(me, "users.manage") ||
+    userHasFeature(me, "users.roles.assign") ||
+    userHasFeature(me, "users.delete");
+  const canSeeLogs = userHasFeature(me, "audit.view");
   const isSuperadmin = me.role === "superadmin";
 
   const h = await headers();

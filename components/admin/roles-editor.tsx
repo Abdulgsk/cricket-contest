@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { FEATURE_KEYS, FEATURE_LABELS, type FeatureKey } from "@/lib/features";
+import { FEATURE_LABELS, type FeatureKey } from "@/lib/features";
+import { FeatureChecklist } from "@/components/admin/feature-checklist";
 import {
   createRoleAction,
   updateRoleAction,
@@ -27,10 +28,8 @@ export function RolesEditor({ initial }: { initial: CustomRoleRow[] }) {
   const [editName, setEditName] = useState("");
   const [editFeatures, setEditFeatures] = useState<FeatureKey[]>([]);
 
-  const toggleDraft = (k: FeatureKey) =>
-    setDraftFeatures((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
-  const toggleEdit = (k: FeatureKey) =>
-    setEditFeatures((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
+  const toggleDraft = (next: FeatureKey[]) => setDraftFeatures(next);
+  const toggleEdit = (next: FeatureKey[]) => setEditFeatures(next);
 
   const startEdit = (r: CustomRoleRow) => {
     setEditingId(r.id);
@@ -128,7 +127,7 @@ export function RolesEditor({ initial }: { initial: CustomRoleRow[] }) {
               disabled={pending}
             />
           </div>
-          <FeatureChecklist selected={draftFeatures} onToggle={toggleDraft} disabled={pending} />
+          <FeatureChecklist selected={draftFeatures} onChange={toggleDraft} disabled={pending} />
           <div className="flex gap-2">
             <Button size="sm" loading={pending} onClick={submitCreate}>
               Create role
@@ -207,7 +206,7 @@ export function RolesEditor({ initial }: { initial: CustomRoleRow[] }) {
                     className="w-full h-9 rounded-lg border border-border bg-card px-2 text-sm"
                     disabled={pending}
                   />
-                  <FeatureChecklist selected={editFeatures} onToggle={toggleEdit} disabled={pending} />
+                  <FeatureChecklist selected={editFeatures} onChange={toggleEdit} disabled={pending} />
                   <div className="flex gap-2">
                     <Button size="sm" loading={pending} onClick={submitEdit}>
                       Save changes
@@ -231,29 +230,7 @@ export function RolesEditor({ initial }: { initial: CustomRoleRow[] }) {
   );
 }
 
-function FeatureChecklist({
-  selected,
-  onToggle,
-  disabled,
-}: {
-  selected: FeatureKey[];
-  onToggle: (k: FeatureKey) => void;
-  disabled?: boolean;
-}) {
-  const set = new Set(selected);
-  return (
-    <div className="grid sm:grid-cols-2 gap-1.5">
-      {FEATURE_KEYS.map((k) => (
-        <label key={k} className="text-xs flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={set.has(k)}
-            onChange={() => onToggle(k)}
-            disabled={disabled}
-          />
-          {FEATURE_LABELS[k]}
-        </label>
-      ))}
-    </div>
-  );
+function FeatureChecklistLegacy_REMOVED() {
+  return null;
 }
+

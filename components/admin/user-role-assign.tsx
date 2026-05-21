@@ -5,7 +5,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { assignUserRoleAction } from "@/actions/admin";
 
-type SystemRole = "user" | "admin" | "superadmin";
+type SystemRole = "user" | "superadmin";
+// Legacy users may still have role === "admin" in the DB (a now-deprecated
+// system role). We accept it as input but never offer it as an option.
+type CurrentRoleInput = SystemRole | "admin";
 
 export type RoleOption = { id: string; name: string };
 
@@ -17,15 +20,18 @@ export function UserRoleAssign({
   self,
 }: {
   userId: string;
-  currentSystemRole: SystemRole;
+  currentSystemRole: CurrentRoleInput;
   currentCustomRoleId: string | null;
   customRoles: RoleOption[];
   self: boolean;
 }) {
-  // Selection format: "sys:user" | "sys:admin" | "sys:superadmin" | "custom:<id>"
+  // Selection format: "sys:user" | "sys:superadmin" | "custom:<id>"
+  // (Legacy "admin" system role is no longer selectable — use a custom role.)
   const initial = currentCustomRoleId
     ? `custom:${currentCustomRoleId}`
-    : `sys:${currentSystemRole}`;
+    : currentSystemRole === "superadmin"
+      ? "sys:superadmin"
+      : "sys:user";
   const [value, setValue] = useState(initial);
   const [pending, start] = useTransition();
 
@@ -55,7 +61,6 @@ export function UserRoleAssign({
       >
         <optgroup label="System">
           <option value="sys:user">User</option>
-          <option value="sys:admin">Admin</option>
           <option value="sys:superadmin">Superadmin</option>
         </optgroup>
         {customRoles.length > 0 && (
