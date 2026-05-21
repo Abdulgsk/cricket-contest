@@ -8,6 +8,7 @@ import { UserMatchTeam } from "@/models/UserMatchTeam";
 import { requireUser, requireAdminFeature } from "@/lib/rbac";
 import { verifyMy11NameAgainstRecentMatches } from "@/services/my11-name-verify";
 import { normalizeMy11circleName } from "@/lib/my11circle";
+import { recordAudit } from "@/lib/audit";
 
 type ActionResult<T = unknown> =
   | ({ ok: true } & T)
@@ -65,6 +66,14 @@ export async function requestMy11NameChangeAction(
     deniedReason: null,
   };
   await u.save();
+  await recordAudit({
+    category: "create",
+    action: "my11.name.request",
+    actor: me,
+    targetType: "User",
+    targetId: String(me._id),
+    meta: { requested: parsed.data },
+  });
   revalidatePath("/profile");
   revalidatePath("/admin");
   return { ok: true, status: "pending", requested: parsed.data };
@@ -185,6 +194,14 @@ export async function saveMy11NameAction(
     { $set: { my11Username: cleanName } }
   );
 
+  await recordAudit({
+    category: "update",
+    action: "my11.name.save",
+    actor: me,
+    targetType: "User",
+    targetId: String(me._id),
+    meta: { newName: cleanName },
+  });
   revalidatePath("/profile");
   revalidatePath("/admin");
   revalidatePath("/contests");
@@ -198,7 +215,7 @@ export async function saveMy11NameAction(
 export async function adminApproveMy11NameAction(
   userId: string
 ): Promise<ActionResult> {
-  await requireAdminFeature("users.manage");
+  const admin = await requireAdminFeature("users.manage");
   await connectDB();
   const u = await User.findById(userId);
   if (!u) return { ok: false, error: "User not found" };
@@ -212,6 +229,14 @@ export async function adminApproveMy11NameAction(
     deniedReason: null,
   };
   await u.save();
+  await recordAudit({
+    category: "update",
+    action: "my11.name.approve",
+    actor: admin,
+    targetType: "User",
+    targetId: String(userId),
+    meta: { requested: u.my11NameRequest.requested },
+  });
   revalidatePath("/admin");
   revalidatePath("/profile");
   return { ok: true };
@@ -222,7 +247,7 @@ export async function adminDenyMy11NameAction(
   userId: string,
   reason?: string
 ): Promise<ActionResult> {
-  await requireAdminFeature("users.manage");
+  const admin = await requireAdminFeature("users.manage");
   await connectDB();
   const u = await User.findById(userId);
   if (!u) return { ok: false, error: "User not found" };
@@ -236,6 +261,14 @@ export async function adminDenyMy11NameAction(
     deniedReason: reason?.trim() || null,
   };
   await u.save();
+  await recordAudit({
+    category: "update",
+    action: "my11.name.deny",
+    actor: admin,
+    targetType: "User",
+    targetId: String(userId),
+    meta: { reason: reason?.trim() || null },
+  });
   revalidatePath("/admin");
   revalidatePath("/profile");
   return { ok: true };

@@ -209,3 +209,16 @@ select:not([multiple]):not([size]) {
   padding-right: 2.25rem;
 }
 select::-ms-expand { display: none; }
+
+/* Belt-and-braces fix for iOS Safari's auto-zoom on focus.
+   Mobile WebKit zooms whenever an input/select/textarea has font-size < 16px,
+   even with `user-scalable=no`. Bumping the rendered font size to 16px on
+   small screens kills the zoom; visual sizing is still controlled by Tailwind
+   utilities (h-9 etc.) so layout doesn't shift. */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

@@ -4,7 +4,7 @@ import { z } from "zod";
 import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 import { connectDB } from "@/lib/db";
-import { requireUser, requireRole, userHasFeature } from "@/lib/rbac";
+import { requireUser, requireRole, requireAdminFeature, userHasFeature } from "@/lib/rbac";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { CivilWar } from "@/models/CivilWar";
@@ -371,11 +371,7 @@ const CivilWarSettingsSchema = z.object({
 });
 
 export async function updateCivilWarSettingsAction(payload: unknown) {
-  const me = await requireRole("admin", "superadmin");
-  const isSuperadmin = me.role === "superadmin";
-  if (!isSuperadmin && !userHasFeature(me, "civilwar.points.manage")) {
-    return { ok: false as const, error: "Not allowed" };
-  }
+  const me = await requireAdminFeature("civilwar.points.manage");
   const parsed = CivilWarSettingsSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();

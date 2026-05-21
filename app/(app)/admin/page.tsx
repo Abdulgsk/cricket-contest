@@ -68,6 +68,10 @@ export default async function AdminHome() {
     userHasFeature(me, "matches.manage") ||
     userHasFeature(me, "results.manage") ||
     userHasFeature(me, "match.lock.extend");
+  // Plain users who only have specific features granted should see ONLY the
+  // tabs that map to those features — not the general Overview / Operations /
+  // Docs tabs that are meant for actual admins.
+  const isAdminRole = me.role === "admin" || me.role === "superadmin";
 
   const bonusTab = (
     <BonusSettingsPanel
@@ -294,7 +298,7 @@ export default async function AdminHome() {
   return (
     <AdminOverviewTabs
       tabs={[
-        { id: "dashboard", label: "Overview", content: dashboardTab },
+        ...(isAdminRole ? [{ id: "dashboard", label: "Overview", content: dashboardTab }] : []),
         ...(canApproveRivalryWithdrawals || canApproveMy11NameChange
           ? [
               {
@@ -326,8 +330,12 @@ export default async function AdminHome() {
               },
             ]
           : []),
-        { id: "tools", label: "Operations", content: toolsTab },
-        { id: "help", label: "Docs", content: helpTab },
+        ...(isAdminRole
+          ? [
+              { id: "tools", label: "Operations", content: toolsTab },
+              { id: "help", label: "Docs", content: helpTab },
+            ]
+          : []),
       ]}
     />
   );

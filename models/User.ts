@@ -11,6 +11,8 @@ export interface IUser {
   my11circleName?: string;
   role: Role;
   enabledFeatures?: FeatureKey[];
+  /** Reference to a custom Role; when set, its features are merged into the user's effective feature set. */
+  customRoleId?: mongoose.Types.ObjectId | null;
   avatarColor?: string;
   /**
    * Profile picture stored as a compressed data URI ("data:image/jpeg;base64,...").
@@ -46,6 +48,7 @@ const UserSchema = new Schema<IUser>(
     my11circleName: { type: String, trim: true },
     role: { type: String, enum: ["user", "admin", "superadmin"], default: "user", index: true },
     enabledFeatures: { type: [String], default: [] },
+    customRoleId: { type: Schema.Types.ObjectId, ref: "Role", default: null, index: true },
     avatarColor: { type: String },
     avatar: { type: String, default: null },
     bio: { type: String, default: null, maxlength: 280 },

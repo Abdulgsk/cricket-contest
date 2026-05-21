@@ -9,6 +9,7 @@ import { CustomPool } from "@/models/CustomPool";
 import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
 import { requireRole, requireUser } from "@/lib/rbac";
 import { isModuleLocked } from "@/lib/match-locks";
+import { recordAudit } from "@/lib/audit";
 
 const CreatePoolSchema = z.object({
   matchId: z.string().min(1),
@@ -27,12 +28,25 @@ export async function createCustomPoolAction(payload: unknown) {
   if (isModuleLocked(match, "predictions")) {
     return { ok: false as const, error: "Cannot add pool after match started" };
   }
-  await CustomPool.create({
+  const created = await CustomPool.create({
     matchId: parsed.data.matchId,
     question: parsed.data.question,
     options: parsed.data.options.map((o) => o.trim()).filter(Boolean),
     pointsValue: parsed.data.pointsValue,
     createdBy: me._id,
+  });
+  await recordAudit({
+    category: "create",
+    action: "custom-pool.create",
+    actor: me,
+    targetType: "CustomPool",
+    targetId: String(created._id),
+    meta: {
+      matchId: parsed.data.matchId,
+      question: parsed.data.question,
+      optionCount: parsed.data.options.length,
+      pointsValue: parsed.data.pointsValue,
+    },
   });
   revalidatePath(`/matches/${parsed.data.matchId}`);
   revalidatePath(`/admin/matches/${parsed.data.matchId}/result`);
@@ -40,13 +54,21 @@ export async function createCustomPoolAction(payload: unknown) {
 }
 
 export async function deleteCustomPoolAction(poolId: string) {
-  await requireRole("admin", "superadmin");
+  const me = await requireRole("admin", "superadmin");
   await connectDB();
   const pool = await CustomPool.findById(poolId);
   if (!pool) return;
   if (pool.scored) throw new Error("Cannot delete a scored pool");
   await CustomPoolPrediction.deleteMany({ poolId });
   await CustomPool.deleteOne({ _id: poolId });
+  await recordAudit({
+    category: "delete",
+    action: "custom-pool.delete",
+    actor: me,
+    targetType: "CustomPool",
+    targetId: String(poolId),
+    meta: { matchId: String(pool.matchId) },
+  });
   revalidatePath(`/matches/${String(pool.matchId)}`);
 }
 
@@ -75,6 +97,14 @@ export async function submitCustomPoolPredictionAction(formData: FormData) {
     matchId: pool.matchId,
     userId: me._id,
     choice,
+  });
+  await recordAudit({
+    category: "create",
+    action: "custom-pool.predict",
+    actor: me,
+    targetType: "CustomPool",
+    targetId: String(poolId),
+    meta: { matchId: String(pool.matchId), choice },
   });
   revalidatePath(`/matches/${String(pool.matchId)}`);
   return { ok: true as const };

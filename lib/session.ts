@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { connectDB } from "@/lib/db";
 import { User, type IUser } from "@/models/User";
+import { Role, type IRole } from "@/models/Role";
+import type { FeatureKey } from "@/lib/features";
 
 export const SESSION_COOKIE = "ipl_session";
 const SESSION_TTL_DAYS = 30;
@@ -33,12 +35,24 @@ export async function getSession(): Promise<SessionPayload | null> {
   return verifySessionToken(tok);
 }
 
-/** Load full user document for the current session. */
+/** Load full user document for the current session, with custom-role features merged. */
 export async function getCurrentUser(): Promise<IUser | null> {
   const s = await getSession();
   if (!s) return null;
   await connectDB();
-  return User.findById(s.uid).lean<IUser>();
+  const u = await User.findById(s.uid).lean<IUser>();
+  if (!u) return null;
+  if (u.customRoleId) {
+    const role = await Role.findById(u.customRoleId).lean<IRole>();
+    if (role) {
+      const merged = new Set<FeatureKey>([
+        ...((u.enabledFeatures ?? []) as FeatureKey[]),
+        ...((role.features ?? []) as FeatureKey[]),
+      ]);
+      u.enabledFeatures = Array.from(merged);
+    }
+  }
+  return u;
 }
 
 export async function setSessionCookie(payload: SessionPayload) {

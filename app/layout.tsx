@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeInit } from "@/components/theme-init";
@@ -10,6 +10,18 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: "GullyXI — IPL League for the Squad",
   description: "Private Dream11 league management, leaderboards, predictions, bonuses & drama.",
+};
+
+export const viewport: Viewport = {
+  // Prevent iOS Safari from auto-zooming when focusing inputs/selects.
+  // Keeping `maximum-scale: 1` here is intentional — the league app is a
+  // tightly-designed dashboard, not long-form reading; users can still pinch
+  // to zoom in browsers that ignore this hint.
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

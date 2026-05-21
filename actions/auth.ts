@@ -6,6 +6,7 @@ import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { setSessionCookie, clearSessionCookie, getCurrentUser } from "@/lib/session";
 import { env } from "@/lib/env";
+import { recordAudit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
 const SignupSchema = z.object({
@@ -62,6 +63,14 @@ export async function signupAction(formData: FormData): Promise<ActionResult> {
   });
 
   await setSessionCookie({ uid: String(created._id), userId: created.userId, role: created.role });
+  await recordAudit({
+    category: "auth",
+    action: "auth.signup",
+    actor: created,
+    targetType: "User",
+    targetId: String(created._id),
+    meta: { role: created.role },
+  });
   redirect("/dashboard");
 }
 
@@ -74,14 +83,29 @@ export async function loginAction(formData: FormData): Promise<ActionResult> {
   await connectDB();
   const u = await User.findOne({ userId: parsed.data.userId.toLowerCase().trim() });
   if (!u || u.password !== parsed.data.password) {
+    await recordAudit({
+      category: "auth",
+      action: "auth.login.failed",
+      actorHandle: parsed.data.userId.toLowerCase().trim(),
+      meta: { reason: "invalid_credentials" },
+    });
     return { ok: false, error: "Invalid credentials" };
   }
   await setSessionCookie({ uid: String(u._id), userId: u.userId, role: u.role });
+  await recordAudit({
+    category: "auth",
+    action: "auth.login",
+    actor: u,
+  });
   redirect("/dashboard");
 }
 
 export async function logoutAction() {
+  const me = await getCurrentUser();
   await clearSessionCookie();
+  if (me) {
+    await recordAudit({ category: "auth", action: "auth.logout", actor: me });
+  }
   redirect("/login");
 }
 
@@ -103,6 +127,13 @@ export async function changePasswordAction(formData: FormData): Promise<ActionRe
   if (!u || u.password !== parsed.data.current) return { ok: false, error: "Current password incorrect" };
   u.password = parsed.data.next;
   await u.save();
+  await recordAudit({
+    category: "update",
+    action: "auth.password.change",
+    actor: me,
+    targetType: "User",
+    targetId: String(me._id),
+  });
   return { ok: true };
 }
 
@@ -134,6 +165,14 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
       bio: parsed.data.bio?.trim() || null,
     }
   );
+  await recordAudit({
+    category: "update",
+    action: "user.profile.update",
+    actor: me,
+    targetType: "User",
+    targetId: String(me._id),
+    meta: { username: parsed.data.username.trim(), hasWhatsapp: Boolean(wa) },
+  });
   revalidatePath("/profile");
   revalidatePath(`/players/${String(me._id)}`);
   return { ok: true };

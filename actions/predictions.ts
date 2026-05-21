@@ -7,6 +7,7 @@ import { submitPrediction } from "@/services/prediction-engine";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { refreshMatchPlayers } from "@/services/ipl-sync";
+import { recordAudit } from "@/lib/audit";
 
 const Schema = z.object({
   matchId: z.string().min(1),
@@ -32,6 +33,18 @@ export async function submitPredictionAction(formData: FormData) {
   } catch (e) {
     return { ok: false as const, error: (e as Error).message };
   }
+  await recordAudit({
+    category: "create",
+    action: "prediction.submit",
+    actor: me,
+    targetType: "Match",
+    targetId: parsed.data.matchId,
+    meta: {
+      winner: parsed.data.winner,
+      topBatter: parsed.data.topBatter,
+      topBowler: parsed.data.topBowler,
+    },
+  });
   revalidatePath(`/matches/${parsed.data.matchId}`);
   revalidatePath("/predictions");
   return { ok: true as const };

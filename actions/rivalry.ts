@@ -12,6 +12,7 @@ import { Notification } from "@/models/Notification";
 import { isModuleLocked } from "@/lib/match-locks";
 import { computeLeaderboard } from "@/services/scoring";
 import { attachRivalryToCivilWar, detachRivalryFromCivilWar } from "@/services/civil-war";
+import { recordAudit } from "@/lib/audit";
 
 const CreateSchema = z.object({
   matchId: z.string().min(1),
@@ -193,6 +194,14 @@ export async function createRivalryAction(payload: unknown) {
   });
 
   revalidatePath("/rivalry");
+  await recordAudit({
+    category: "create",
+    action: isRevenge ? "rivalry.revenge" : "rivalry.create",
+    actor: me,
+    targetType: "Rivalry",
+    targetId: String(created._id),
+    meta: { matchId, opponentId, opponentUsername: opponent.username },
+  });
   return { ok: true as const, id: String(created._id) };
 }
 
@@ -296,6 +305,14 @@ export async function respondRivalryAction(payload: unknown) {
   }
 
   revalidatePath("/rivalry");
+  await recordAudit({
+    category: "update",
+    action: accept ? "rivalry.accept" : "rivalry.decline",
+    actor: me,
+    targetType: "Rivalry",
+    targetId: String(riv._id),
+    meta: { matchId: String(riv.matchId) },
+  });
   return { ok: true as const };
 }
 
@@ -357,6 +374,14 @@ export async function cancelRivalryAction(payload: unknown) {
   });
 
   revalidatePath("/rivalry");
+  await recordAudit({
+    category: "update",
+    action: "rivalry.cancel",
+    actor: me,
+    targetType: "Rivalry",
+    targetId: String(riv._id),
+    meta: { matchId: String(riv.matchId), wasAccepted, penalty: 2 },
+  });
   return { ok: true as const };
 }
 
@@ -402,6 +427,14 @@ export async function requestRivalryWithdrawalAction(payload: unknown) {
   });
   revalidatePath("/rivalry");
   revalidatePath("/admin");
+  await recordAudit({
+    category: "update",
+    action: "rivalry.withdrawal.request",
+    actor: me,
+    targetType: "Rivalry",
+    targetId: String(riv._id),
+    meta: { matchId: String(riv.matchId) },
+  });
   return { ok: true as const };
 }
 
@@ -432,6 +465,14 @@ export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
     });
     revalidatePath("/admin");
     revalidatePath("/rivalry");
+    await recordAudit({
+      category: "update",
+      action: "rivalry.withdrawal.deny",
+      actor: admin,
+      targetType: "Rivalry",
+      targetId: String(riv._id),
+      meta: { matchId: String(riv.matchId), requesterId: String(requesterId) },
+    });
     return { ok: true as const };
   }
 
@@ -455,6 +496,14 @@ export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
   revalidatePath("/admin");
   revalidatePath("/rivalry");
   revalidatePath("/leaderboard");
+  await recordAudit({
+    category: "update",
+    action: parsed.data.approve ? "rivalry.withdrawal.approve" : "rivalry.withdrawal.deny",
+    actor: admin,
+    targetType: "Rivalry",
+    targetId: String(riv._id),
+    meta: { matchId: String(riv.matchId), requesterId: String(requesterId) },
+  });
   return { ok: true as const };
 }
 

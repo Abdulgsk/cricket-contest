@@ -16,6 +16,7 @@ import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
 import { BonusAuditLog } from "@/models/BonusAuditLog";
 import { PredictionAuditLog } from "@/models/PredictionAuditLog";
 import { DailyFact } from "@/models/DailyFact";
+import { Role } from "@/models/Role";
 import { processMatchResults } from "@/services/scoring";
 import { adminResetPrediction } from "@/services/prediction-engine";
 import { syncIplMatches, refreshSquads, refreshMatchPlayers } from "@/services/ipl-sync";
@@ -222,9 +223,147 @@ export async function submitResultsAction(payload: unknown) {
 export async function setRoleAction(targetUserId: string, role: "user" | "admin" | "superadmin") {
   const me = await requireRole("superadmin");
   await connectDB();
-  await User.updateOne({ _id: targetUserId }, { role });
+  // Clear any custom role mapping when switching to a system role so the
+  // user's effective features come from the role's defaults alone.
+  await User.updateOne({ _id: targetUserId }, { role, customRoleId: null });
   await AuditLog.create({ actorId: me._id, action: "user.role", meta: { targetUserId, role } });
   revalidatePath("/admin/users");
+}
+
+/**
+ * Unified role assignment: accepts either a system role or a custom role _id.
+ * Custom roles always store base `role: "user"` so privilege escalation can't
+ * happen accidentally — feature gates are computed from the role's features.
+ */
+const AssignRoleSchema = z.object({
+  targetUserId: z.string().min(1),
+  kind: z.enum(["system", "custom"]),
+  systemRole: z.enum(["user", "admin", "superadmin"]).optional(),
+  customRoleId: z.string().optional(),
+});
+
+export async function assignUserRoleAction(payload: unknown) {
+  const me = await requireRole("superadmin");
+  const parsed = AssignRoleSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  await connectDB();
+
+  if (parsed.data.kind === "system") {
+    const role = parsed.data.systemRole;
+    if (!role) return { ok: false as const, error: "System role missing" };
+    await User.updateOne({ _id: parsed.data.targetUserId }, { role, customRoleId: null });
+    await AuditLog.create({
+      actorId: me._id,
+      action: "user.role.assign",
+      meta: { ...parsed.data },
+    });
+  } else {
+    const customRoleId = parsed.data.customRoleId;
+    if (!customRoleId) return { ok: false as const, error: "Custom role id missing" };
+    const exists = await Role.findById(customRoleId).lean();
+    if (!exists) return { ok: false as const, error: "Custom role no longer exists" };
+    await User.updateOne(
+      { _id: parsed.data.targetUserId },
+      { role: "user", customRoleId }
+    );
+    await AuditLog.create({
+      actorId: me._id,
+      action: "user.role.assign",
+      meta: { ...parsed.data, customRoleName: exists.name },
+    });
+  }
+
+  revalidatePath("/admin/users");
+  return { ok: true as const };
+}
+
+/* -------------------------- Custom Roles (CRUD) -------------------------- */
+
+const RoleNameSchema = z.string().trim().min(1).max(40);
+const RoleFeaturesSchema = z.array(z.enum(FEATURE_KEYS)).default([]);
+
+export async function createRoleAction(payload: unknown) {
+  const me = await requireRole("superadmin");
+  const parsed = z
+    .object({ name: RoleNameSchema, features: RoleFeaturesSchema })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+
+  await connectDB();
+  const name = parsed.data.name;
+  // Reject collisions with system role names so the dropdown stays unambiguous.
+  if (["user", "admin", "superadmin"].includes(name.toLowerCase())) {
+    return { ok: false as const, error: "Name collides with a system role" };
+  }
+  const dup = await Role.findOne({ name }).lean();
+  if (dup) return { ok: false as const, error: "A role with that name already exists" };
+
+  const role = await Role.create({ name, features: parsed.data.features });
+  await AuditLog.create({
+    actorId: me._id,
+    action: "role.create",
+    meta: { roleId: String(role._id), name, features: parsed.data.features },
+  });
+  revalidatePath("/admin/users");
+  return { ok: true as const, id: String(role._id) };
+}
+
+export async function updateRoleAction(payload: unknown) {
+  const me = await requireRole("superadmin");
+  const parsed = z
+    .object({ id: z.string().min(1), name: RoleNameSchema, features: RoleFeaturesSchema })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+
+  await connectDB();
+  if (["user", "admin", "superadmin"].includes(parsed.data.name.toLowerCase())) {
+    return { ok: false as const, error: "Name collides with a system role" };
+  }
+  const dup = await Role.findOne({
+    name: parsed.data.name,
+    _id: { $ne: parsed.data.id },
+  }).lean();
+  if (dup) return { ok: false as const, error: "Another role already uses that name" };
+
+  const updated = await Role.findByIdAndUpdate(
+    parsed.data.id,
+    { name: parsed.data.name, features: parsed.data.features },
+    { new: true }
+  );
+  if (!updated) return { ok: false as const, error: "Role not found" };
+
+  await AuditLog.create({
+    actorId: me._id,
+    action: "role.update",
+    meta: { roleId: parsed.data.id, name: parsed.data.name, features: parsed.data.features },
+  });
+  revalidatePath("/admin/users");
+  return { ok: true as const };
+}
+
+export async function deleteRoleAction(payload: unknown) {
+  const me = await requireRole("superadmin");
+  const parsed = z.object({ id: z.string().min(1) }).safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+
+  await connectDB();
+  const inUse = await User.countDocuments({ customRoleId: parsed.data.id });
+  if (inUse > 0) {
+    return {
+      ok: false as const,
+      error: `Cannot delete — ${inUse} user${inUse === 1 ? "" : "s"} still mapped to this role.`,
+    };
+  }
+  const removed = await Role.findByIdAndDelete(parsed.data.id);
+  if (!removed) return { ok: false as const, error: "Role not found" };
+
+  await AuditLog.create({
+    actorId: me._id,
+    action: "role.delete",
+    meta: { roleId: parsed.data.id, name: removed.name },
+  });
+  revalidatePath("/admin/users");
+  return { ok: true as const };
 }
 
 export async function deleteUserCascadeAction(targetUserId: string, confirmText: string) {
