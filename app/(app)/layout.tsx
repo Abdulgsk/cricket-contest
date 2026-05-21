@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/rbac";
+import { requireUser, userHasAdminAccess } from "@/lib/rbac";
 import { Nav } from "@/components/nav";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
@@ -37,7 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const bountyReward = settings.bonusConfig?.bounty ?? BONUSES.BOUNTY;
   return (
     <div className="flex flex-1 min-h-screen">
-      <Nav role={me.role} rivalryUnseen={rivalryUnseen} />
+      <Nav role={me.role} hasAdminAccess={userHasAdminAccess(me)} rivalryUnseen={rivalryUnseen} />
       <div className="flex-1 flex flex-col min-w-0">
         {settings.announcement ? (
           <div className="m-3 md:m-4 ml-14 md:ml-3 glass rounded-xl px-4 py-2 text-sm text-primary">

@@ -15,14 +15,22 @@ export async function requireRole(...roles: Role[]) {
   return u;
 }
 
-export async function requireAdminFeature(feature: FeatureKey) {
-  const u = await requireRole("admin", "superadmin");
-  if (u.role === "superadmin") return u;
+/**
+ * Allows access to the admin console for:
+ *  - superadmin / admin (legacy full access)
+ *  - any plain user that has at least one feature flag granted to them
+ *    (so they can use the specific tools that were enabled for them).
+ */
+export async function requireAdminAccess() {
+  const u = await requireUser();
+  if (u.role === "admin" || u.role === "superadmin") return u;
+  if ((u.enabledFeatures ?? []).length > 0) return u;
+  redirect("/");
+}
 
-  // Backward-compatible: existing admins with no explicit feature assignment
-  // keep their current access. Once features are assigned, they are enforced.
-  const enabled = u.enabledFeatures ?? [];
-  if (enabled.length === 0 || enabled.includes(feature)) return u;
+export async function requireAdminFeature(feature: FeatureKey) {
+  const u = await requireUser();
+  if (userHasFeature(u, feature)) return u;
   redirect("/");
 }
 
@@ -33,9 +41,9 @@ export async function isAdmin() {
 
 /**
  * Non-redirecting visibility check used to gate UI sections by feature.
- * Mirrors `requireAdminFeature`: superadmins always pass; admins with no
- * explicit feature assignment keep legacy access; otherwise the feature
- * must be present in `enabledFeatures`.
+ *  - superadmin: always true
+ *  - admin with no explicit assignments: legacy full access (true)
+ *  - admin or plain user with explicit assignments: must include the feature
  */
 export function userHasFeature(
   user: { role: Role; enabledFeatures?: string[] | null } | null | undefined,
@@ -43,8 +51,18 @@ export function userHasFeature(
 ): boolean {
   if (!user) return false;
   if (user.role === "superadmin") return true;
-  if (user.role !== "admin") return false;
   const enabled = user.enabledFeatures ?? [];
-  if (enabled.length === 0) return true;
+  if (user.role === "admin" && enabled.length === 0) return true;
   return enabled.includes(feature);
+}
+
+/**
+ * Non-redirecting check for whether the user can see the Admin tab at all.
+ */
+export function userHasAdminAccess(
+  user: { role: Role; enabledFeatures?: string[] | null } | null | undefined,
+): boolean {
+  if (!user) return false;
+  if (user.role === "admin" || user.role === "superadmin") return true;
+  return (user.enabledFeatures ?? []).length > 0;
 }

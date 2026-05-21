@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { requireRole, userHasFeature } from "@/lib/rbac";
+import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
 import { Card } from "@/components/ui/card";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminAccess();
   const canSeeMatches =
     userHasFeature(me, "matches.manage") ||
     userHasFeature(me, "results.manage") ||

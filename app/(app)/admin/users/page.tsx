@@ -1,6 +1,6 @@
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
-import { requireRole } from "@/lib/rbac";
+import { requireAdminAccess } from "@/lib/rbac";
 import { Card, Badge } from "@/components/ui/card";
 import { UserRoleControls } from "@/components/admin/user-role-controls";
 import { UserFeatureControls } from "@/components/admin/user-feature-controls";
@@ -8,7 +8,7 @@ import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import type { FeatureKey } from "@/lib/features";
 
 export default async function AdminUsers() {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminAccess();
   await connectDB();
   const users = await User.find().sort({ createdAt: -1 }).lean();
   return (

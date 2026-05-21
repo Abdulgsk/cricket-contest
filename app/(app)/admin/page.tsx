@@ -14,14 +14,14 @@ import { CivilWarSettingsPanel } from "@/components/admin/civil-war-settings-pan
 import { My11LiveSettingsPanel } from "@/components/admin/my11-live-settings-panel";
 import { CIVIL_WAR_DEFAULTS } from "@/services/civil-war";
 import { formatDate } from "@/lib/utils";
-import { requireRole, userHasFeature } from "@/lib/rbac";
+import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 import { getSettings } from "@/models/Settings";
 import { getLatestFacts } from "@/services/facts";
 import { BONUSES } from "@/lib/constants";
 
 export default async function AdminHome() {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminAccess();
   await connectDB();
 
   await autoUpdateMatchStatuses();

@@ -21,15 +21,18 @@ const NAV = [
 
 export function Nav({
   role,
+  hasAdminAccess = false,
   rivalryUnseen = 0,
 }: {
   role: "user" | "admin" | "superadmin";
+  hasAdminAccess?: boolean;
   rivalryUnseen?: number;
 }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [showMenuButton, setShowMenuButton] = useState(true);
-  const items = role === "admin" || role === "superadmin" ? [...NAV, { href: "/admin", label: "Admin" }] : NAV;
+  const showAdmin = role === "admin" || role === "superadmin" || hasAdminAccess;
+  const items = showAdmin ? [...NAV, { href: "/admin", label: "Admin" }] : NAV;
 
   // Close drawer when route changes
   useEffect(() => {
