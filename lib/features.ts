@@ -105,6 +105,20 @@ export const FEATURE_DEFS = [
     description: "Re-run the AI narrator for the latest scored match.",
     group: "Content",
   },
+  {
+    key: "bugs.view",
+    label: "View bug reports",
+    description: "See bug reports submitted by users in the admin console.",
+    group: "Users",
+  },
+  {
+    key: "bugs.manage",
+    label: "Manage bug reports",
+    description:
+      "Change status (in progress / resolved / won't fix), add internal notes and delete reports.",
+    group: "Users",
+    sensitive: true,
+  },
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURE_DEFS)[number]["key"];

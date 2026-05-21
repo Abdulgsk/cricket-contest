@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/rbac";
+import { requireAdminFeature } from "@/lib/rbac";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await requireRole("admin", "superadmin");
+    await requireAdminFeature("automation.run");
   } catch {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }

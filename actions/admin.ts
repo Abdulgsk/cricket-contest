@@ -491,7 +491,7 @@ export async function setBountyAction(userId: string | null) {
 }
 
 export async function setAnnouncementAction(text: string) {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   await connectDB();
   await Settings.updateOne({}, { announcement: text }, { upsert: true });
   revalidatePath("/");
@@ -624,7 +624,7 @@ export async function setUserFeaturesAction(payload: unknown) {
 }
 
 export async function checkMy11SessionAction() {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   try {
     const { checkLogin, getSessionCookieMeta } = await import("@/lib/my11-api");
     const meta = await getSessionCookieMeta();
@@ -644,7 +644,7 @@ export async function checkMy11SessionAction() {
 }
 
 export async function listMy11MatchesAction() {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   try {
     const { listAllMatches } = await import("@/lib/my11-api");
     const matches = await listAllMatches();
@@ -670,7 +670,7 @@ export async function listMy11MatchesAction() {
 }
 
 export async function listMy11ContestsAction(my11MatchId: number) {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   try {
     const { listMyContests } = await import("@/lib/my11-api");
     const contests = await listMyContests(my11MatchId);
@@ -690,7 +690,7 @@ export async function listMy11ContestsAction(my11MatchId: number) {
 }
 
 export async function setMatchContestUrlAction(matchId: string, contestUrl: string) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("matches.manage");
   await connectDB();
   await Match.updateOne({ _id: matchId }, { $set: { contestUrl } });
   revalidatePath(`/admin/matches/${matchId}/result`);
@@ -710,7 +710,7 @@ export async function updateMy11LiveRefreshAction(seconds: number) {
 // ---- IPL auto-import ----
 
 export async function syncIplMatchesAction() {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("matches.manage");
   try {
     const r = await syncIplMatches();
     await AuditLog.create({ actorId: me._id, action: "ipl.sync", meta: r });
@@ -723,7 +723,7 @@ export async function syncIplMatchesAction() {
 }
 
 export async function refreshSquadsAction(matchId: string) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("matches.manage");
   try {
     const r = await refreshSquads(matchId);
     revalidatePath(`/matches/${matchId}`);
@@ -747,7 +747,7 @@ export async function syncPlayoffsAction() {
 }
 
 export async function refreshMatchPlayersAction(matchId: string) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("matches.manage");
   try {
     const r = await refreshMatchPlayers(matchId);
     revalidatePath(`/matches/${matchId}`);
@@ -758,7 +758,7 @@ export async function refreshMatchPlayersAction(matchId: string) {
 }
 
 export async function fetchContestPointsAction(payload: unknown) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("results.manage");
   await connectDB();
 
   const FetchContestPointsSchema = z.object({

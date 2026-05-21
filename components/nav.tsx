@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";
 import { LogoutButton } from "@/components/logout-button";
+import { BugReportButton } from "@/components/bug-report-button";
 
 const NAV = [
   { href: "/dashboard", label: "Home" },
@@ -106,6 +107,9 @@ export function Nav({
           <ThemeToggle />
         </div>
         <div className="pt-2">
+          <BugReportButton />
+        </div>
+        <div className="pt-1">
           <LogoutButton />
         </div>
       </aside>
@@ -160,6 +164,9 @@ export function Nav({
             <ThemeToggle />
           </div>
           <div className="pt-2">
+            <BugReportButton />
+          </div>
+          <div className="pt-1">
             <LogoutButton />
           </div>
         </aside>
