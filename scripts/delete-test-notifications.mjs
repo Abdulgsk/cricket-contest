@@ -8,8 +8,24 @@
  * or to delete a specific id:
  *   node scripts/delete-test-notifications.mjs 69fe37ef9bd0ef4a7b2827ef
  */
+import fs from "node:fs";
 import mongoose from "mongoose";
-import "dotenv/config";
+
+function loadEnv() {
+  try {
+    const raw = fs.readFileSync(".env.local", "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith("#") || !t.includes("=")) continue;
+      const i = t.indexOf("=");
+      let v = t.slice(i + 1).trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      const k = t.slice(0, i).trim();
+      if (!process.env[k]) process.env[k] = v;
+    }
+  } catch {}
+}
+loadEnv();
 
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {
