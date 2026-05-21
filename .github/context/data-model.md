@@ -7,8 +7,11 @@ All schemas in `models/`. Mongoose 9, all use `timestamps: true` unless noted.
 `models/User.ts`
 
 - `userId` (handle, unique, lowercase) · `username` (display) · `password` (PLAINTEXT) · `whatsapp` · `my11circleName`
-- `role: "user"|"admin"|"superadmin"`
-- `enabledFeatures: FeatureKey[]` — per-admin feature gates
+- `role: "user"|"admin"|"superadmin"` — the legacy `"admin"` value is still in
+  the enum for back-compat but is **inert** (no implicit access). UI hides it.
+- `enabledFeatures: FeatureKey[]` — direct per-user feature grants
+- `customRoleId: ObjectId | null` — ref to `Role`. Effective features =
+  `enabledFeatures ∪ role.features` (merged in `lib/session.ts`).
 - `avatar` (data URI, ≤192KB) · `avatarColor` · `bio` (≤280 chars)
 - `lastSeenRivalryAt` — for the "new rivalry" badge
 - `my11NameRequest: { requested, requestedAt, status: pending|approved|denied, decidedAt, deniedReason }` — name change approval state
@@ -80,9 +83,25 @@ Always read via `getSettings()` to merge with defaults.
 - `fetchedAt`, `sourceUpdatedAt`
 - Unique index `(matchId, userId)`. Re-fetched on demand via `services/contest.ts::getRefreshedUserMatchTeam()`.
 
+## Role
+
+`models/Role.ts` — named feature bundles ('custom roles'). Assigning a custom
+role sets `User.customRoleId` and forces `User.role = "user"` so privilege
+escalation can't happen through role choice alone.
+
+- `name` (unique, trimmed)
+- `features: FeatureKey[]` — keys from `lib/features.ts::FEATURE_KEYS`
+- timestamps
+
+Deletion is blocked while any user references the role.
+
 ## AuditLog / BonusAuditLog / PredictionAuditLog
 
-- `AuditLog` — generic admin action trail.
+- `AuditLog` — generic action trail. Fields: `actorId`, `actorHandle`,
+  `actorUsername`, `category` (`create|update|delete|auth|action`), `action`
+  (dot-namespaced verb), `targetType`, `targetId`, `meta`, `ip`, `userAgent`,
+  `createdAt` (indexed `-1`). Written via `lib/audit.ts::recordAudit()` which
+  reads request headers and never throws.
 - `BonusAuditLog` — one row per granted bonus per match with `explanation` (consumed by AI narrator).
 - `PredictionAuditLog` — diffs around admin resets.
 
