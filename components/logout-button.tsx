@@ -53,14 +53,14 @@ export function LogoutButton() {
 
       {open && (
         <div
-          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => !pending && setOpen(false)}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Confirm logout"
-            className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-white/10 bg-popover/95 backdrop-blur-xl shadow-2xl ring-1 ring-black/10 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+            className="relative z-[201] w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-white/10 bg-popover/95 backdrop-blur-xl shadow-2xl ring-1 ring-black/10 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-5 pt-5 pb-3 border-b border-border/40 bg-gradient-to-br from-danger/15 to-danger/5 rounded-t-2xl">

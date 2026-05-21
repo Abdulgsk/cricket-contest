@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { Card, Badge } from "@/components/ui/card";
@@ -6,12 +7,18 @@ import { TeamLogo } from "@/components/team-logo";
 import { CreateMatchForm } from "@/components/admin/create-match-form";
 import { SyncIplPanel } from "@/components/admin/sync-ipl-panel";
 import { SyncPlayoffsPanel } from "@/components/admin/sync-playoffs-panel";
-import { requireUser } from "@/lib/rbac";
+import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
 import { formatDate } from "@/lib/utils";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 
 export default async function AdminMatches() {
-  const me = await requireUser();
+  const me = await requireAdminAccess();
+  const canManageMatch = userHasFeature(me, "matches.manage");
+  const canManageResults = userHasFeature(me, "results.manage");
+  const canManageLockExtensions = userHasFeature(me, "match.lock.extend");
+  if (!canManageMatch && !canManageResults && !canManageLockExtensions) {
+    redirect("/admin");
+  }
   await connectDB();
   
   // Auto-update match statuses on page load
@@ -32,9 +39,9 @@ export default async function AdminMatches() {
   });
   return (
     <div className="space-y-4">
-      <SyncIplPanel />
+      {canManageMatch && <SyncIplPanel />}
       {me.role === "superadmin" && <SyncPlayoffsPanel />}
-      <CreateMatchForm />
+      {canManageMatch && <CreateMatchForm />}
       <Card>
         <h2 className="font-semibold mb-3">All matches</h2>
         <div className="space-y-2">
@@ -62,7 +69,11 @@ export default async function AdminMatches() {
                   href={`/admin/matches/${String(m._id)}/result`}
                   className="rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-xs font-semibold whitespace-nowrap"
                 >
-                  {m.resultsEntered ? "Edit" : "Enter"}
+                  {canManageResults
+                    ? m.resultsEntered
+                      ? "Edit"
+                      : "Enter"
+                    : "Open"}
                 </Link>
               </div>
             </div>

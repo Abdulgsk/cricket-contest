@@ -295,10 +295,84 @@ export default async function AdminHome() {
     </Card>
   );
 
+  // For users with feature-only access (no admin/superadmin role), render a
+  // personalized landing that lists only the tools they were granted — so they
+  // never see an empty Overview / Operations dashboard meant for admins.
+  const yourTools: Array<{ key: string; label: string; description: string; href: string; cta: string }> = [];
+  if (canSeeMatches) {
+    const opens: string[] = [];
+    if (canManageResults) opens.push("enter and edit match results");
+    if (userHasFeature(me, "matches.manage")) opens.push("manage fixtures and modes");
+    if (userHasFeature(me, "match.lock.extend")) opens.push("extend prediction lock windows");
+    yourTools.push({
+      key: "matches",
+      label: "Matches",
+      description: opens.length
+        ? `You can ${opens.join(", ")}.`
+        : "Open the match operations page.",
+      href: "/admin/matches",
+      cta: "Open matches",
+    });
+  }
+  if (canApproveMy11NameChange) {
+    yourTools.push({
+      key: "users",
+      label: "Users",
+      description: "Approve My11 name changes and review accounts.",
+      href: "/admin/users",
+      cta: "Open users",
+    });
+  }
+  if (me.role === "superadmin" || canApproveMy11NameChange) {
+    yourTools.push({
+      key: "audit",
+      label: "Audit log",
+      description: "Review who did what across the league.",
+      href: "/admin/audit-logs",
+      cta: "Open audit log",
+    });
+  }
+
+  const yourToolsTab = (
+    <div className="space-y-4">
+      <Card className="border-border/70 bg-gradient-to-br from-primary/8 via-card to-card">
+        <h2 className="text-base font-semibold">Your tools</h2>
+        <p className="text-xs text-muted-foreground mt-1">
+          Only the actions you&apos;ve been given access to are listed below. Ask an admin for more if you need them.
+        </p>
+      </Card>
+      {yourTools.length === 0 ? (
+        <Card className="border-border/70">
+          <div className="text-sm text-muted-foreground">
+            You have admin access but no specific tools have been enabled yet.
+            Ask a superadmin to assign you features in <span className="font-medium text-foreground">Users → Permissions</span>.
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {yourTools.map((t) => (
+            <Card key={t.key} className="border-border/70 flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-sm">{t.label}</h3>
+              </div>
+              <p className="text-xs text-muted-foreground flex-1">{t.description}</p>
+              <Link
+                href={t.href}
+                className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-3 py-2 text-xs font-semibold w-fit"
+              >
+                {t.cta} →
+              </Link>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <AdminOverviewTabs
       tabs={[
-        ...(isAdminRole ? [{ id: "dashboard", label: "Overview", content: dashboardTab }] : []),
+        ...(isAdminRole ? [{ id: "dashboard", label: "Overview", content: dashboardTab }] : [{ id: "tools-landing", label: "Your tools", content: yourToolsTab }]),
         ...(canApproveRivalryWithdrawals || canApproveMy11NameChange
           ? [
               {
