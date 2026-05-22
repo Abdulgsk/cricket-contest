@@ -14,7 +14,6 @@
     "fix:history:points:apply": "node scripts/fix-history-points.mjs --apply"
   },
   "dependencies": {
-    "@vercel/analytics": "^2.0.1",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -30,6 +29,8 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.4.3"
+    "@vercel/analytics": "^1.x",
+    "@vercel/speed-insights": "^1.x"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
