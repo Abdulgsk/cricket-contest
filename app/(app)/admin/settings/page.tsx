@@ -2,10 +2,12 @@ import { connectDB } from "@/lib/db";
 import { getSettings } from "@/models/Settings";
 import { Card } from "@/components/ui/card";
 import { SettingsForms } from "@/components/admin/settings-forms";
-import { requireRole } from "@/lib/rbac";
+import { requireAdminAccess } from "@/lib/rbac";
 
 export default async function AdminSettings() {
-  await requireRole("superadmin");
+  // Route access is enforced by app/(app)/admin/layout.tsx via the central
+  // ADMIN_ROUTES registry (settings is superadminOnly).
+  await requireAdminAccess();
   await connectDB();
   const settings = await getSettings();
   return (

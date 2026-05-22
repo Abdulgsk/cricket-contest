@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { Card, Badge } from "@/components/ui/card";
@@ -12,13 +11,10 @@ import { formatDate } from "@/lib/utils";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 
 export default async function AdminMatches() {
+  // Route access is enforced by app/(app)/admin/layout.tsx.
   const me = await requireAdminAccess();
   const canManageMatch = userHasFeature(me, "matches.manage");
   const canManageResults = userHasFeature(me, "results.manage");
-  const canManageLockExtensions = userHasFeature(me, "match.lock.extend");
-  if (!canManageMatch && !canManageResults && !canManageLockExtensions) {
-    redirect("/admin");
-  }
   await connectDB();
   
   // Auto-update match statuses on page load

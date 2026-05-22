@@ -2,7 +2,6 @@ import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { Role } from "@/models/Role";
 import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
-import { redirect } from "next/navigation";
 import { Card, Badge } from "@/components/ui/card";
 import { UserRoleAssign } from "@/components/admin/user-role-assign";
 import { UserFeatureControls } from "@/components/admin/user-feature-controls";
@@ -11,17 +10,11 @@ import { RolesEditor, type CustomRoleRow } from "@/components/admin/roles-editor
 import type { FeatureKey } from "@/lib/features";
 
 export default async function AdminUsers() {
+  // Route access is enforced by app/(app)/admin/layout.tsx.
   const me = await requireAdminAccess();
   const canAssignRoles = me.role === "superadmin" || userHasFeature(me, "users.roles.assign");
   const canDeleteUsers = me.role === "superadmin" || userHasFeature(me, "users.delete");
   const canManageRoleCatalog = me.role === "superadmin" || userHasFeature(me, "users.roles.assign");
-  if (
-    !canAssignRoles &&
-    !canDeleteUsers &&
-    !userHasFeature(me, "users.manage")
-  ) {
-    redirect("/admin");
-  }
   await connectDB();
   const [users, roles] = await Promise.all([
     User.find().sort({ createdAt: -1 }).lean(),

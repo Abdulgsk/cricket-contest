@@ -1,52 +1,22 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
-import {
-  getRequiredFeaturesForAdminRoute,
-  adminRouteRequiresSuperadmin,
-} from "@/lib/admin-route-access";
+import { requireAdminRouteAccess } from "@/lib/rbac";
+import { getAccessibleAdminRoutes } from "@/lib/admin-route-access";
 import { Card } from "@/components/ui/card";
 
-type NavItem = { href: string; label: string };
-
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const me = await requireAdminAccess();
-  const canSeeMatches =
-    userHasFeature(me, "matches.manage") ||
-    userHasFeature(me, "results.manage") ||
-    userHasFeature(me, "match.lock.extend");
-  const canSeeUsers =
-    userHasFeature(me, "users.manage") ||
-    userHasFeature(me, "users.roles.assign") ||
-    userHasFeature(me, "users.delete");
-  const canSeeLogs = userHasFeature(me, "audit.view");
-  const isSuperadmin = me.role === "superadmin";
-
   const h = await headers();
   const pathname = h.get("x-pathname") ?? "/admin";
 
-  // Centralised feature gate for every admin sub-page.
-  // Source of truth: lib/admin-route-access.ts.
-  // Superadmin always passes. Otherwise the user must hold at least one of the
-  // required features; if not, bounce them back to the admin overview.
-  if (!isSuperadmin) {
-    if (adminRouteRequiresSuperadmin(pathname)) {
-      redirect("/admin");
-    }
-    const required = getRequiredFeaturesForAdminRoute(pathname);
-    if (required && !required.some((f) => userHasFeature(me, f))) {
-      redirect("/admin");
-    }
-  }
+  // Centralised feature gate for every admin sub-page. Source of truth lives
+  // in lib/admin-route-access.ts. Authorised users continue; everyone else is
+  // bounced (to /admin if they have partial access, otherwise /dashboard).
+  const me = await requireAdminRouteAccess(pathname);
 
-  const items: NavItem[] = [
-    { href: "/admin", label: "Overview" },
-    ...(canSeeMatches ? [{ href: "/admin/matches", label: "Matches" }] : []),
-    ...(canSeeUsers ? [{ href: "/admin/users", label: "Users" }] : []),
-    ...(canSeeLogs ? [{ href: "/admin/audit-logs", label: "Audit logs" }] : []),
-    ...(isSuperadmin ? [{ href: "/admin/settings", label: "Settings" }] : []),
-  ];
+  const items = getAccessibleAdminRoutes(me).map((r) => ({
+    href: r.path,
+    label: r.label as string,
+  }));
 
   const isActive = (href: string) =>
     href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(href + "/");

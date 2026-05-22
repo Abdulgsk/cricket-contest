@@ -2,6 +2,11 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, getSession } from "@/lib/session";
 import type { Role } from "@/lib/constants";
 import type { FeatureKey } from "@/lib/features";
+import {
+  canAccessAdminRoute,
+  getAdminRouteForPath,
+  hasAnyAdminRouteAccess,
+} from "@/lib/admin-route-access";
 
 export async function requireUser() {
   const u = await getCurrentUser();
@@ -11,7 +16,7 @@ export async function requireUser() {
 
 export async function requireRole(...roles: Role[]) {
   const u = await requireUser();
-  if (!roles.includes(u.role)) redirect("/");
+  if (!roles.includes(u.role)) redirect("/dashboard");
   return u;
 }
 
@@ -24,16 +29,35 @@ export async function requireRole(...roles: Role[]) {
  */
 export async function requireAdminAccess() {
   const u = await requireUser();
-  if (u.role === "superadmin") return u;
-  if ((u.enabledFeatures ?? []).length > 0) return u;
-  if (u.customRoleId) return u;
-  redirect("/");
+  if (hasAnyAdminRouteAccess(u)) return u;
+  redirect("/dashboard");
 }
 
+/**
+ * Gate a server entry point on a specific feature.
+ * If the user has *some* admin access we bounce them back to /admin (so the
+ * page chrome stays visible); otherwise to /dashboard.
+ */
 export async function requireAdminFeature(feature: FeatureKey) {
   const u = await requireUser();
   if (userHasFeature(u, feature)) return u;
-  redirect("/");
+  redirect(hasAnyAdminRouteAccess(u) ? "/admin" : "/dashboard");
+}
+
+/**
+ * Centralised gate used by the admin layout. Reads the current request path,
+ * looks up the matching route registration, and enforces it. Returns the
+ * authenticated user when access is allowed.
+ */
+export async function requireAdminRouteAccess(pathname: string) {
+  const u = await requireAdminAccess();
+  const route = getAdminRouteForPath(pathname);
+  if (!route) return u; // route not registered -> overview-level access is enough
+  if (!canAccessAdminRoute(u, route)) {
+    // Send them somewhere they CAN see instead of looping.
+    redirect(pathname === "/admin" ? "/dashboard" : "/admin");
+  }
+  return u;
 }
 
 export async function isAdmin() {
@@ -60,6 +84,7 @@ export function userHasFeature(
 
 /**
  * Non-redirecting check for whether the user can see the Admin tab at all.
+ * Thin wrapper around `hasAnyAdminRouteAccess` for backwards compatibility.
  */
 export function userHasAdminAccess(
   user: {
@@ -69,8 +94,5 @@ export function userHasAdminAccess(
   } | null | undefined,
 ): boolean {
   if (!user) return false;
-  if (user.role === "superadmin") return true;
-  if ((user.enabledFeatures ?? []).length > 0) return true;
-  if (user.customRoleId) return true;
-  return false;
+  return hasAnyAdminRouteAccess(user);
 }

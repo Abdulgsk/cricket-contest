@@ -17,7 +17,6 @@ import { MatchLockExtensionsPanel } from "@/components/admin/match-lock-extensio
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
 import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
-import { redirect } from "next/navigation";
 import { isModuleLocked } from "@/lib/match-locks";
 
 export default async function AdminMatchResultPage({
@@ -30,12 +29,7 @@ export default async function AdminMatchResultPage({
   const canManageLockExtensions = userHasFeature(me, "match.lock.extend");
   const canManageMatch = userHasFeature(me, "matches.manage");
   const canManageResults = userHasFeature(me, "results.manage");
-  // Page is only useful if the user can act on at least one panel here.
-  // Without this gate, a user with only e.g. `users.manage` could land on
-  // a fully-empty result page.
-  if (!canManageMatch && !canManageResults && !canManageLockExtensions) {
-    redirect("/admin");
-  }
+  // Route access is enforced by app/(app)/admin/layout.tsx.
   const { id } = await params;
   await connectDB();
   const match = await Match.findById(id).lean();

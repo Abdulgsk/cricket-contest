@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { connectDB } from "@/lib/db";
 import { AuditLog } from "@/models/AuditLog";
-import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
+import { requireAdminAccess } from "@/lib/rbac";
 import { Card, Badge } from "@/components/ui/card";
-import { redirect } from "next/navigation";
 
 type SearchParams = Promise<{
   category?: string;
@@ -19,11 +18,8 @@ export default async function AdminAuditLogsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const me = await requireAdminAccess();
-  // Audit log is gated by the dedicated `audit.view` feature.
-  if (!userHasFeature(me, "audit.view")) {
-    redirect("/admin");
-  }
+  // Route access (audit.view) is enforced by app/(app)/admin/layout.tsx.
+  await requireAdminAccess();
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const filter: Record<string, unknown> = {};
