@@ -164,9 +164,22 @@ export async function getRefreshedUserMatchTeam(args: {
 
 /**
  * List all app users with a stored team for this match.
- * Used to power the Compare picker.
+ * Used to power the Compare picker and the "Positions" card.
+ *
+ * If `live` is provided, current scores are merged in from the contest
+ * leaderboard (matched by normalised my11 username). Without this, holders
+ * would carry the last-fetched `UserMatchTeam.score` for everyone except the
+ * viewing user — making other players' points look stale or wrong.
+ *
+ * Returns holders sorted by current `score` DESC (so positions reflect the
+ * latest fantasy points within our friend group, even if my11's overall
+ * `rank` field is stale). A `localRank` 1..n is computed with standard
+ * competition ranking (ties share the lower rank, next rank skips).
  */
-export async function listMatchTeamHolders(matchId: string) {
+export async function listMatchTeamHolders(
+  matchId: string,
+  live?: { contestUrl: string; ttlMs: number },
+) {
   await connectDB();
   const teams = await UserMatchTeam.find({ matchId })
     .select("userId rank score my11Username")
@@ -176,23 +189,68 @@ export async function listMatchTeamHolders(matchId: string) {
     .select("username userId avatar avatarColor")
     .lean();
   const userMap = new Map(users.map((u) => [String(u._id), u]));
-  return teams
+
+  // Build a live-score lookup keyed by normalised my11 username.
+  const liveByName = new Map<string, { score: number; rank: number | null }>();
+  if (live?.contestUrl) {
+    const lb = await getCachedLeaderboard(live.contestUrl, live.ttlMs);
+    if (lb && "data" in lb && lb.data) {
+      for (const e of lb.data.entries) {
+        const key = normalizeMy11circleName(e.username);
+        if (!key) continue;
+        const prev = liveByName.get(key);
+        // my11 returns one row per team; keep the highest score so multi-team
+        // players show their best.
+        if (!prev || e.totalScore > prev.score) {
+          liveByName.set(key, { score: e.totalScore, rank: e.rank });
+        }
+      }
+    }
+  }
+
+  const rows = teams
     .map((t) => {
       const u = userMap.get(String(t.userId));
       if (!u) return null;
+      const key = t.my11Username ? normalizeMy11circleName(t.my11Username) : "";
+      const liveHit = key ? liveByName.get(key) : undefined;
       return {
         userId: String(t.userId),
         username: u.username,
         handle: u.userId,
         avatar: u.avatar ?? null,
         avatarColor: u.avatarColor ?? null,
-        rank: t.rank ?? null,
-        score: t.score ?? null,
+        // Prefer live values when available; fall back to last-stored.
+        rank: liveHit?.rank ?? t.rank ?? null,
+        score: liveHit?.score ?? t.score ?? null,
         my11Username: t.my11Username,
+        localRank: 0,
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
-    .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999));
+    .sort((a, b) => {
+      const sa = a.score ?? Number.NEGATIVE_INFINITY;
+      const sb = b.score ?? Number.NEGATIVE_INFINITY;
+      if (sa !== sb) return sb - sa;
+      const ra = a.rank ?? Number.POSITIVE_INFINITY;
+      const rb = b.rank ?? Number.POSITIVE_INFINITY;
+      if (ra !== rb) return ra - rb;
+      return a.username.localeCompare(b.username);
+    });
+
+  let lastScore: number | null = null;
+  let lastLocalRank = 0;
+  rows.forEach((r, i) => {
+    if (r.score == null) {
+      r.localRank = 0;
+      return;
+    }
+    const rank = lastScore !== null && r.score === lastScore ? lastLocalRank : i + 1;
+    r.localRank = rank;
+    lastScore = r.score;
+    lastLocalRank = rank;
+  });
+  return rows;
 }
 
 export async function getMy11LiveRefreshMs() {

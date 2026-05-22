@@ -26,8 +26,16 @@ export async function GET() {
     const matchId = String(match._id);
     const contestUrl = match.contestUrl ?? "";
 
-    // Always load team holders (cheap, DB-only).
-    const holders = await listMatchTeamHolders(matchId);
+    // Holders with live scores merged from the contest leaderboard (matched
+    // by my11 username). Without this, only the viewing user's score would
+    // be fresh — everyone else would carry the last time their team detail
+    // was pulled.
+    const holders = await listMatchTeamHolders(
+      matchId,
+      contestUrl && status !== "upcoming"
+        ? { contestUrl, ttlMs: refreshMs }
+        : undefined,
+    );
 
     // Try fetch the requesting user's team, with auto-refresh while live.
     const myTeamRes = await getRefreshedUserMatchTeam({

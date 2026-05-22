@@ -67,6 +67,7 @@ type Holder = {
   avatar: string | null;
   rank: number | null;
   score: number | null;
+  localRank?: number;
 };
 
 function fmt(n: number | null | undefined) {
@@ -324,7 +325,7 @@ export function ContestMatchView({
                       <div className="text-right shrink-0">
                         <div className="text-xs font-bold tabular-nums">{fmt(h.score)}</div>
                         <div className="text-[10px] text-muted-foreground">
-                          {rankBadge(h.rank) ?? "—"}
+                          {rankBadge(h.localRank || h.rank) ?? "—"}
                         </div>
                       </div>
                     </Link>
