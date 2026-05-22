@@ -3,14 +3,6 @@
     {
       "path": "/api/cron/daily-sync",
       "schedule": "30 0 * * *"
-    },
-    {
-      "path": "/api/cron/match-reminders",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/contest-auto-map",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
