@@ -13,8 +13,11 @@ compatibility, but it grants **no implicit access** anymore. Treat any user with
 `components/admin/user-role-assign.tsx` no longer offers it.
 
 Everything between `user` and `superadmin` is expressed via **custom roles**
-(`models/Role.ts`) or **per-user feature flags** (`User.enabledFeatures`).
-Effective features = `User.enabledFeatures` ∪ `Role.features` (merged in
+(`models/Role.ts`) or **per-user feature flags** stored in
+`User.permissionBitmap` (a BigInt-as-string bitmask whose bit positions come
+from `FEATURE_DEFS` order; the legacy `enabledFeatures` array is still read as
+a fallback when the bitmap is `"0"`). Effective features =
+`bitmap_or_legacy_array ∪ Role.features` (merged in
 `lib/session.ts::getCurrentUser`).
 
 ## Admin console access
@@ -22,11 +25,25 @@ Effective features = `User.enabledFeatures` ∪ `Role.features` (merged in
 `lib/rbac.ts::requireAdminAccess()` allows in:
 
 - superadmins, OR
-- any user with at least one entry in `enabledFeatures`
-  (which includes anyone with a custom role, since session merge populates
-  `enabledFeatures` from the role).
+- any user with at least one granted feature
+  (which includes anyone with a custom role, since session merge populates the
+  effective feature set from the role).
 
 Plain admins with no granted features land back on `/`.
+
+## Admin shell layout
+
+`app/(app)/admin/layout.tsx` is a server component that:
+
+- Resolves a **role label** for the pill above the heading: `Superadmin` for
+  the system superadmin; the custom role's `name` (from `Role`) for users with
+  `customRoleId`; otherwise `Admin`.
+- Computes the visible nav items via `getAccessibleAdminRoutes(me)`.
+- Hands them to `<AdminNavTabs items={…} />`
+  (`components/admin/admin-nav-tabs.tsx`), a **client component** that calls
+  `usePathname()` so the active tab updates on every client-side navigation.
+  Do not move active-tab logic back into the server layout — App Router
+  layouts don't re-execute on sibling-page nav, so the highlight gets stuck.
 
 ## Page layout
 
@@ -91,6 +108,9 @@ export const FEATURE_DEFS = [
   "automation.run",          // status refresh, sync, force-complete
   // Content
   "facts.regenerate",        // re-run AI storylines
+  // Bugs
+  "bugs.view",               // see the admin bug list
+  "bugs.manage",             // assign / accept submissions / reopen / delete
 ] as const;
 ```
 
@@ -107,9 +127,11 @@ That's it — the roles editor and per-user picker pick it up automatically.
 
 `lib/rbac.ts`:
 
-- `userHasFeature(user, key)` — superadmins always true; everyone else must
-  have the key in `enabledFeatures` (the legacy `"admin"` role no longer gets
-  blanket access).
+- `userHasFeature(user, key)` — superadmins always true; everyone else is
+  checked against `User.permissionBitmap` (decoded back to a feature set), with
+  a fallback to the legacy `enabledFeatures` / `features` arrays only when the
+  bitmap is `"0"`. The legacy `"admin"` system role no longer gets blanket
+  access.
 - `requireAdminFeature(key)` — redirects to `/` if not.
 - `userHasAdminAccess(user)` — true for superadmin OR anyone with at least one
   enabled feature.
@@ -129,17 +151,19 @@ can't happen by accident.
 
 ## Feature-selection UI
 
-Both the custom-role editor and the per-user feature panel share
-`components/admin/feature-checklist.tsx`:
+Both the custom-role editor and the per-user feature panel share the same
+**master-detail editor** at `/admin/permissions` (gate:
+`users.roles.assign`). It replaced the old per-user inline picker + matrix
+view — there is now exactly one place to edit role/user permissions.
 
-- Live search across labels, descriptions and raw keys
-- Per-group "All / None" buttons + `n/m` counters
-- Each row shows label, `sensitive` badge, raw key (mono), and description
-- A `lockedAllChecked` mode renders every box checked + disabled with a hint
-  (used for superadmin in `UserFeatureControls`)
-
-`UserFeatureControls` is wrapped in a `<details>` so the long picker doesn't
-clutter the users table by default.
+- Left rail: searchable list of users + custom roles.
+- Right pane: `feature-checklist.tsx` (grouped by `FeatureGroup`, live search,
+  per-group All/None, sensitive badges, raw keys, descriptions).
+- A `lockedAllChecked` mode renders every box checked + disabled (used when
+  viewing a superadmin).
+- Saves go through `actions/admin.ts::saveUserFeaturesAction`, which writes
+  `$set: { permissionBitmap }` + `$unset: { enabledFeatures, features }`.
+  Do not dual-write the legacy arrays.
 
 ## Approval queues
 
@@ -197,6 +221,51 @@ facts regeneration.
 
 Viewer: `/admin/audit-logs` (gate: `audit.view`) with category / action /
 actor filters and pagination.
+
+## Bug reports
+
+Two-sided workflow with a **write-once submission lock** so admins and
+assignees can't accidentally over-write each other.
+
+Model: see [data-model.md#bugreport](data-model.md#bugreport).
+
+### Server actions (`actions/bugs.ts`)
+
+- `submitBugReportAction(payload)` — anyone signed in can file. Sets `status: "open"`.
+- `assignBugReportAction({id, userId|null})` — `bugs.manage`. Setting an assignee on an `open` bug flips it to `in_progress`.
+- `submitBugResolutionAction({id, kind, note})` — **assignee-only**. `kind` is one of `fixed | blocked | wont_fix`, `note` is 3-4000 chars. Writes the `submission` subdoc and flips `needsAdminReview: true`. **Rejects if `bug.submission` already exists** (`"You already submitted. Wait for the admin to review."`) — this is the no-back-and-forth lock.
+- `acceptBugSubmissionAction(id)` — `bugs.manage`. Closes the bug per the submission kind (`fixed → resolved`, `wont_fix → wont_fix`, `blocked → in_progress` with cleared submission). Clears `needsAdminReview`.
+- `reopenBugAction({id, reason?, keepAssignee = true})` — `bugs.manage`. Clears `submission` + `needsAdminReview`. Sets status to `in_progress` when keeping the assignee, otherwise `open` + unassigns.
+- `updateBugReportAction({id, status?, adminNotes?})` — admin override (manual status / private notes).
+- `deleteBugReportAction(id)` — `bugs.manage`.
+
+### UI
+
+- **Assignee** view at `/my-bugs` ([components/my-bug-resolve-form.tsx](../../components/my-bug-resolve-form.tsx)): three outcome tiles (Fixed / Blocked / Won't fix) + textarea + single submit. Once submitted, the form is replaced with a locked "Awaiting admin review" card.
+- **Admin** view in the workspace card ([components/admin/bug-reports-admin.tsx](../../components/admin/bug-reports-admin.tsx)): toolbar with search + filter pills (`Needs review / Open / In progress / Closed / All` with counts). Each `BugCard` shows:
+  - Amber accent stripe when `needsAdminReview` is true
+  - `SubmissionPanel` rendering the assignee's outcome + note + timestamp
+  - Quick actions:
+    - When submission exists → emerald **Accept & close** + **Reopen for assignee**
+    - When closed → only **Reopen** (+ small **Delete** link); no Assign chip, no Override panel
+    - Otherwise → dashed **Assign** (when unassigned) + collapsible **Override** panel (status select + private notes + delete)
+  - Assignee chip on the header doubles as an edit affordance — clicking opens `AssigneePicker` (search + per-user workload pill: 0 green / 1-2 amber / 3+ rose)
+
+### `BugRow` projection requirement
+
+The admin page (`app/(app)/admin/page.tsx`) hydrating `bugRows` **must include
+both** `submission: BugSubmission | null` and `needsAdminReview: boolean`, or
+the TS build fails.
+
+## My11 Contest Picker access
+
+`components/admin/result-entry-form.tsx` exposes a contest picker (list My11
+matches → list joined contests → save as `Match.contestUrl`). The picker is
+available to **anyone with `results.manage`**, not just the superadmin. The
+underlying server actions in `actions/admin.ts`
+(`checkMy11SessionAction`, `listMy11MatchesAction`,
+`listMy11ContestsAction`) gate on `results.manage`. The shared My11 cookie
+itself is still synced by the superadmin's Chrome extension.
 
 ## Result entry safeguards
 

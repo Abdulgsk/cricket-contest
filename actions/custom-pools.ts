@@ -7,7 +7,7 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { CustomPool } from "@/models/CustomPool";
 import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
-import { requireAdminFeature, requireUser } from "@/lib/rbac";
+import { requireAdminFeature, requireUser, assertFeature } from "@/lib/rbac";
 import { isModuleLocked } from "@/lib/match-locks";
 import { recordAudit } from "@/lib/audit";
 
@@ -19,7 +19,9 @@ const CreatePoolSchema = z.object({
 });
 
 export async function createCustomPoolAction(payload: unknown) {
-  const me = await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = CreatePoolSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid input" };
   await connectDB();
@@ -54,7 +56,9 @@ export async function createCustomPoolAction(payload: unknown) {
 }
 
 export async function deleteCustomPoolAction(poolId: string) {
-  const me = await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   await connectDB();
   const pool = await CustomPool.findById(poolId);
   if (!pool) return;

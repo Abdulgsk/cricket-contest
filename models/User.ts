@@ -10,7 +10,10 @@ export interface IUser {
   whatsapp?: string;
   my11circleName?: string;
   role: Role;
+  /** Legacy array of feature keys. Kept for back-compat; new code reads `permissionBitmap`. */
   enabledFeatures?: FeatureKey[];
+  /** Direct feature grants as a BigInt bitmap (decimal string). Source of truth. */
+  permissionBitmap?: string;
   /** Reference to a custom Role; when set, its features are merged into the user's effective feature set. */
   customRoleId?: mongoose.Types.ObjectId | null;
   avatarColor?: string;
@@ -48,6 +51,7 @@ const UserSchema = new Schema<IUser>(
     my11circleName: { type: String, trim: true },
     role: { type: String, enum: ["user", "admin", "superadmin"], default: "user", index: true },
     enabledFeatures: { type: [String], default: [] },
+    permissionBitmap: { type: String, default: "0" },
     customRoleId: { type: Schema.Types.ObjectId, ref: "Role", default: null, index: true },
     avatarColor: { type: String },
     avatar: { type: String, default: null },

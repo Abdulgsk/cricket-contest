@@ -125,6 +125,14 @@ export type FeatureKey = (typeof FEATURE_DEFS)[number]["key"];
 
 export const FEATURE_KEYS = FEATURE_DEFS.map((f) => f.key) as readonly FeatureKey[];
 
+// Stable bit positions: each feature's index in FEATURE_DEFS is its bit position.
+// CRITICAL: never reorder or remove entries — only append. Removing a feature
+// would shift every later bit and corrupt stored bitmaps. To retire one,
+// keep its slot and add a `retired: true` flag (then ignore it in UI).
+export const FEATURE_BITS = Object.fromEntries(
+  FEATURE_DEFS.map((f, i) => [f.key, i]),
+) as Record<FeatureKey, number>;
+
 export const FEATURE_LABELS = Object.fromEntries(
   FEATURE_DEFS.map((f) => [f.key, f.label]),
 ) as Record<FeatureKey, string>;
@@ -150,4 +158,67 @@ export function featuresByGroup(): Record<FeatureGroup, FeatureDef[]> {
   ) as Record<FeatureGroup, FeatureDef[]>;
   for (const f of FEATURE_DEFS) out[f.group].push(f);
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Bitmap encoding — permissions are stored as a BigInt rendered as a decimal
+// string in Mongo (`User.permissionBitmap`, `Role.permissionBitmap`). This
+// gives us:
+//   - O(1) "has feature X" checks (single bitwise AND)
+//   - compact storage (15 features today fits in a 4-character string)
+//   - unlimited future growth (BigInt has no width limit)
+// All helpers tolerate `null` / `undefined` / "" as the empty bitmap.
+// ---------------------------------------------------------------------------
+
+export const EMPTY_BITMAP = "0";
+
+export function keysToBitmap(keys: readonly FeatureKey[] | null | undefined): string {
+  if (!keys || keys.length === 0) return EMPTY_BITMAP;
+  let mask = 0n;
+  for (const k of keys) {
+    const bit = FEATURE_BITS[k];
+    if (typeof bit !== "number") continue;
+    mask |= 1n << BigInt(bit);
+  }
+  return mask.toString();
+}
+
+export function bitmapToKeys(bitmap: string | null | undefined): FeatureKey[] {
+  const mask = parseBitmap(bitmap);
+  if (mask === 0n) return [];
+  const out: FeatureKey[] = [];
+  for (const f of FEATURE_DEFS) {
+    const bit = FEATURE_BITS[f.key];
+    if ((mask & (1n << BigInt(bit))) !== 0n) out.push(f.key);
+  }
+  return out;
+}
+
+export function bitmapHas(bitmap: string | null | undefined, key: FeatureKey): boolean {
+  const bit = FEATURE_BITS[key];
+  if (typeof bit !== "number") return false;
+  return (parseBitmap(bitmap) & (1n << BigInt(bit))) !== 0n;
+}
+
+export function bitmapOr(...bitmaps: Array<string | null | undefined>): string {
+  let out = 0n;
+  for (const b of bitmaps) out |= parseBitmap(b);
+  return out.toString();
+}
+
+export function bitmapDiff(prev: string | null | undefined, next: string | null | undefined) {
+  const p = parseBitmap(prev);
+  const n = parseBitmap(next);
+  const added = bitmapToKeys((n & ~p).toString());
+  const removed = bitmapToKeys((p & ~n).toString());
+  return { added, removed };
+}
+
+function parseBitmap(value: string | null | undefined): bigint {
+  if (!value) return 0n;
+  try {
+    return BigInt(value);
+  } catch {
+    return 0n;
+  }
 }

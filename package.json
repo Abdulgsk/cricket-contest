@@ -11,7 +11,9 @@
     "backfill:consistency:apply": "node scripts/backfill-consistency-bonus.mjs --apply",
     "audit:history:points": "node scripts/audit-history-points.mjs",
     "fix:history:points:dry": "node scripts/fix-history-points.mjs",
-    "fix:history:points:apply": "node scripts/fix-history-points.mjs --apply"
+    "fix:history:points:apply": "node scripts/fix-history-points.mjs --apply",
+    "migrate:rbac:dry": "node scripts/migrate-rbac.mjs --dry",
+    "migrate:rbac:apply": "node scripts/migrate-rbac.mjs --apply"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

@@ -6,7 +6,7 @@ import { headers } from "next/headers";
 import { connectDB } from "@/lib/db";
 import { BugReport } from "@/models/BugReport";
 import { User } from "@/models/User";
-import { requireUser, requireAdminFeature } from "@/lib/rbac";
+import { requireUser, requireAdminFeature, assertFeature } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 
 const SubmitSchema = z.object({
@@ -61,7 +61,9 @@ const UpdateSchema = z.object({
 });
 
 export async function updateBugReportAction(payload: unknown) {
-  const me = await requireAdminFeature("bugs.manage");
+  const _auth = await assertFeature("bugs.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = UpdateSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
@@ -90,7 +92,9 @@ export async function updateBugReportAction(payload: unknown) {
 }
 
 export async function deleteBugReportAction(id: string) {
-  const me = await requireAdminFeature("bugs.manage");
+  const _auth = await assertFeature("bugs.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   await connectDB();
   await BugReport.deleteOne({ _id: id });
   await recordAudit({
@@ -110,7 +114,9 @@ const AssignSchema = z.object({
 });
 
 export async function assignBugReportAction(payload: unknown) {
-  const me = await requireAdminFeature("bugs.manage");
+  const _auth = await assertFeature("bugs.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = AssignSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
@@ -177,45 +183,185 @@ export async function assignBugReportAction(payload: unknown) {
 
 const ResolutionSchema = z.object({
   id: z.string().min(1),
-  resolutionNote: z.string().trim().min(3).max(4000),
+  kind: z.enum(["fixed", "blocked", "wont_fix"]),
+  note: z
+    .string()
+    .trim()
+    .min(3, "Add a short note (3+ chars).")
+    .max(4000),
 });
 
+/**
+ * Assignee writes their outcome exactly once. After this fires the bug enters
+ * "needs admin review" and the assignee can't write again until an admin
+ * reopens it. Kinds:
+ *   - "fixed"    → proposed status `resolved`
+ *   - "blocked"  → stays `in_progress`, flagged for admin attention
+ *   - "wont_fix" → proposed status `wont_fix`
+ *
+ * The admin makes the final call via `acceptBugSubmissionAction` /
+ * `reopenBugAction`.
+ */
 export async function submitBugResolutionAction(payload: unknown) {
   const me = await requireUser();
   const parsed = ResolutionSchema.safeParse(payload);
   if (!parsed.success) {
-    return { ok: false as const, error: "Add a short note describing your fix (3+ chars)." };
+    const msg = parsed.error.issues[0]?.message ?? "Invalid payload";
+    return { ok: false as const, error: msg };
   }
   await connectDB();
-  const bug = await BugReport.findById(parsed.data.id).select("assignedTo status").lean();
+  const bug = await BugReport.findById(parsed.data.id)
+    .select("assignedTo status submission")
+    .lean();
   if (!bug) return { ok: false as const, error: "Bug not found" };
   if (!bug.assignedTo || String(bug.assignedTo) !== String(me._id)) {
     return { ok: false as const, error: "This bug isn't assigned to you." };
+  }
+  if (bug.submission) {
+    return {
+      ok: false as const,
+      error: "You already submitted. Wait for the admin to review.",
+    };
   }
   if (bug.status === "resolved" || bug.status === "wont_fix") {
     return { ok: false as const, error: "This bug is already closed." };
   }
 
+  const now = new Date();
+  const submission = {
+    kind: parsed.data.kind,
+    note: parsed.data.note,
+    submittedAt: now,
+    submittedById: me._id,
+    submittedByHandle: me.userId,
+    submittedByName: me.username,
+  };
+
+  // Compute the proposed status. Admin confirms via accept; UI shows the
+  // "needs review" chip until then.
+  const proposedStatus =
+    parsed.data.kind === "fixed"
+      ? "resolved"
+      : parsed.data.kind === "wont_fix"
+        ? "wont_fix"
+        : "in_progress";
+
   await BugReport.updateOne(
     { _id: parsed.data.id },
     {
       $set: {
-        status: "resolved",
-        resolutionNote: parsed.data.resolutionNote,
-        resolvedAt: new Date(),
-        resolvedBy: me._id,
+        submission,
+        needsAdminReview: true,
+        status: proposedStatus,
+        // Keep the legacy free-text field populated for older readers.
+        resolutionNote: parsed.data.note,
+        resolvedAt: parsed.data.kind === "fixed" ? now : null,
+        resolvedBy: parsed.data.kind === "fixed" ? me._id : null,
       },
     },
   );
 
   await recordAudit({
     category: "update",
-    action: "bug.report.resolve",
+    action: `bug.report.submission.${parsed.data.kind}`,
     actor: me,
     targetType: "BugReport",
     targetId: parsed.data.id,
+    meta: { kind: parsed.data.kind },
   });
 
+  revalidatePath("/admin");
+  revalidatePath("/my-bugs");
+  return { ok: true as const };
+}
+
+/** Admin confirms the assignee's submission and closes the bug. */
+export async function acceptBugSubmissionAction(id: string) {
+  const _auth = await assertFeature("bugs.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
+  await connectDB();
+  const bug = await BugReport.findById(id).select("submission status").lean();
+  if (!bug) return { ok: false as const, error: "Bug not found" };
+  if (!bug.submission) {
+    return { ok: false as const, error: "Nothing to accept — no submission yet." };
+  }
+  const closedStatus =
+    bug.submission.kind === "wont_fix" ? "wont_fix" : "resolved";
+  await BugReport.updateOne(
+    { _id: id },
+    {
+      $set: {
+        status: closedStatus,
+        needsAdminReview: false,
+        resolvedAt: new Date(),
+        resolvedBy: me._id,
+      },
+    },
+  );
+  await recordAudit({
+    category: "update",
+    action: "bug.report.accept",
+    actor: me,
+    targetType: "BugReport",
+    targetId: id,
+    meta: { kind: bug.submission.kind, closedStatus },
+  });
+  revalidatePath("/admin");
+  revalidatePath("/my-bugs");
+  return { ok: true as const, status: closedStatus };
+}
+
+const ReopenSchema = z.object({
+  id: z.string().min(1),
+  reason: z.string().trim().max(500).optional(),
+  keepAssignee: z.boolean().default(true),
+});
+
+/** Admin reopens — clears the assignee submission so they can re-submit. */
+export async function reopenBugAction(payload: unknown) {
+  const _auth = await assertFeature("bugs.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
+  const parsed = ReopenSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+
+  await connectDB();
+  const bug = await BugReport.findById(parsed.data.id)
+    .select("assignedTo")
+    .lean();
+  if (!bug) return { ok: false as const, error: "Bug not found" };
+
+  const update: Record<string, unknown> = {
+    status: bug.assignedTo && parsed.data.keepAssignee ? "in_progress" : "open",
+    needsAdminReview: false,
+    submission: null,
+    resolutionNote: null,
+    resolvedAt: null,
+    resolvedBy: null,
+  };
+  if (!parsed.data.keepAssignee) {
+    Object.assign(update, {
+      assignedTo: null,
+      assignedToHandle: null,
+      assignedToName: null,
+      assignedAt: null,
+      assignedBy: null,
+    });
+  }
+  if (parsed.data.reason) {
+    update.adminNotes = parsed.data.reason;
+  }
+
+  await BugReport.updateOne({ _id: parsed.data.id }, { $set: update });
+  await recordAudit({
+    category: "update",
+    action: "bug.report.reopen",
+    actor: me,
+    targetType: "BugReport",
+    targetId: parsed.data.id,
+    meta: { keepAssignee: parsed.data.keepAssignee, reason: parsed.data.reason ?? null },
+  });
   revalidatePath("/admin");
   revalidatePath("/my-bugs");
   return { ok: true as const };

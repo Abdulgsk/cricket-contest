@@ -4,7 +4,12 @@ import { env } from "@/lib/env";
 import { connectDB } from "@/lib/db";
 import { User, type IUser } from "@/models/User";
 import { Role, type IRole } from "@/models/Role";
-import type { FeatureKey } from "@/lib/features";
+import {
+  bitmapOr,
+  bitmapToKeys,
+  keysToBitmap,
+  type FeatureKey,
+} from "@/lib/features";
 
 export const SESSION_COOKIE = "ipl_session";
 const SESSION_TTL_DAYS = 30;
@@ -35,23 +40,41 @@ export async function getSession(): Promise<SessionPayload | null> {
   return verifySessionToken(tok);
 }
 
-/** Load full user document for the current session, with custom-role features merged. */
+/**
+ * Load the current user with permissions resolved.
+ *
+ * Effective permissions = user.permissionBitmap | role.permissionBitmap.
+ * For back-compat with rows that still only have `enabledFeatures` /
+ * `Role.features` arrays, we OR those in too — so a slow migration is safe.
+ *
+ * `enabledFeatures` on the returned object is the **merged, materialised**
+ * list of feature keys (handy for UI rendering); the source-of-truth bitmap
+ * lives in `permissionBitmap`.
+ */
 export async function getCurrentUser(): Promise<IUser | null> {
   const s = await getSession();
   if (!s) return null;
   await connectDB();
   const u = await User.findById(s.uid).lean<IUser>();
   if (!u) return null;
+
+  // Start from the user's own bitmap (preferred) or legacy array fallback.
+  let mask = u.permissionBitmap && u.permissionBitmap !== "0"
+    ? u.permissionBitmap
+    : keysToBitmap((u.enabledFeatures ?? []) as FeatureKey[]);
+
   if (u.customRoleId) {
     const role = await Role.findById(u.customRoleId).lean<IRole>();
     if (role) {
-      const merged = new Set<FeatureKey>([
-        ...((u.enabledFeatures ?? []) as FeatureKey[]),
-        ...((role.features ?? []) as FeatureKey[]),
-      ]);
-      u.enabledFeatures = Array.from(merged);
+      const roleMask = role.permissionBitmap && role.permissionBitmap !== "0"
+        ? role.permissionBitmap
+        : keysToBitmap((role.features ?? []) as FeatureKey[]);
+      mask = bitmapOr(mask, roleMask);
     }
   }
+
+  u.permissionBitmap = mask;
+  u.enabledFeatures = bitmapToKeys(mask);
   return u;
 }
 

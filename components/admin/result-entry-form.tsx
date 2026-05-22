@@ -663,6 +663,9 @@ export function ResultEntryForm({
           </div>
           <p className="text-[11px] text-muted-foreground">
             Pick a match (auto-matched by team names) → pick a contest you joined → save.
+            {!isSuperadmin && (
+              <> Uses the shared My11 cookie synced by the superadmin&apos;s extension.</>
+            )}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             <select

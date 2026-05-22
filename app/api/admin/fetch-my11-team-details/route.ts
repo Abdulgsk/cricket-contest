@@ -11,6 +11,7 @@ import {
   My11NotReadyError,
 } from "@/lib/my11-api";
 import { getSession } from "@/lib/session";
+import { apiAssertFeature } from "@/lib/rbac";
 
 function parseIdsFromContestUrl(url: string): { matchId: number; contestId: number } | null {
   const m = url.match(/leaderboard\/(\d+)\/(\d+)/);
@@ -25,8 +26,9 @@ interface RequestBody {
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession();
-    if (!session?.userId || !["admin", "superadmin"].includes(session.role)) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    const gate = await apiAssertFeature(session, "results.manage");
+    if (!gate.ok) {
+      return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
     }
 
     const body = (await req.json()) as RequestBody;

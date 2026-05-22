@@ -39,6 +39,11 @@ export const ADMIN_ROUTES: readonly AdminRoute[] = [
     anyOf: ["users.manage", "users.roles.assign", "users.delete"],
   },
   {
+    path: "/admin/permissions",
+    label: "Permissions",
+    anyOf: ["users.roles.assign"],
+  },
+  {
     path: "/admin/audit-logs",
     label: "Audit logs",
     anyOf: ["audit.view"],

@@ -21,12 +21,12 @@ import { processMatchResults } from "@/services/scoring";
 import { adminResetPrediction } from "@/services/prediction-engine";
 import { syncIplMatches, refreshSquads, refreshMatchPlayers } from "@/services/ipl-sync";
 import { scoreCustomPools } from "@/actions/custom-pools";
-import { requireAdminFeature, requireRole, requireUser } from "@/lib/rbac";
+import { assertFeature, assertSuperadmin, requireAdminFeature, requireRole, requireUser } from "@/lib/rbac";
 import { env } from "@/lib/env";
 import { normalizeMy11circleName } from "@/lib/my11circle";
 import { fetchLeaderboardFromContestUrl } from "@/lib/my11-api";
 import { BONUSES } from "@/lib/constants";
-import { FEATURE_KEYS } from "@/lib/features";
+import { FEATURE_KEYS, type FeatureKey } from "@/lib/features";
 
 const MatchSchema = z.object({
   teamA: z.string().min(1),
@@ -40,7 +40,9 @@ const MatchSchema = z.object({
 });
 
 export async function createMatchAction(formData: FormData) {
-  const me = await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = MatchSchema.safeParse({
     teamA: formData.get("teamA"),
     teamB: formData.get("teamB"),
@@ -65,7 +67,9 @@ export async function createMatchAction(formData: FormData) {
 }
 
 export async function deleteMatchAction(matchId: string) {
-  const me = await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   await connectDB();
   await Match.deleteOne({ _id: matchId });
   await AuditLog.create({ actorId: me._id, action: "match.delete", meta: { matchId } });
@@ -73,7 +77,8 @@ export async function deleteMatchAction(matchId: string) {
 }
 
 export async function lockMatchAction(matchId: string) {
-  await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
   await connectDB();
   await Match.updateOne({ _id: matchId }, { predictionsLocked: true, status: "live" });
   revalidatePath(`/matches/${matchId}`);
@@ -85,7 +90,9 @@ const ContestUrlSchema = z.object({
 });
 
 export async function updateContestUrlAction(payload: unknown) {
-  const me = await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = ContestUrlSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Please enter a valid URL" };
   await connectDB();
@@ -114,7 +121,9 @@ const MatchModesSchema = z.object({
 });
 
 export async function updateMatchModesAction(payload: unknown) {
-  const me = await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = MatchModesSchema.safeParse(payload);
   if (!parsed.success) return { ok: false, error: "Invalid payload" };
   await connectDB();
@@ -139,7 +148,9 @@ const MatchLockExtensionsSchema = z.object({
 });
 
 export async function updateMatchLockExtensionsAction(payload: unknown) {
-  const me = await requireAdminFeature("match.lock.extend");
+  const _auth = await assertFeature("match.lock.extend");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = MatchLockExtensionsSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
@@ -192,7 +203,9 @@ const ResultSchema = z.object({
 });
 
 export async function submitResultsAction(payload: unknown) {
-  const me = await requireAdminFeature("results.manage");
+  const _auth = await assertFeature("results.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = ResultSchema.safeParse(payload);
   if (!parsed.success) return { ok: false, error: "Invalid payload" };
   await processMatchResults(
@@ -253,7 +266,9 @@ export async function submitResultsAction(payload: unknown) {
 }
 
 export async function setRoleAction(targetUserId: string, role: "user" | "superadmin") {
-  const me = await requireAdminFeature("users.roles.assign");
+  const _auth = await assertFeature("users.roles.assign");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   await connectDB();
   // Clear any custom role mapping when switching to a system role so the
   // user's effective features come from the role's defaults alone.
@@ -275,7 +290,9 @@ const AssignRoleSchema = z.object({
 });
 
 export async function assignUserRoleAction(payload: unknown) {
-  const me = await requireAdminFeature("users.roles.assign");
+  const _auth = await assertFeature("users.roles.assign");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = AssignRoleSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
@@ -318,7 +335,9 @@ const RoleFeaturesSchema = z
   .default([]);
 
 export async function createRoleAction(payload: unknown) {
-  const me = await requireAdminFeature("users.roles.assign");
+  const _auth = await assertFeature("users.roles.assign");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = z
     .object({ name: RoleNameSchema, features: RoleFeaturesSchema })
     .safeParse(payload);
@@ -336,18 +355,26 @@ export async function createRoleAction(payload: unknown) {
   const dup = await Role.findOne({ name }).lean();
   if (dup) return { ok: false as const, error: "A role with that name already exists" };
 
-  const role = await Role.create({ name, features: parsed.data.features });
+  const { keysToBitmap } = await import("@/lib/features");
+  const bitmap = keysToBitmap(parsed.data.features as FeatureKey[]);
+  const role = await Role.create({
+    name,
+    permissionBitmap: bitmap,
+  });
   await AuditLog.create({
     actorId: me._id,
     action: "role.create",
     meta: { roleId: String(role._id), name, features: parsed.data.features },
   });
   revalidatePath("/admin/users");
+  revalidatePath("/admin/permissions");
   return { ok: true as const, id: String(role._id) };
 }
 
 export async function updateRoleAction(payload: unknown) {
-  const me = await requireAdminFeature("users.roles.assign");
+  const _auth = await assertFeature("users.roles.assign");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = z
     .object({ id: z.string().min(1), name: RoleNameSchema, features: RoleFeaturesSchema })
     .safeParse(payload);
@@ -366,9 +393,24 @@ export async function updateRoleAction(payload: unknown) {
   }).lean();
   if (dup) return { ok: false as const, error: "Another role already uses that name" };
 
+  const { keysToBitmap, bitmapDiff, bitmapToKeys } = await import("@/lib/features");
+  const prev = await Role.findById(parsed.data.id)
+    .select("features permissionBitmap")
+    .lean<{ features?: string[]; permissionBitmap?: string }>();
+  const prevBitmap = prev?.permissionBitmap && prev.permissionBitmap !== "0"
+    ? prev.permissionBitmap
+    : keysToBitmap((prev?.features ?? []) as FeatureKey[]);
+  const nextBitmap = keysToBitmap(parsed.data.features as FeatureKey[]);
+  const diff = bitmapDiff(prevBitmap, nextBitmap);
   const updated = await Role.findByIdAndUpdate(
     parsed.data.id,
-    { name: parsed.data.name, features: parsed.data.features },
+    {
+      $set: {
+        name: parsed.data.name,
+        permissionBitmap: nextBitmap,
+      },
+      $unset: { features: 1 },
+    },
     { new: true }
   );
   if (!updated) return { ok: false as const, error: "Role not found" };
@@ -376,14 +418,24 @@ export async function updateRoleAction(payload: unknown) {
   await AuditLog.create({
     actorId: me._id,
     action: "role.update",
-    meta: { roleId: parsed.data.id, name: parsed.data.name, features: parsed.data.features },
+    meta: {
+      roleId: parsed.data.id,
+      name: parsed.data.name,
+      before: bitmapToKeys(prevBitmap),
+      after: parsed.data.features,
+      added: diff.added,
+      removed: diff.removed,
+    },
   });
   revalidatePath("/admin/users");
+  revalidatePath("/admin/permissions");
   return { ok: true as const };
 }
 
 export async function deleteRoleAction(payload: unknown) {
-  const me = await requireAdminFeature("users.roles.assign");
+  const _auth = await assertFeature("users.roles.assign");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = z.object({ id: z.string().min(1) }).safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
 
@@ -408,7 +460,9 @@ export async function deleteRoleAction(payload: unknown) {
 }
 
 export async function deleteUserCascadeAction(targetUserId: string, confirmText: string) {
-  const me = await requireAdminFeature("users.delete");
+  const _auth = await assertFeature("users.delete");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   if (confirmText !== "DELETE") {
     return { ok: false as const, error: "Confirmation text must be exactly 'DELETE'" };
   }
@@ -483,7 +537,9 @@ export async function deleteUserCascadeAction(targetUserId: string, confirmText:
 }
 
 export async function resetPredictionAction(matchId: string, userId: string) {
-  const me = await requireAdminFeature("results.manage");
+  const _auth = await assertFeature("results.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   await adminResetPrediction({ adminId: String(me._id), matchId, userId });
   revalidatePath(`/matches/${matchId}`);
 }
@@ -495,7 +551,9 @@ const MatchBountySchema = z.object({
 });
 
 export async function updateMatchBountyAction(payload: unknown) {
-  const me = await requireAdminFeature("bonus.manage");
+  const _auth = await assertFeature("bonus.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = MatchBountySchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
@@ -522,7 +580,9 @@ export async function updateMatchBountyAction(payload: unknown) {
 }
 
 export async function setBountyAction(userId: string | null) {
-  const me = await requireAdminFeature("bonus.manage");
+  const _auth = await assertFeature("bonus.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   await connectDB();
   const s = await getSettings();
   s.bountyHolderUserId = userId ? (userId as unknown as typeof s.bountyHolderUserId) : undefined;
@@ -593,7 +653,9 @@ const BonusSettingsSchema = z.object({
 });
 
 export async function updateBonusSettingsAction(payload: unknown) {
-  const me = await requireAdminFeature("bonus.manage");
+  const _auth = await assertFeature("bonus.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = BonusSettingsSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid bonus settings" };
   await connectDB();
@@ -648,29 +710,116 @@ const UserFeaturesSchema = z.object({
 });
 
 export async function setUserFeaturesAction(payload: unknown) {
-  const me = await requireAdminFeature("users.roles.assign");
+  const _auth = await assertFeature("users.roles.assign");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   const parsed = UserFeaturesSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
 
   const { targetUserId, features } = parsed.data;
   await connectDB();
-  await User.updateOne({ _id: targetUserId }, { $set: { enabledFeatures: features } });
+  const { keysToBitmap, bitmapDiff, bitmapToKeys } = await import("@/lib/features");
+  const prev = await User.findById(targetUserId)
+    .select("enabledFeatures permissionBitmap")
+    .lean<{ enabledFeatures?: string[]; permissionBitmap?: string }>();
+  const prevBitmap = prev?.permissionBitmap && prev.permissionBitmap !== "0"
+    ? prev.permissionBitmap
+    : keysToBitmap((prev?.enabledFeatures ?? []) as FeatureKey[]);
+  const nextBitmap = keysToBitmap(features);
+  const diff = bitmapDiff(prevBitmap, nextBitmap);
+  await User.updateOne(
+    { _id: targetUserId },
+    {
+      $set: { permissionBitmap: nextBitmap },
+      $unset: { enabledFeatures: 1 },
+    },
+  );
   await AuditLog.create({
     actorId: me._id,
     action: "user.features",
-    meta: { targetUserId, features },
+    meta: {
+      targetUserId,
+      before: bitmapToKeys(prevBitmap),
+      after: features,
+      added: diff.added,
+      removed: diff.removed,
+    },
   });
   revalidatePath("/admin/users");
+  revalidatePath("/admin/permissions");
   return { ok: true as const };
 }
 
+/**
+ * Toggle a single (user, feature) cell from the matrix UI. Atomic & cheap —
+ * loads the user's current feature list, flips the one key, saves both the
+ * legacy array and the bitmap, and writes an audit row with before/after.
+ */
+const ToggleFeatureSchema = z.object({
+  targetUserId: z.string().min(1),
+  feature: z.enum(FEATURE_KEYS),
+  enabled: z.boolean(),
+});
+
+export async function toggleUserFeatureAction(payload: unknown) {
+  const _auth = await assertFeature("users.roles.assign");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
+  const parsed = ToggleFeatureSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+
+  const { targetUserId, feature, enabled } = parsed.data;
+  await connectDB();
+  const target = await User.findById(targetUserId)
+    .select("enabledFeatures permissionBitmap role")
+    .lean<{ enabledFeatures?: string[]; permissionBitmap?: string; role?: string }>();
+  if (!target) return { ok: false as const, error: "User not found" };
+  if (target.role === "superadmin") {
+    return { ok: false as const, error: "Superadmin already has every feature" };
+  }
+  if (String(targetUserId) === String(me._id)) {
+    return { ok: false as const, error: "You cannot edit your own permissions" };
+  }
+
+  const { keysToBitmap, bitmapToKeys, bitmapHas } = await import("@/lib/features");
+  // Effective "direct" bitmap, falling back to the legacy array for
+  // unmigrated documents.
+  const curBitmap = target.permissionBitmap && target.permissionBitmap !== "0"
+    ? target.permissionBitmap
+    : keysToBitmap((target.enabledFeatures ?? []) as FeatureKey[]);
+  const wasEnabled = bitmapHas(curBitmap, feature);
+  if (wasEnabled === enabled) {
+    return { ok: true as const, features: bitmapToKeys(curBitmap) };
+  }
+  const next = new Set(bitmapToKeys(curBitmap));
+  if (enabled) next.add(feature);
+  else next.delete(feature);
+  const nextList = Array.from(next);
+  const nextBitmap = keysToBitmap(nextList);
+
+  await User.updateOne(
+    { _id: targetUserId },
+    {
+      $set: { permissionBitmap: nextBitmap },
+      $unset: { enabledFeatures: 1 },
+    },
+  );
+  await AuditLog.create({
+    actorId: me._id,
+    action: enabled ? "permission.grant" : "permission.revoke",
+    meta: { targetUserId, feature, role: target.role },
+  });
+  revalidatePath("/admin/permissions");
+  revalidatePath("/admin/users");
+  return { ok: true as const, features: nextList };
+}
+
+
 export async function checkMy11SessionAction() {
-  // This is polled from the result-entry form on mount. The my11 cookie /
-  // login probe is superadmin-only, but non-superadmin admins (e.g. users
-  // with `results.manage`) shouldn't be redirected away from the page just
-  // for opening it — return a benign "no session" payload instead.
-  const me = await requireUser();
-  if (me.role !== "superadmin") {
+  // This is polled from the result-entry form on mount. Anyone with
+  // `results.manage` should see whether the shared My11 cookie is healthy.
+  const auth = await assertFeature("results.manage");
+  if (!auth.ok) {
     return { ok: true as const, hasCookie: false, loggedIn: false, expiresAt: null };
   }
   try {
@@ -692,7 +841,10 @@ export async function checkMy11SessionAction() {
 }
 
 export async function listMy11MatchesAction() {
-  await requireRole("superadmin");
+  // Cookie is set by the superadmin via the browser extension, but anyone
+  // with `results.manage` should be able to pick a contest for a match.
+  const auth = await assertFeature("results.manage");
+  if (!auth.ok) return { ok: false as const, error: auth.error };
   try {
     const { listAllMatches } = await import("@/lib/my11-api");
     const matches = await listAllMatches();
@@ -718,7 +870,8 @@ export async function listMy11MatchesAction() {
 }
 
 export async function listMy11ContestsAction(my11MatchId: number) {
-  await requireRole("superadmin");
+  const auth = await assertFeature("results.manage");
+  if (!auth.ok) return { ok: false as const, error: auth.error };
   try {
     const { listMyContests } = await import("@/lib/my11-api");
     const contests = await listMyContests(my11MatchId);
@@ -738,7 +891,8 @@ export async function listMy11ContestsAction(my11MatchId: number) {
 }
 
 export async function setMatchContestUrlAction(matchId: string, contestUrl: string) {
-  await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
   await connectDB();
   await Match.updateOne({ _id: matchId }, { $set: { contestUrl } });
   revalidatePath(`/admin/matches/${matchId}/result`);
@@ -746,7 +900,8 @@ export async function setMatchContestUrlAction(matchId: string, contestUrl: stri
 }
 
 export async function updateMy11LiveRefreshAction(seconds: number) {
-  await requireRole("superadmin");
+  const auth = await assertSuperadmin();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
   const value = Math.max(5, Math.min(600, Math.round(Number(seconds) || 30)));
   await connectDB();
   await Settings.updateOne({}, { $set: { my11LiveRefreshSec: value } }, { upsert: true });
@@ -758,7 +913,9 @@ export async function updateMy11LiveRefreshAction(seconds: number) {
 // ---- IPL auto-import ----
 
 export async function syncIplMatchesAction() {
-  const me = await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   try {
     const r = await syncIplMatches();
     await AuditLog.create({ actorId: me._id, action: "ipl.sync", meta: r });
@@ -771,7 +928,8 @@ export async function syncIplMatchesAction() {
 }
 
 export async function refreshSquadsAction(matchId: string) {
-  await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
   try {
     const r = await refreshSquads(matchId);
     revalidatePath(`/matches/${matchId}`);
@@ -782,7 +940,9 @@ export async function refreshSquadsAction(matchId: string) {
 }
 
 export async function syncPlayoffsAction() {
-  const me = await requireRole("superadmin");
+  const auth = await assertSuperadmin();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
+  const me = auth.user;
   try {
     const r = await syncIplMatches({ includePlayoffs: true });
     await AuditLog.create({ actorId: me._id, action: "ipl.sync.playoffs", meta: r });
@@ -795,7 +955,8 @@ export async function syncPlayoffsAction() {
 }
 
 export async function refreshMatchPlayersAction(matchId: string) {
-  await requireAdminFeature("matches.manage");
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
   try {
     const r = await refreshMatchPlayers(matchId);
     revalidatePath(`/matches/${matchId}`);
@@ -806,7 +967,8 @@ export async function refreshMatchPlayersAction(matchId: string) {
 }
 
 export async function fetchContestPointsAction(payload: unknown) {
-  await requireAdminFeature("results.manage");
+  const _auth = await assertFeature("results.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
   await connectDB();
 
   const FetchContestPointsSchema = z.object({
@@ -864,7 +1026,8 @@ export async function fetchContestPointsAction(payload: unknown) {
  * match. Runs synchronously so the admin sees the new batch as soon as the
  * action returns. */
 export async function regenerateLatestFactsAction() {
-  await requireAdminFeature("facts.regenerate");
+  const _auth = await assertFeature("facts.regenerate");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
   await connectDB();
   const latest = await Match.findOne({ resultsEntered: true })
     .sort({ startTime: -1 })

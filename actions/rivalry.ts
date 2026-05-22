@@ -4,7 +4,7 @@ import { z } from "zod";
 import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 import { connectDB } from "@/lib/db";
-import { requireAdminFeature, requireUser } from "@/lib/rbac";
+import { requireAdminFeature, requireUser, assertFeature } from "@/lib/rbac";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { Rivalry } from "@/models/Rivalry";
@@ -444,7 +444,9 @@ const AdminWithdrawSchema = z.object({
 });
 
 export async function adminResolveRivalryWithdrawalAction(payload: unknown) {
-  const admin = await requireAdminFeature("rivalry.withdraw.approve");
+  const _auth = await assertFeature("rivalry.withdraw.approve");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const admin = _auth.user;
   const parsed = AdminWithdrawSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();

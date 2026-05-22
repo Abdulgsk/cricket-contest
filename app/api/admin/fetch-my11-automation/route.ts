@@ -5,6 +5,7 @@ import { User } from "@/models/User";
 import { normalizeMy11circleName } from "@/lib/my11circle";
 import { getLeaderboard, My11AuthError } from "@/lib/my11-api";
 import { getSession } from "@/lib/session";
+import { apiAssertFeature } from "@/lib/rbac";
 
 function parseIdsFromContestUrl(url: string): { matchId: number; contestId: number } | null {
   const m = url.match(/leaderboard\/(\d+)\/(\d+)/);
@@ -81,10 +82,13 @@ function inferMy11Name(args: {
 
 export async function POST(req: NextRequest) {
   try {
-    // Get session and verify admin
+    // Allow superadmin OR any user with the `results.manage` feature
+    // (e.g. a designated league scorer). Return JSON 401/403 instead of
+    // redirecting so the result-entry form can surface a toast.
     const session = await getSession();
-    if (!session?.userId || !["admin", "superadmin"].includes(session.role)) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    const gate = await apiAssertFeature(session, "results.manage");
+    if (!gate.ok) {
+      return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
     }
 
     const body = (await req.json()) as RequestBody;

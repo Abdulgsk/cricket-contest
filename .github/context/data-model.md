@@ -9,9 +9,16 @@ All schemas in `models/`. Mongoose 9, all use `timestamps: true` unless noted.
 - `userId` (handle, unique, lowercase) · `username` (display) · `password` (PLAINTEXT) · `whatsapp` · `my11circleName`
 - `role: "user"|"admin"|"superadmin"` — the legacy `"admin"` value is still in
   the enum for back-compat but is **inert** (no implicit access). UI hides it.
-- `enabledFeatures: FeatureKey[]` — direct per-user feature grants
+- `permissionBitmap: string` — authoritative bitmask of granted features (each
+  feature's bit position = its index in `FEATURE_DEFS`). Encoded as a decimal
+  string in BigInt form. Written by `actions/admin.ts::saveUserFeaturesAction`
+  via `$set: { permissionBitmap }` + `$unset: { enabledFeatures, features }`.
+- `enabledFeatures: FeatureKey[]` — **legacy** array, kept only for back-compat.
+  Reads fall back to it (and `features`) only when `permissionBitmap === "0"`.
+  Do not write to it.
 - `customRoleId: ObjectId | null` — ref to `Role`. Effective features =
-  `enabledFeatures ∪ role.features` (merged in `lib/session.ts`).
+  `permissionBitmap (or legacy array)` ∪ `role.features` (merged in
+  `lib/session.ts`).
 - `avatar` (data URI, ≤192KB) · `avatarColor` · `bio` (≤280 chars)
 - `lastSeenRivalryAt` — for the "new rivalry" badge
 - `my11NameRequest: { requested, requestedAt, status: pending|approved|denied, decidedAt, deniedReason }` — name change approval state
@@ -117,3 +124,24 @@ AI-narrated storylines per match.
 Per-user inbox row (rivalry events, approvals decided, etc).
 
 - `userId`, `kind`, `title`, `body`, `link?`, `readAt`
+
+## BugReport
+
+`models/BugReport.ts` — user-submitted issues + assignee/admin workflow.
+
+- `title`, `description`, `severity: "low"|"medium"|"high"`, `pageUrl?`
+- `status: "open"|"in_progress"|"resolved"|"wont_fix"`
+- `reporterId`, `reporterHandle`, `reporterName`
+- `assignedTo?`, `assignedToHandle?`, `assignedToName?`
+- `adminNotes?` — private admin-only notes
+- `submission: { kind: "fixed"|"blocked"|"wont_fix", note, submittedAt,
+  submittedById, submittedByHandle, submittedByName } | null` — **write-once**
+  outcome posted by the assignee. Once set, only admin
+  `reopenBugAction` may clear it.
+- `needsAdminReview: boolean` (indexed) — true when a submission is awaiting
+  admin accept/reject.
+- `resolutionNote?`, `resolvedAt?` — legacy fields, still populated for
+  back-compat readers.
+- Compound index `{ assignedTo: 1, "submission.submittedAt": -1 }`.
+
+Full workflow: see [admin.md](admin.md#bug-reports).

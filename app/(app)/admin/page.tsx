@@ -95,10 +95,22 @@ export default async function AdminHome() {
         assignedToHandle: b.assignedToHandle ?? null,
         assignedToName: b.assignedToName ?? null,
         resolutionNote: b.resolutionNote ?? null,
+        submission: b.submission
+          ? {
+              kind: b.submission.kind,
+              note: b.submission.note,
+              submittedAt: new Date(b.submission.submittedAt).toISOString(),
+              submittedByHandle: b.submission.submittedByHandle,
+              submittedByName: b.submission.submittedByName,
+            }
+          : null,
+        needsAdminReview: Boolean(b.needsAdminReview),
         createdAt: new Date(b.createdAt).toISOString(),
       }))
     : [];
-  const openBugCount = bugRows.filter((b) => b.status === "open").length;
+  const openBugCount = bugRows.filter(
+    (b) => b.needsAdminReview || b.status === "open",
+  ).length;
 
   const bugAssignees: BugAssignee[] = canManageBugs
     ? (await User.find().select("userId username").sort({ username: 1 }).lean()).map((u) => ({

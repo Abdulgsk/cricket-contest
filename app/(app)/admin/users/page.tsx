@@ -4,7 +4,6 @@ import { Role } from "@/models/Role";
 import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
 import { Card, Badge } from "@/components/ui/card";
 import { UserRoleAssign } from "@/components/admin/user-role-assign";
-import { UserFeatureControls } from "@/components/admin/user-feature-controls";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { RolesEditor, type CustomRoleRow } from "@/components/admin/roles-editor";
 import type { FeatureKey } from "@/lib/features";
@@ -50,7 +49,12 @@ export default async function AdminUsers() {
           <div>
             <h2 className="font-semibold">Users &amp; Access</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Pick a system role or a custom role for each user. Custom roles map directly to features.
+              Pick a system role or a custom role for each user. Fine-tune
+              per-user overrides in{" "}
+              <a href="/admin/permissions" className="underline">
+                Permissions
+              </a>
+              .
             </p>
           </div>
           <div className="text-[11px] text-muted-foreground">
@@ -101,22 +105,13 @@ export default async function AdminUsers() {
                 {(canAssignRoles || canDeleteUsers) && (
                   <div className="border-t border-border/40 pt-3 space-y-2">
                     {canAssignRoles && (
-                      <>
-                        <UserRoleAssign
-                          userId={String(u._id)}
-                          currentSystemRole={u.role}
-                          currentCustomRoleId={customId}
-                          customRoles={customRoleOptions}
-                          self={isSelf}
-                        />
-                        <UserFeatureControls
-                          userId={String(u._id)}
-                          initial={(u.enabledFeatures as FeatureKey[] | undefined) ?? []}
-                          self={isSelf}
-                          systemRole={u.role}
-                          hasCustomRole={Boolean(customName)}
-                        />
-                      </>
+                      <UserRoleAssign
+                        userId={String(u._id)}
+                        currentSystemRole={u.role}
+                        currentCustomRoleId={customId}
+                        customRoles={customRoleOptions}
+                        self={isSelf}
+                      />
                     )}
                     {canDeleteUsers && (
                       <DeleteUserButton
@@ -177,22 +172,13 @@ export default async function AdminUsers() {
                       <td className="p-2">
                         <div className="space-y-2">
                           {canAssignRoles && (
-                            <>
-                              <UserRoleAssign
-                                userId={String(u._id)}
-                                currentSystemRole={u.role}
-                                currentCustomRoleId={customId}
-                                customRoles={customRoleOptions}
-                                self={isSelf}
-                              />
-                              <UserFeatureControls
-                                userId={String(u._id)}
-                                initial={(u.enabledFeatures as FeatureKey[] | undefined) ?? []}
-                                self={isSelf}
-                                systemRole={u.role}
-                                hasCustomRole={Boolean(customName)}
-                              />
-                            </>
+                            <UserRoleAssign
+                              userId={String(u._id)}
+                              currentSystemRole={u.role}
+                              currentCustomRoleId={customId}
+                              customRoles={customRoleOptions}
+                              self={isSelf}
+                            />
                           )}
                           {canDeleteUsers && (
                             <DeleteUserButton
