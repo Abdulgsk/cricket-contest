@@ -22,7 +22,22 @@ export function AdminOverviewTabs({ tabs }: { tabs: Tab[] }) {
     };
     apply();
     window.addEventListener("hashchange", apply);
-    return () => window.removeEventListener("hashchange", apply);
+    // Next.js <Link href="/admin#bugs"> from /admin uses pushState and does
+    // NOT fire hashchange — listen for popstate + a short rAF poll so the
+    // in-page CTAs work too.
+    window.addEventListener("popstate", apply);
+    let lastHash = window.location.hash;
+    const id = window.setInterval(() => {
+      if (window.location.hash !== lastHash) {
+        lastHash = window.location.hash;
+        apply();
+      }
+    }, 200);
+    return () => {
+      window.removeEventListener("hashchange", apply);
+      window.removeEventListener("popstate", apply);
+      window.clearInterval(id);
+    };
   }, [tabs]);
 
   const selectTab = (id: string) => {
