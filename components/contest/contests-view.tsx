@@ -443,6 +443,79 @@ function ComparePicker({
   );
 }
 
+// --- Positions / leaderboard list ----------------------------------------
+
+function PositionsList({
+  holders,
+  meId,
+  activeUserId,
+  onSelect,
+}: {
+  holders: Holder[];
+  meId: string;
+  activeUserId: string;
+  onSelect: (userId: string) => void;
+}) {
+  if (!holders.length) return null;
+  const sorted = [...holders].sort((a, b) => {
+    const ra = a.rank ?? Number.POSITIVE_INFINITY;
+    const rb = b.rank ?? Number.POSITIVE_INFINITY;
+    if (ra !== rb) return ra - rb;
+    return (b.score ?? -Infinity) - (a.score ?? -Infinity);
+  });
+  return (
+    <Card>
+      <h2 className="mb-2 text-sm font-semibold">🏆 Positions</h2>
+      <ul className="divide-y divide-border/40">
+        {sorted.map((h) => {
+          const isMe = h.userId === meId;
+          const isActive = h.userId === activeUserId;
+          return (
+            <li key={h.userId}>
+              <button
+                type="button"
+                onClick={() => onSelect(h.userId)}
+                className={
+                  "flex w-full items-center justify-between gap-2 rounded-md py-2 px-2 -mx-1 text-left transition " +
+                  (isActive
+                    ? "bg-primary/10 ring-1 ring-primary/30"
+                    : "hover:bg-muted/40")
+                }
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-8 shrink-0 text-center text-xs font-bold tabular-nums text-muted-foreground">
+                    {rankBadge(h.rank) ?? "—"}
+                  </span>
+                  <UserAvatar src={h.avatar} name={h.username} size={28} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">
+                      {h.username}
+                      {isMe && (
+                        <span className="ml-1 text-[10px] font-medium uppercase text-primary">
+                          you
+                        </span>
+                      )}
+                    </div>
+                    <div className="truncate text-[11px] text-muted-foreground">
+                      @{h.handle}
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-bold tabular-nums">
+                    {fmtScore(h.score)}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">pts</div>
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
 // --- Main view ------------------------------------------------------------
 
 export function ContestsView({ meId, meUsername }: { meId: string; meUsername: string }) {
@@ -450,6 +523,12 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const visibleRef = useRef(true);
+
+  // Which team is being viewed in the pitch view. Defaults to me.
+  const [viewUserId, setViewUserId] = useState<string>(meId);
+  const [otherTeam, setOtherTeam] = useState<Team | null>(null);
+  const [otherLoading, setOtherLoading] = useState(false);
+  const [otherError, setOtherError] = useState<string | null>(null);
 
   const refreshMs =
     data && data.ok && data.available ? data.refreshMs : 30_000;
@@ -492,6 +571,45 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshMs, data && data.ok && data.available && data.match.status]);
 
+  // Fetch the selected user's team when switching positions list.
+  const matchIdForFetch =
+    data && data.ok && data.available ? data.match.id : null;
+  const matchStatusForFetch =
+    data && data.ok && data.available ? data.match.status : null;
+  useEffect(() => {
+    if (!matchIdForFetch) return;
+    if (viewUserId === meId) {
+      setOtherTeam(null);
+      setOtherError(null);
+      return;
+    }
+    let cancelled = false;
+    setOtherLoading(true);
+    setOtherError(null);
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/contests/${matchIdForFetch}/team/${viewUserId}`,
+          { cache: "no-store" }
+        );
+        const j = (await r.json()) as
+          | { ok: true; team: Team | null; reason: string | null }
+          | { ok: false; error: string };
+        if (cancelled) return;
+        if (!j.ok) setOtherError(j.error);
+        else if (!j.team) setOtherError(j.reason ?? "No team");
+        else setOtherTeam(j.team);
+      } catch (e) {
+        if (!cancelled) setOtherError(e instanceof Error ? e.message : "Failed");
+      } finally {
+        if (!cancelled) setOtherLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [viewUserId, meId, matchIdForFetch, matchStatusForFetch, refreshMs]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -528,6 +646,11 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
   const { match, myTeam, myTeamReason, holders } = data;
   const lastUpdated = myTeam?.fetchedAt ?? null;
 
+  const viewingMe = viewUserId === meId;
+  const displayedTeam: Team | null = viewingMe ? myTeam : otherTeam;
+  const viewedHolder = holders.find((h) => h.userId === viewUserId);
+  const viewedUsername = viewingMe ? meUsername : viewedHolder?.username ?? "Player";
+
   return (
     <div className="space-y-4">
       <MatchHeader
@@ -563,27 +686,54 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
         </Card>
       )}
 
-      {myTeam && (
-        <Card>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">
-              {meUsername}&apos;s team{myTeam.userTeamName ? ` · ${myTeam.userTeamName}` : ""}
-            </h2>
-            <ComparePicker matchId={match.id} meId={meId} holders={holders} />
-          </div>
-          <TeamPitch team={myTeam} />
-        </Card>
+      {holders.length > 0 && (
+        <PositionsList
+          holders={holders}
+          meId={meId}
+          activeUserId={viewUserId}
+          onSelect={setViewUserId}
+        />
       )}
 
-      {!myTeam && holders.length > 0 && (
+      {(myTeam || !viewingMe) && (
         <Card>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Other mapped players</h2>
+          <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              {!viewingMe && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setViewUserId(meId)}
+                >
+                  ← My team
+                </Button>
+              )}
+              <h2 className="text-sm font-semibold truncate">
+                {viewedUsername}&apos;s team
+                {displayedTeam?.userTeamName ? ` · ${displayedTeam.userTeamName}` : ""}
+              </h2>
+            </div>
             <ComparePicker matchId={match.id} meId={meId} holders={holders} />
           </div>
-          <p className="text-xs text-muted-foreground">
-            You can still view any other player&apos;s team from the picker above.
-          </p>
+          {viewingMe ? (
+            myTeam ? (
+              <TeamPitch team={myTeam} />
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Your team isn&apos;t mapped yet.
+              </p>
+            )
+          ) : otherLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Spinner />
+            </div>
+          ) : otherError ? (
+            <p className="text-xs text-danger">{otherError}</p>
+          ) : otherTeam ? (
+            <TeamPitch team={otherTeam} />
+          ) : (
+            <p className="text-xs text-muted-foreground">No team available.</p>
+          )}
         </Card>
       )}
 

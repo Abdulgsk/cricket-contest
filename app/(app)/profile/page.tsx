@@ -1,13 +1,10 @@
 import { requireUser } from "@/lib/rbac";
 import { Badge, Card } from "@/components/ui/card";
 import { ProfileForms } from "@/components/profile-forms";
-import { getPointsBreakdown } from "@/services/points-breakdown";
-import { PointsBreakdownCard } from "@/components/points-breakdown-card";
 import { LogoutButton } from "@/components/logout-button";
 
 export default async function ProfilePage() {
   const me = await requireUser();
-  const breakdown = await getPointsBreakdown(String(me._id));
 
   return (
     <div className="space-y-6">
@@ -51,13 +48,6 @@ export default async function ProfilePage() {
             ? new Date(me.my11NameChangeGraceUntil).toISOString()
             : null,
         }}
-      />
-
-      <PointsBreakdownCard
-        breakdown={breakdown}
-        title="Your points, source by source"
-        subtitle="A full audit of where every point on your card came from."
-        compact
       />
 
       <Card className="flex flex-wrap items-center justify-between gap-3">
