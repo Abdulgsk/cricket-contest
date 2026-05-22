@@ -1,9 +1,12 @@
 import { requireUser } from "@/lib/rbac";
 import { Badge, Card } from "@/components/ui/card";
 import { ProfileForms } from "@/components/profile-forms";
+import { getPointsBreakdown } from "@/services/points-breakdown";
+import { PointsBreakdownCard } from "@/components/points-breakdown-card";
 
 export default async function ProfilePage() {
   const me = await requireUser();
+  const breakdown = await getPointsBreakdown(String(me._id));
 
   return (
     <div className="space-y-6">
@@ -54,6 +57,13 @@ export default async function ProfilePage() {
           Your charts and results analytics have moved to the Analytics tab.
         </p>
       </Card>
+
+      <PointsBreakdownCard
+        breakdown={breakdown}
+        title="Your points, source by source"
+        subtitle="A full audit of where every point on your card came from."
+        compact
+      />
     </div>
   );
 }

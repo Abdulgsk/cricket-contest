@@ -158,7 +158,7 @@ export function Nav({
       {/* Mobile drawer - only render when open */}
       {open && (
         <aside
-          className="md:hidden fixed top-0 left-0 z-50 h-full w-56 flex flex-col p-4 gap-3 border-r border-border bg-card animate-in slide-in-from-left duration-200 overflow-y-auto"
+          className="md:hidden fixed top-0 left-0 z-50 h-dvh w-56 flex flex-col p-4 gap-3 border-r border-border bg-card animate-in slide-in-from-left duration-200 overflow-y-auto pb-[max(env(safe-area-inset-bottom),16px)]"
           role="dialog"
           aria-modal="true"
           aria-label="Navigation"
@@ -174,13 +174,9 @@ export function Nav({
             </svg>
           </button>
           {renderLinks(() => setOpen(false))}
-          <div className="mt-auto pt-4">
+          <div className="mt-auto pt-4 flex flex-col gap-2 border-t border-border/60">
             <ThemeToggle />
-          </div>
-          <div className="pt-2">
             <BugReportButton />
-          </div>
-          <div className="pt-1">
             <LogoutButton />
           </div>
         </aside>

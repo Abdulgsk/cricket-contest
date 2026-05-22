@@ -13,6 +13,8 @@ import { PlayerCharts, type PlayerChartRow } from "@/components/player-charts";
 import { formatDate } from "@/lib/utils";
 import { PREDICTION_POINTS } from "@/lib/constants";
 import { loadCivilWarBreakdowns } from "@/lib/civil-war-breakdown";
+import { getPointsBreakdown } from "@/services/points-breakdown";
+import { PointsBreakdownCard } from "@/components/points-breakdown-card";
 
 export default async function PlayerDetailPage({
   params,
@@ -25,6 +27,8 @@ export default async function PlayerDetailPage({
 
   const user = await User.findById(id).lean();
   if (!user) notFound();
+
+  const breakdown = await getPointsBreakdown(id);
 
   const [results, predictions] = await Promise.all([
     MatchResult.find({ userId: id })
@@ -299,6 +303,12 @@ export default async function PlayerDetailPage({
           </p>
         </Card>
       )}
+
+      <PointsBreakdownCard
+        breakdown={breakdown}
+        title={`${user.username}'s points by source`}
+        subtitle="Every discrete way they have gained or lost points this season."
+      />
 
       <h2 className="text-xl font-semibold mt-4">Match-by-match breakdown</h2>
       {rows.length === 0 && (
