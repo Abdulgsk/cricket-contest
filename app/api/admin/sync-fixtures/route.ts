@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/rbac";
+import { requireAdminFeature } from "@/lib/rbac";
 import { syncIplMatches } from "@/services/ipl-sync";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    await requireRole("admin", "superadmin");
+    await requireAdminFeature("matches.manage");
   } catch {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }

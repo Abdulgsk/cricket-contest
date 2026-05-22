@@ -43,6 +43,10 @@ export function RolesEditor({ initial }: { initial: CustomRoleRow[] }) {
       toast.error("Role name is required");
       return;
     }
+    if (draftFeatures.length === 0) {
+      toast.error("Pick at least one feature for this role");
+      return;
+    }
     start(async () => {
       const res = await createRoleAction({ name, features: draftFeatures });
       if (!res.ok) {
@@ -65,6 +69,10 @@ export function RolesEditor({ initial }: { initial: CustomRoleRow[] }) {
     const name = editName.trim();
     if (!name) {
       toast.error("Role name is required");
+      return;
+    }
+    if (editFeatures.length === 0) {
+      toast.error("Pick at least one feature for this role");
       return;
     }
     start(async () => {

@@ -208,6 +208,38 @@ export async function submitResultsAction(payload: unknown) {
   if (parsed.data.customPoolResults?.length) {
     await scoreCustomPools(parsed.data.matchId, parsed.data.customPoolResults);
   }
+  // Fire a single broadcast notification announcing that results are in.
+  try {
+    const { Match } = await import("@/models/Match");
+    const { Notification } = await import("@/models/Notification");
+    const { generateNotificationLine } = await import("@/services/notification-ai");
+    const m = await Match.findById(parsed.data.matchId).select("teamA teamB matchWinner").lean();
+    if (m) {
+      const sorted = [...parsed.data.entries].sort((a, b) => a.rank - b.rank);
+      const top = sorted.find((e) => e.rank > 0) ?? null;
+      const body = await generateNotificationLine(
+        {
+          occasion: "Results are in — leaderboard updated",
+          facts: {
+            teams: `${m.teamA} vs ${m.teamB}`,
+            match_winner: m.matchWinner ?? null,
+            top_player_rank: top ? 1 : null,
+            top_player_points: top ? top.fantasyPoints : null,
+          },
+        },
+        `Results in for ${m.teamA} vs ${m.teamB} — check the leaderboard.`,
+      );
+      await Notification.create({
+        userId: undefined,
+        kind: "result_published",
+        title: `Results: ${m.teamA} vs ${m.teamB}`,
+        body,
+        link: `/matches/${parsed.data.matchId}`,
+      });
+    }
+  } catch {
+    // Notifications are best-effort and must never block result submission.
+  }
   await AuditLog.create({
     actorId: me._id,
     action: "match.results",
@@ -280,14 +312,20 @@ export async function assignUserRoleAction(payload: unknown) {
 /* -------------------------- Custom Roles (CRUD) -------------------------- */
 
 const RoleNameSchema = z.string().trim().min(1).max(40);
-const RoleFeaturesSchema = z.array(z.enum(FEATURE_KEYS)).default([]);
+const RoleFeaturesSchema = z
+  .array(z.enum(FEATURE_KEYS))
+  .min(1, "Pick at least one feature for the role")
+  .default([]);
 
 export async function createRoleAction(payload: unknown) {
   const me = await requireAdminFeature("users.roles.assign");
   const parsed = z
     .object({ name: RoleNameSchema, features: RoleFeaturesSchema })
     .safeParse(payload);
-  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Invalid payload";
+    return { ok: false as const, error: msg };
+  }
 
   await connectDB();
   const name = parsed.data.name;
@@ -313,7 +351,10 @@ export async function updateRoleAction(payload: unknown) {
   const parsed = z
     .object({ id: z.string().min(1), name: RoleNameSchema, features: RoleFeaturesSchema })
     .safeParse(payload);
-  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Invalid payload";
+    return { ok: false as const, error: msg };
+  }
 
   await connectDB();
   if (["user", "admin", "superadmin"].includes(parsed.data.name.toLowerCase())) {
@@ -491,7 +532,7 @@ export async function setBountyAction(userId: string | null) {
 }
 
 export async function setAnnouncementAction(text: string) {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   await connectDB();
   await Settings.updateOne({}, { announcement: text }, { upsert: true });
   revalidatePath("/");
@@ -624,7 +665,7 @@ export async function setUserFeaturesAction(payload: unknown) {
 }
 
 export async function checkMy11SessionAction() {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   try {
     const { checkLogin, getSessionCookieMeta } = await import("@/lib/my11-api");
     const meta = await getSessionCookieMeta();
@@ -644,7 +685,7 @@ export async function checkMy11SessionAction() {
 }
 
 export async function listMy11MatchesAction() {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   try {
     const { listAllMatches } = await import("@/lib/my11-api");
     const matches = await listAllMatches();
@@ -670,7 +711,7 @@ export async function listMy11MatchesAction() {
 }
 
 export async function listMy11ContestsAction(my11MatchId: number) {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   try {
     const { listMyContests } = await import("@/lib/my11-api");
     const contests = await listMyContests(my11MatchId);
@@ -690,7 +731,7 @@ export async function listMy11ContestsAction(my11MatchId: number) {
 }
 
 export async function setMatchContestUrlAction(matchId: string, contestUrl: string) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("matches.manage");
   await connectDB();
   await Match.updateOne({ _id: matchId }, { $set: { contestUrl } });
   revalidatePath(`/admin/matches/${matchId}/result`);
@@ -710,7 +751,7 @@ export async function updateMy11LiveRefreshAction(seconds: number) {
 // ---- IPL auto-import ----
 
 export async function syncIplMatchesAction() {
-  const me = await requireRole("admin", "superadmin");
+  const me = await requireAdminFeature("matches.manage");
   try {
     const r = await syncIplMatches();
     await AuditLog.create({ actorId: me._id, action: "ipl.sync", meta: r });
@@ -723,7 +764,7 @@ export async function syncIplMatchesAction() {
 }
 
 export async function refreshSquadsAction(matchId: string) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("matches.manage");
   try {
     const r = await refreshSquads(matchId);
     revalidatePath(`/matches/${matchId}`);
@@ -747,7 +788,7 @@ export async function syncPlayoffsAction() {
 }
 
 export async function refreshMatchPlayersAction(matchId: string) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("matches.manage");
   try {
     const r = await refreshMatchPlayers(matchId);
     revalidatePath(`/matches/${matchId}`);
@@ -758,7 +799,7 @@ export async function refreshMatchPlayersAction(matchId: string) {
 }
 
 export async function fetchContestPointsAction(payload: unknown) {
-  await requireRole("admin", "superadmin");
+  await requireAdminFeature("results.manage");
   await connectDB();
 
   const FetchContestPointsSchema = z.object({
@@ -847,24 +888,11 @@ export async function regenerateLatestFactsAction() {
  * the WhatsApp Cloud API is wired correctly without waiting for cron. */
 export async function sendTestReminderAction() {
   const me = await requireRole("superadmin");
-  const { Notification } = await import("@/models/Notification");
   const { sendWhatsApp } = await import("@/lib/whatsapp");
-
-  const text = `🏏 Test reminder · ${new Date().toLocaleString()} · If you receive this on WhatsApp, the Cloud API is wired correctly.`;
-
-  await connectDB();
-  await Notification.create({
-    userId: me._id,
-    title: "Test reminder",
-    body: text,
-  });
-
   let whatsappOk = false;
   let whatsappError: string | null = null;
   if (me.whatsapp) {
     try {
-      // Use approved template variables; for the default hello_world template
-      // these are ignored. For prediction_reminder they fill the body.
       whatsappOk = await sendWhatsApp(me.whatsapp, {
         teamA: "Test",
         teamB: "Reminder",
@@ -879,16 +907,14 @@ export async function sendTestReminderAction() {
   } else {
     whatsappError = "No WhatsApp number on your profile";
   }
-
   await AuditLog.create({
     actorId: me._id,
     action: "reminder.test",
     meta: { whatsappOk, whatsappError },
   });
-
   return {
     ok: true as const,
-    notification: true,
+    notification: false,
     whatsappOk,
     whatsappError,
     sentTo: me.whatsapp ?? null,

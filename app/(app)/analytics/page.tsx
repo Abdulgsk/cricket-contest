@@ -14,10 +14,13 @@ import { PREDICTION_POINTS } from "@/lib/constants";
 import Link from "next/link";
 import { CompareButton } from "@/components/compare-button";
 import { loadCivilWarBreakdowns } from "@/lib/civil-war-breakdown";
+import { getPointsBreakdown } from "@/services/points-breakdown";
+import { PointsBreakdownCard } from "@/components/points-breakdown-card";
 
 export default async function AnalyticsPage() {
   const me = await requireUser();
   const record = await getMyRivalryAndCivilWarRecord();
+  const pointsBreakdown = await getPointsBreakdown(String(me._id));
 
   await connectDB();
   const [results, predictions, players] = await Promise.all([
@@ -321,6 +324,9 @@ export default async function AnalyticsPage() {
           </p>
         </Card>
       )}
+
+      {/* Discrete points by source */}
+      <PointsBreakdownCard breakdown={pointsBreakdown} />
 
       {/* Rivalry & Civil War */}
       <ProfileResultsSelector

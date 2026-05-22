@@ -35,31 +35,42 @@ export function LogoutButton() {
 
   const dialog = open && (
     <div
-      // Use an absurdly high z-index AND portal to <body> so the dialog
-      // escapes every parent stacking context (sticky nav, transformed
-      // containers, blurred backdrops, etc.).
-      className="fixed inset-0 z-[2147483647] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-md animate-in fade-in duration-150"
+      // Absurdly high z-index AND portal to <body> so the dialog escapes every
+      // parent stacking context (sticky nav, transformed containers, blurred
+      // backdrops, etc.).
+      className="fixed inset-0 z-[2147483647] flex items-end sm:items-center justify-center bg-foreground/40 backdrop-blur-md animate-in fade-in duration-150"
       onClick={() => !pending && setOpen(false)}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Confirm logout"
-        className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-white/10 bg-popover/95 backdrop-blur-xl shadow-2xl ring-1 ring-black/10 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-border bg-card text-card-foreground shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 pt-5 pb-3 border-b border-border/40 bg-gradient-to-br from-danger/15 to-danger/5 rounded-t-2xl">
-          <h2 className="text-base font-semibold">Log out?</h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            You&apos;ll need to sign in again to access the league.
-          </p>
+        <div className="px-5 pt-5 pb-3 border-b border-border/60 rounded-t-2xl">
+          <div className="flex items-start gap-3">
+            <div className="size-9 rounded-full bg-danger/15 text-danger flex items-center justify-center shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold">Log out?</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                You&apos;ll need to sign in again to access the league.
+              </p>
+            </div>
+          </div>
         </div>
         <div className="flex flex-col-reverse sm:flex-row gap-2 px-5 py-4">
           <button
             type="button"
             onClick={() => setOpen(false)}
             disabled={pending}
-            className="flex-1 h-10 rounded-xl border border-border text-sm font-medium hover:bg-muted/50 disabled:opacity-50"
+            className="flex-1 h-10 rounded-xl border border-border bg-card text-sm font-medium hover:bg-muted/40 disabled:opacity-50 transition"
           >
             Cancel
           </button>
@@ -67,7 +78,7 @@ export function LogoutButton() {
             type="button"
             onClick={confirm}
             disabled={pending}
-            className="flex-1 h-10 rounded-xl bg-danger text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            className="flex-1 h-10 rounded-xl bg-danger text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 shadow-sm transition"
           >
             {pending ? "Logging out…" : "Yes, log out"}
           </button>

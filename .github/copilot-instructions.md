@@ -29,7 +29,7 @@ actions/        Server Actions ("use server") — only entry point for mutations
 services/       Domain logic: scoring, prediction-engine, facts, civil-war,
                 contest, ipl-sync, match-status, facts-ai, facts-analyzer,
                 my11-name-verify
-models/         Mongoose schemas (User, Match, MatchResult, Prediction,
+models/         Mongoose schemas (User, Role, Match, MatchResult, Prediction,
                 Rivalry, CivilWar, CustomPool, BonusAuditLog,
                 PredictionAuditLog, DailyFact, Notification, AuditLog,
                 Settings, UserMatchTeam)
@@ -47,7 +47,7 @@ scripts/        One-off maintenance scripts (node .mjs)
 
 1. **Never put scoring logic on the client.** All point math lives in `services/scoring.ts`, `services/prediction-engine.ts`, `services/civil-war.ts`.
 2. **Mutations go through `actions/*.ts`** (Server Actions). API routes are for reads, external integrations (my11, cron) and admin tools.
-3. **Auth & RBAC via `lib/rbac.ts`** — `requireUser()`, `requireRole("admin", "superadmin")`, `requireAdminFeature(featureKey)`. Features are in `lib/features.ts`.
+3. **Auth & RBAC via `lib/rbac.ts`** — `requireUser()`, `requireRole("superadmin")`, `requireAdminFeature(featureKey)`, `requireAdminAccess()`. Features are listed in `lib/features.ts::FEATURE_DEFS` (with label, description, group, sensitive flag). Only `"user"` and `"superadmin"` are usable system roles — the legacy `"admin"` role is inert. Everything in between is custom roles (`models/Role.ts`) or direct `User.enabledFeatures` grants.
 4. **Mongo connection** — every entry point that touches the DB must `await connectDB()` from `lib/db.ts`.
 5. **My11 calls** — go through `lib/my11-api.ts`. Live data; never DB-cached in a way that breaks freshness. Throws `My11AuthError`, `My11NotReadyError` — handle them.
 6. **Scoring constants** live in `lib/constants.ts` (`RANK_POINTS`, `BONUSES`, `PENALTIES`, `PREDICTION_POINTS`, `MAX_BONUS_PER_MATCH`, `TOTAL_PLAYERS=13`). Don't hardcode numbers elsewhere.

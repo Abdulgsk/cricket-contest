@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { requireRole } from "@/lib/rbac";
+import { requireAdminFeature } from "@/lib/rbac";
 import { Match } from "@/models/Match";
 import { AuditLog } from "@/models/AuditLog";
 
@@ -11,7 +11,7 @@ export async function POST(
   { params }: { params: Promise<{ matchId: string }> }
 ) {
   try {
-    const me = await requireRole("admin", "superadmin");
+    const me = await requireAdminFeature("automation.run");
     const { matchId } = await params;
 
     await connectDB();

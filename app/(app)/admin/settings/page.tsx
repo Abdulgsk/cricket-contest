@@ -5,7 +5,7 @@ import { SettingsForms } from "@/components/admin/settings-forms";
 import { requireRole } from "@/lib/rbac";
 
 export default async function AdminSettings() {
-  await requireRole("admin", "superadmin");
+  await requireRole("superadmin");
   await connectDB();
   const settings = await getSettings();
   return (

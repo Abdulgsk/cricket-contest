@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/next";
 import { ThemeInit } from "@/components/theme-init";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeInit />
         {children}
         <Toaster theme="system" position="top-right" richColors />
+        <Analytics />
         <SpeedInsights />
       </body>
     </html>

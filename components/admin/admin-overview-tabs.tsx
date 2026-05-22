@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 
 type Tab = {
   id: string;
@@ -14,6 +14,24 @@ export function AdminOverviewTabs({ tabs }: { tabs: Tab[] }) {
   const [active, setActive] = useState(tabs[0]?.id ?? "");
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
 
+  // Allow deep-linking via #tabId in the URL (e.g. /admin#bugs).
+  useEffect(() => {
+    const apply = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      if (hash && tabs.some((t) => t.id === hash)) setActive(hash);
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, [tabs]);
+
+  const selectTab = (id: string) => {
+    setActive(id);
+    if (typeof window !== "undefined") {
+      history.replaceState(null, "", `#${id}`);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border/60 bg-muted/40 p-2">
@@ -24,7 +42,7 @@ export function AdminOverviewTabs({ tabs }: { tabs: Tab[] }) {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setActive(t.id)}
+                onClick={() => selectTab(t.id)}
                 className={
                   "flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-medium transition " +
                   (isActive

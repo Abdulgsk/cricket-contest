@@ -12,6 +12,8 @@ import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
 import { BonusSettingsPanel } from "@/components/admin/bonus-settings-panel";
 import { CivilWarSettingsPanel } from "@/components/admin/civil-war-settings-panel";
 import { My11LiveSettingsPanel } from "@/components/admin/my11-live-settings-panel";
+import { BugReportsAdmin, type BugRow, type BugAssignee } from "@/components/admin/bug-reports-admin";
+import { BugReport } from "@/models/BugReport";
 import { CIVIL_WAR_DEFAULTS } from "@/services/civil-war";
 import { formatDate } from "@/lib/utils";
 import { requireAdminAccess, userHasFeature } from "@/lib/rbac";
@@ -66,6 +68,8 @@ export default async function AdminHome() {
   const canManageResults = userHasFeature(me, "results.manage");
   const canRunAutomations = userHasFeature(me, "automation.run");
   const canRegenerateFacts = userHasFeature(me, "facts.regenerate");
+  const canViewBugs = userHasFeature(me, "bugs.view");
+  const canManageBugs = userHasFeature(me, "bugs.manage");
   const canSeeMatches =
     userHasFeature(me, "matches.manage") ||
     userHasFeature(me, "results.manage") ||
@@ -74,6 +78,34 @@ export default async function AdminHome() {
   // tabs that map to those features — not the general Overview / Operations /
   // Docs tabs that are meant for superadmins.
   const isAdminRole = me.role === "superadmin";
+
+  const bugRows: BugRow[] = canViewBugs
+    ? (await BugReport.find().sort({ createdAt: -1 }).limit(200).lean()).map((b) => ({
+        id: String(b._id),
+        title: b.title,
+        description: b.description,
+        severity: b.severity,
+        status: b.status,
+        reporterName: b.reporterName ?? "—",
+        reporterHandle: b.reporterHandle ?? "—",
+        pageUrl: b.pageUrl ?? null,
+        adminNotes: b.adminNotes ?? null,
+        assignedToId: b.assignedTo ? String(b.assignedTo) : null,
+        assignedToHandle: b.assignedToHandle ?? null,
+        assignedToName: b.assignedToName ?? null,
+        resolutionNote: b.resolutionNote ?? null,
+        createdAt: new Date(b.createdAt).toISOString(),
+      }))
+    : [];
+  const openBugCount = bugRows.filter((b) => b.status === "open").length;
+
+  const bugAssignees: BugAssignee[] = canManageBugs
+    ? (await User.find().select("userId username").sort({ username: 1 }).lean()).map((u) => ({
+        id: String(u._id),
+        handle: u.userId,
+        name: u.username,
+      }))
+    : [];
 
   const bonusTab = (
     <BonusSettingsPanel
@@ -341,6 +373,18 @@ export default async function AdminHome() {
       cta: "Open audit log",
     });
   }
+  if (canViewBugs) {
+    yourTools.push({
+      key: "bugs",
+      label: "Bug reports",
+      description:
+        openBugCount > 0
+          ? `${openBugCount} open bug${openBugCount === 1 ? "" : "s"} from users.`
+          : "User-submitted bug reports.",
+      href: "/admin#bugs",
+      cta: "Open bugs tab",
+    });
+  }
 
   const yourToolsTab = (
     <div className="space-y-4">
@@ -393,6 +437,16 @@ export default async function AdminHome() {
             ]
           : []),
         ...(canEditBonus ? [{ id: "bonus", label: "Bonus Rules", content: bonusTab }] : []),
+        ...(canViewBugs
+          ? [
+              {
+                id: "bugs",
+                label: "Bugs",
+                badge: openBugCount,
+                content: <BugReportsAdmin initial={bugRows} canManage={canManageBugs} assignees={bugAssignees} />,
+              },
+            ]
+          : []),
         ...(showCivilWarTab
           ? [
               {
