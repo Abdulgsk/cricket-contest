@@ -554,6 +554,19 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
   const [otherTeam, setOtherTeam] = useState<Team | null>(null);
   const [otherLoading, setOtherLoading] = useState(false);
   const [otherError, setOtherError] = useState<string | null>(null);
+  const teamSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const selectViewUser = (userId: string) => {
+    setViewUserId(userId);
+    // Defer one frame so the team card has mounted/transitioned before we
+    // scroll — avoids landing above the header on slow paints.
+    requestAnimationFrame(() => {
+      teamSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
 
   const refreshMs =
     data && data.ok && data.available ? data.refreshMs : 30_000;
@@ -716,50 +729,52 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
           holders={holders}
           meId={meId}
           activeUserId={viewUserId}
-          onSelect={setViewUserId}
+          onSelect={selectViewUser}
         />
       )}
 
       {(myTeam || !viewingMe) && (
-        <Card>
-          <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
-              {!viewingMe && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setViewUserId(meId)}
-                >
-                  ← My team
-                </Button>
-              )}
-              <h2 className="text-sm font-semibold truncate">
-                {viewedUsername}&apos;s team
-                {displayedTeam?.userTeamName ? ` · ${displayedTeam.userTeamName}` : ""}
-              </h2>
+        <div ref={teamSectionRef} className="scroll-mt-20">
+          <Card>
+            <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                {!viewingMe && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setViewUserId(meId)}
+                  >
+                    ← My team
+                  </Button>
+                )}
+                <h2 className="text-sm font-semibold truncate">
+                  {viewedUsername}&apos;s team
+                  {displayedTeam?.userTeamName ? ` · ${displayedTeam.userTeamName}` : ""}
+                </h2>
+              </div>
+              <ComparePicker matchId={match.id} meId={meId} holders={holders} />
             </div>
-            <ComparePicker matchId={match.id} meId={meId} holders={holders} />
-          </div>
-          {viewingMe ? (
-            myTeam ? (
-              <TeamPitch team={myTeam} />
+            {viewingMe ? (
+              myTeam ? (
+                <TeamPitch team={myTeam} />
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Your team isn&apos;t mapped yet.
+                </p>
+              )
+            ) : otherLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Spinner />
+              </div>
+            ) : otherError ? (
+              <p className="text-xs text-danger">{otherError}</p>
+            ) : otherTeam ? (
+              <TeamPitch team={otherTeam} />
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Your team isn&apos;t mapped yet.
-              </p>
-            )
-          ) : otherLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <Spinner />
-            </div>
-          ) : otherError ? (
-            <p className="text-xs text-danger">{otherError}</p>
-          ) : otherTeam ? (
-            <TeamPitch team={otherTeam} />
-          ) : (
-            <p className="text-xs text-muted-foreground">No team available.</p>
-          )}
-        </Card>
+              <p className="text-xs text-muted-foreground">No team available.</p>
+            )}
+          </Card>
+        </div>
       )}
 
       <PastContests excludeMatchId={match.id} />
