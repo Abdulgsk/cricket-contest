@@ -120,8 +120,28 @@ export const Settings =
   (models.Settings as mongoose.Model<ISettings>) ||
   model<ISettings>("Settings", SettingsSchema);
 
-export async function getSettings() {
+// Settings is a singleton that changes rarely (admin saves). Cache the read
+// for the lifetime of a warm lambda so every layout/page touching it doesn't
+// re-query Mongo. Admin save actions call `invalidateSettingsCache()` to
+// drop the entry on write.
+const SETTINGS_TTL_MS = 30_000;
+type SettingsDoc = mongoose.HydratedDocument<ISettings>;
+type SettingsCache = { at: number; doc: SettingsDoc | null };
+const gs = global as unknown as { _settingsCache?: SettingsCache };
+const cacheRef: SettingsCache = gs._settingsCache ?? { at: 0, doc: null };
+gs._settingsCache = cacheRef;
+
+export function invalidateSettingsCache() {
+  cacheRef.at = 0;
+  cacheRef.doc = null;
+}
+
+export async function getSettings(): Promise<SettingsDoc> {
+  const now = Date.now();
+  if (cacheRef.doc && now - cacheRef.at < SETTINGS_TTL_MS) return cacheRef.doc;
   let s = await Settings.findOne();
   if (!s) s = await Settings.create({});
-  return s;
+  cacheRef.doc = s as SettingsDoc;
+  cacheRef.at = now;
+  return cacheRef.doc!;
 }

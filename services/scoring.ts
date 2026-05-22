@@ -236,6 +236,7 @@ export async function processMatchResults(
 
   // Unlock the rivalry dropdown for any later same-day match that was waiting
   // on this result, and refresh the dashboard so the new storylines show up.
+  invalidateLeaderboardCache();
   try {
     revalidatePath("/rivalry");
     revalidatePath("/dashboard");
@@ -865,6 +866,29 @@ async function scorePredictions(
 
 /** Aggregate full leaderboard from all match results (+ prediction points). */
 export async function computeLeaderboard(opts?: { excludeMatchId?: string }) {
+  const key = opts?.excludeMatchId ?? "__all__";
+  const now = Date.now();
+  const hit = leaderboardCache.get(key);
+  if (hit && now - hit.at < LEADERBOARD_TTL_MS) return hit.data;
+  const data = await _computeLeaderboardImpl(opts);
+  leaderboardCache.set(key, { at: now, data });
+  return data;
+}
+
+// Leaderboard runs 4 aggregations + a full User.find on every call. Dashboard,
+// leaderboard page, and admin all hit it; warm Vercel instances share this
+// short TTL so back-to-back navigation doesn't re-aggregate.
+const LEADERBOARD_TTL_MS = 15_000;
+type LBEntry = { at: number; data: Awaited<ReturnType<typeof _computeLeaderboardImpl>> };
+const gl = global as unknown as { _leaderboardCache?: Map<string, LBEntry> };
+const leaderboardCache: Map<string, LBEntry> = gl._leaderboardCache ?? new Map();
+gl._leaderboardCache = leaderboardCache;
+
+export function invalidateLeaderboardCache() {
+  leaderboardCache.clear();
+}
+
+async function _computeLeaderboardImpl(opts?: { excludeMatchId?: string }) {
   await connectDB();
   const matchFilter = opts?.excludeMatchId
     ? { matchId: { $ne: new mongoose.Types.ObjectId(opts.excludeMatchId) } }

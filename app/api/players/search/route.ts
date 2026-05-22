@@ -21,7 +21,12 @@ export async function GET(request: Request) {
       .limit(10)
       .lean();
 
-    return Response.json(players);
+    // User list barely changes; safe to cache briefly per-browser.
+    return Response.json(players, {
+      headers: {
+        "Cache-Control": "private, max-age=60, stale-while-revalidate=300",
+      },
+    });
   } catch (e) {
     console.error(e);
     return Response.json({ error: "Search failed" }, { status: 500 });

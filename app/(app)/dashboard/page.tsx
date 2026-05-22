@@ -14,16 +14,19 @@ import { NotificationBell } from "@/components/notification-bell";
 export default async function Dashboard() {
   const me = await requireUser();
   await connectDB();
-  
-  // Auto-update match statuses on page load
+
+  // Auto-update match statuses on page load (throttled internally).
   await autoUpdateMatchStatuses();
-  
-  const lb = await computeLeaderboard();
+
+  // Fan out independent reads in parallel — these don't depend on each other.
+  const [lb, next, facts] = await Promise.all([
+    computeLeaderboard(),
+    Match.findOne({ status: "upcoming", startTime: { $gte: new Date() } })
+      .sort({ startTime: 1 })
+      .lean(),
+    getLatestFacts(),
+  ]);
   const myRow = lb.find((r) => String(r.userId) === String(me._id)) ?? null;
-  const next = await Match.findOne({ status: "upcoming", startTime: { $gte: new Date() } })
-    .sort({ startTime: 1 })
-    .lean();
-  const facts = await getLatestFacts();
 
   return (
     <div className="space-y-6">

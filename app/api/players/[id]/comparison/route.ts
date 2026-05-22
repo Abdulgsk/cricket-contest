@@ -142,10 +142,20 @@ export async function GET(
       getPlayerStats(opponentId),
     ]);
 
-    return Response.json({
-      me: myStats,
-      opponent: opponentStats,
-    });
+    return Response.json(
+      {
+        me: myStats,
+        opponent: opponentStats,
+      },
+      {
+        // Heavy aggregation; only changes when a match result is submitted.
+        // Private to the requesting user (`myStats` is their data).
+        headers: {
+          "Cache-Control":
+            "private, max-age=30, stale-while-revalidate=120",
+        },
+      },
+    );
   } catch (e: any) {
     console.error(e);
     return Response.json(

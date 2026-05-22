@@ -12,16 +12,32 @@ import { autoMapAllLiveMatches } from "@/services/contest-auto-map";
  * lazy "tick" that every protected page already runs, so we don't need a
  * separate cron. `autoMapAllLiveMatches` is a no-op when there's nothing
  * pending (it filters `status: "live", autoMapDone: { $ne: true }`).
+ *
+ * Throttled per warm lambda instance so a burst of page loads doesn't
+ * hammer Mongo (and my11) — the work is idempotent so missing a beat is fine.
  */
+const STATUS_TTL_MS = 60_000;
+const MAP_TTL_MS = 5 * 60_000;
+type Tick = { statusAt: number; mapAt: number };
+const g = global as unknown as { _matchStatusTick?: Tick };
+const tick: Tick = g._matchStatusTick ?? { statusAt: 0, mapAt: 0 };
+g._matchStatusTick = tick;
+
 export async function autoUpdateMatchStatuses() {
+  const now = Date.now();
+  if (now - tick.statusAt < STATUS_TTL_MS) {
+    return { upcomingToLive: 0, liveToCompleted: 0, throttled: true as const };
+  }
+  tick.statusAt = now;
+
   await connectDB();
-  const now = new Date();
+  const nowDate = new Date();
 
   // Update upcoming → live
   const upcomingToLive = await Match.updateMany(
     {
       status: "upcoming",
-      startTime: { $lte: now },
+      startTime: { $lte: nowDate },
     },
     { status: "live" }
   );
@@ -35,12 +51,16 @@ export async function autoUpdateMatchStatuses() {
     { status: "completed" }
   );
 
-  // Map any unmapped live matches to my11. Cheap when nothing pending.
-  // Swallow errors so a transient my11 outage never breaks page rendering.
-  try {
-    await autoMapAllLiveMatches();
-  } catch {
-    // ignore — next page tick will retry
+  // Map any unmapped live matches to my11 — independently throttled because
+  // it issues network calls. Swallow errors so a transient my11 outage never
+  // breaks page rendering.
+  if (now - tick.mapAt >= MAP_TTL_MS) {
+    tick.mapAt = now;
+    try {
+      await autoMapAllLiveMatches();
+    } catch {
+      // ignore — next tick will retry
+    }
   }
 
   return {

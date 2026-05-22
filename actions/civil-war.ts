@@ -8,7 +8,7 @@ import { requireUser, requireRole, requireAdminFeature, userHasFeature, assertFe
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { CivilWar } from "@/models/CivilWar";
-import { Settings } from "@/models/Settings";
+import { Settings, invalidateSettingsCache } from "@/models/Settings";
 import { AuditLog } from "@/models/AuditLog";
 import { isModuleLocked } from "@/lib/match-locks";
 import {
@@ -388,6 +388,7 @@ export async function updateCivilWarSettingsAction(payload: unknown) {
     },
     { upsert: true }
   );
+  invalidateSettingsCache();
   await AuditLog.create({
     actorId: me._id,
     action: "civilwar.settings",

@@ -30,22 +30,32 @@ export async function GET() {
       myTeams.map((t) => [String(t.matchId), { rank: t.rank, score: t.score }])
     );
 
-    return NextResponse.json({
-      ok: true,
-      matches: matches.map((m) => ({
-        id: String(m._id),
-        teamA: m.teamA,
-        teamB: m.teamB,
-        teamAShort: m.teamAShort ?? null,
-        teamBShort: m.teamBShort ?? null,
-        startTime: m.startTime,
-        venue: m.venue ?? null,
-        scoreSummary: m.scoreSummary ?? null,
-        matchWinner: m.matchWinner ?? null,
-        myRank: myMap.get(String(m._id))?.rank ?? null,
-        myScore: myMap.get(String(m._id))?.score ?? null,
-      })),
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        matches: matches.map((m) => ({
+          id: String(m._id),
+          teamA: m.teamA,
+          teamB: m.teamB,
+          teamAShort: m.teamAShort ?? null,
+          teamBShort: m.teamBShort ?? null,
+          startTime: m.startTime,
+          venue: m.venue ?? null,
+          scoreSummary: m.scoreSummary ?? null,
+          matchWinner: m.matchWinner ?? null,
+          myRank: myMap.get(String(m._id))?.rank ?? null,
+          myScore: myMap.get(String(m._id))?.score ?? null,
+        })),
+      },
+      {
+        // Per-user data (myRank/myScore) — private only. Completed matches
+        // change rarely; SWR keeps the UI snappy while still revalidating.
+        headers: {
+          "Cache-Control":
+            "private, max-age=60, stale-while-revalidate=300",
+        },
+      },
+    );
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : "Failed" },

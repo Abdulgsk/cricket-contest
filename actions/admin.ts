@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
-import { Settings, getSettings } from "@/models/Settings";
+import { Settings, getSettings, invalidateSettingsCache } from "@/models/Settings";
 import { AuditLog } from "@/models/AuditLog";
 import { Prediction } from "@/models/Prediction";
 import { MatchResult } from "@/models/MatchResult";
@@ -514,6 +514,7 @@ export async function deleteUserCascadeAction(targetUserId: string, confirmText:
   if (settings.bountyHolderUserId && String(settings.bountyHolderUserId) === String(uid)) {
     settings.bountyHolderUserId = undefined;
     await settings.save();
+    invalidateSettingsCache();
   }
 
   // Finally delete the user
@@ -587,6 +588,7 @@ export async function setBountyAction(userId: string | null) {
   const s = await getSettings();
   s.bountyHolderUserId = userId ? (userId as unknown as typeof s.bountyHolderUserId) : undefined;
   await s.save();
+  invalidateSettingsCache();
   await AuditLog.create({ actorId: me._id, action: "bounty.set", meta: { userId } });
   revalidatePath("/leaderboard");
 }
@@ -595,6 +597,7 @@ export async function setAnnouncementAction(text: string) {
   await requireRole("superadmin");
   await connectDB();
   await Settings.updateOne({}, { announcement: text }, { upsert: true });
+  invalidateSettingsCache();
   revalidatePath("/");
   revalidatePath("/dashboard");
 }
@@ -687,6 +690,7 @@ export async function updateBonusSettingsAction(payload: unknown) {
     },
     { upsert: true }
   );
+  invalidateSettingsCache();
 
   await AuditLog.create({
     actorId: me._id,
@@ -905,6 +909,7 @@ export async function updateMy11LiveRefreshAction(seconds: number) {
   const value = Math.max(5, Math.min(600, Math.round(Number(seconds) || 30)));
   await connectDB();
   await Settings.updateOne({}, { $set: { my11LiveRefreshSec: value } }, { upsert: true });
+  invalidateSettingsCache();
   revalidatePath("/admin");
   revalidatePath("/contests");
   return { ok: true as const, value };

@@ -7,7 +7,7 @@
  */
 
 import { connectDB } from "@/lib/db";
-import { getSettings, Settings } from "@/models/Settings";
+import { getSettings, Settings, invalidateSettingsCache } from "@/models/Settings";
 
 const BASE = "https://www.my11circle.com";
 
@@ -521,6 +521,7 @@ export async function saveSessionCookie(cookieHeader: string, ttlDays = 30): Pro
     { $set: { my11sessionCookie: trimmed, my11cookieExpiresAt: expiresAt } },
     { upsert: true }
   );
+  invalidateSettingsCache();
 }
 
 export async function getSessionCookieMeta(): Promise<{

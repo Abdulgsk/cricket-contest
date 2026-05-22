@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { connectDB } from "@/lib/db";
@@ -52,6 +53,13 @@ export async function getSession(): Promise<SessionPayload | null> {
  * lives in `permissionBitmap`.
  */
 export async function getCurrentUser(): Promise<IUser | null> {
+  return _getCurrentUserCached();
+}
+
+// Per-request memoized variant. React.cache dedupes calls within a single
+// server render, so `requireUser()` / `requireAdminAccess()` / layouts that
+// each call `getCurrentUser()` only hit Mongo once.
+const _getCurrentUserCached = cache(async (): Promise<IUser | null> => {
   const s = await getSession();
   if (!s) return null;
   await connectDB();
@@ -76,7 +84,7 @@ export async function getCurrentUser(): Promise<IUser | null> {
   u.permissionBitmap = mask;
   u.enabledFeatures = bitmapToKeys(mask);
   return u;
-}
+});
 
 export async function setSessionCookie(payload: SessionPayload) {
   const store = await cookies();
