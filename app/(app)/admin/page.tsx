@@ -21,6 +21,7 @@ import { autoUpdateMatchStatuses } from "@/services/match-status";
 import { getSettings } from "@/models/Settings";
 import { getLatestFacts } from "@/services/facts";
 import { BONUSES } from "@/lib/constants";
+import type { FeatureKey } from "@/lib/features";
 
 export default async function AdminHome() {
   const me = await requireAdminAccess();
@@ -337,95 +338,219 @@ export default async function AdminHome() {
   );
 
   // For users with feature-only access (no admin/superadmin role), render a
-  // personalized landing that lists only the tools they were granted — so they
-  // never see an empty Overview / Operations dashboard meant for admins.
-  const yourTools: Array<{ key: string; label: string; description: string; href: string; cta: string }> = [];
-  if (canSeeMatches) {
-    const opens: string[] = [];
-    if (canManageResults) opens.push("enter and edit match results");
-    if (userHasFeature(me, "matches.manage")) opens.push("manage fixtures and modes");
-    if (userHasFeature(me, "match.lock.extend")) opens.push("extend prediction lock windows");
-    yourTools.push({
-      key: "matches",
-      label: "Matches",
-      description: opens.length
-        ? `You can ${opens.join(", ")}.`
-        : "Open the match operations page.",
-      href: "/admin/matches",
-      cta: "Open matches",
-    });
-  }
-  if (canApproveMy11NameChange) {
-    yourTools.push({
-      key: "users",
-      label: "Users",
-      description: "Approve My11 name changes and review accounts.",
-      href: "/admin/users",
-      cta: "Open users",
-    });
-  }
-  if (me.role === "superadmin" || canApproveMy11NameChange) {
-    yourTools.push({
-      key: "audit",
-      label: "Audit log",
-      description: "Review who did what across the league.",
-      href: "/admin/audit-logs",
-      cta: "Open audit log",
-    });
-  }
-  if (canViewBugs) {
-    yourTools.push({
-      key: "bugs",
-      label: "Bug reports",
-      description:
-        openBugCount > 0
-          ? `${openBugCount} open bug${openBugCount === 1 ? "" : "s"} from users.`
-          : "User-submitted bug reports.",
-      href: "/admin#bugs",
-      cta: "Open bugs tab",
-    });
-  }
+  // dedicated workspace instead of cramming a tabbed dashboard into a tabbed
+  // shell. This is the ERP-style landing they see when they hit /admin.
+  if (!isAdminRole) {
+    type Capability = { key: FeatureKey; label: string };
+    const FEATURE_LABEL: Record<string, string> = {
+      "matches.manage": "Fixtures & modes",
+      "results.manage": "Match results",
+      "match.lock.extend": "Lock extensions",
+      "users.manage": "My11 name approvals",
+      "users.roles.assign": "Role assignment",
+      "users.delete": "User removal",
+      "rivalry.withdraw.approve": "Rivalry withdrawals",
+      "audit.view": "Audit log",
+      "automation.run": "Automations",
+      "facts.regenerate": "Storyline regeneration",
+      "bugs.view": "Bug reports",
+      "bugs.manage": "Bug triage",
+      "bonus.manage": "Bonus rules",
+      "civilwar.points.manage": "Civil War scoring",
+    };
+    const capabilities: Capability[] = ((me.enabledFeatures ?? []) as FeatureKey[])
+      .filter((k) => FEATURE_LABEL[k])
+      .map((k) => ({ key: k, label: FEATURE_LABEL[k] }));
 
-  const yourToolsTab = (
-    <div className="space-y-4">
-      <Card className="border-border/70 bg-gradient-to-br from-primary/8 via-card to-card">
-        <h2 className="text-base font-semibold">Your tools</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Only the actions you&apos;ve been given access to are listed below. Ask an admin for more if you need them.
-        </p>
-      </Card>
-      {yourTools.length === 0 ? (
-        <Card className="border-border/70">
-          <div className="text-sm text-muted-foreground">
-            You have admin access but no specific tools have been enabled yet.
-            Ask a superadmin to assign you features in <span className="font-medium text-foreground">Users → Permissions</span>.
-          </div>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {yourTools.map((t) => (
-            <Card key={t.key} className="border-border/70 flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="font-semibold text-sm">{t.label}</h3>
+    type Workspace = {
+      key: string;
+      title: string;
+      subtitle: string;
+      href: string;
+      stat?: { value: number | string; label: string; tone?: "warning" | "default" };
+      actions: { label: string; href: string; primary?: boolean }[];
+    };
+    const workspaces: Workspace[] = [];
+    if (canSeeMatches) {
+      const actions = [{ label: "Open matches", href: "/admin/matches", primary: true }];
+      workspaces.push({
+        key: "matches",
+        title: "Matches",
+        subtitle: canManageResults
+          ? "Enter results, manage fixtures, adjust lock windows."
+          : "Manage fixtures and prediction windows.",
+        href: "/admin/matches",
+        stat: canManageResults
+          ? { value: pending, label: "pending results", tone: pending > 0 ? "warning" : "default" }
+          : { value: upcoming, label: "upcoming fixtures" },
+        actions,
+      });
+    }
+    if (canApproveRivalryWithdrawals || canApproveMy11NameChange) {
+      const total = withdrawalRows.length + my11NameRows.length;
+      workspaces.push({
+        key: "approvals",
+        title: "Approvals queue",
+        subtitle:
+          canApproveRivalryWithdrawals && canApproveMy11NameChange
+            ? "Review rivalry withdrawals and My11 name change requests."
+            : canApproveRivalryWithdrawals
+              ? "Review rivalry withdrawal requests."
+              : "Review My11 name change requests.",
+        href: "/admin",
+        stat: { value: total, label: "awaiting review", tone: total > 0 ? "warning" : "default" },
+        actions: [{ label: "Review requests", href: "/admin#approvals", primary: true }],
+      });
+    }
+    if (canViewBugs) {
+      workspaces.push({
+        key: "bugs",
+        title: "Bug reports",
+        subtitle: canManageBugs
+          ? "Triage user-submitted reports, assign owners, resolve issues."
+          : "User-submitted bug reports for visibility.",
+        href: "/admin#bugs",
+        stat: { value: openBugCount, label: "open", tone: openBugCount > 0 ? "warning" : "default" },
+        actions: [{ label: "Open queue", href: "/admin#bugs", primary: true }],
+      });
+    }
+    if (userHasFeature(me, "audit.view")) {
+      workspaces.push({
+        key: "audit",
+        title: "Audit log",
+        subtitle: "Full history of admin actions across the league.",
+        href: "/admin/audit-logs",
+        actions: [{ label: "Open audit log", href: "/admin/audit-logs", primary: true }],
+      });
+    }
+
+    const nonAdminTabs = [
+      {
+        id: "workspace",
+        label: "Workspace",
+        content: (
+          <div className="space-y-4">
+            {workspaces.length === 0 ? (
+              <Card className="border-border/70">
+                <h2 className="font-semibold text-sm">No tools enabled yet</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  You have admin access but no specific permissions have been granted.
+                  Ask a superadmin to enable features for your account.
+                </p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {workspaces.map((w) => (
+                  <Card key={w.key} className="border-border/70 flex flex-col">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold truncate">{w.title}</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{w.subtitle}</p>
+                      </div>
+                      {w.stat && (
+                        <div className="text-right shrink-0">
+                          <div
+                            className={
+                              "text-2xl font-bold leading-none " +
+                              (w.stat.tone === "warning" ? "text-warning" : "text-foreground")
+                            }
+                          >
+                            {w.stat.value}
+                          </div>
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">
+                            {w.stat.label}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-border/40">
+                      {w.actions.map((a) => (
+                        <Link
+                          key={a.href + a.label}
+                          href={a.href}
+                          className={
+                            "inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold transition " +
+                            (a.primary
+                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                              : "border border-border/60 text-foreground hover:bg-muted/40")
+                          }
+                        >
+                          {a.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </Card>
+                ))}
               </div>
-              <p className="text-xs text-muted-foreground flex-1">{t.description}</p>
-              <Link
-                href={t.href}
-                className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-3 py-2 text-xs font-semibold w-fit"
-              >
-                {t.cta} →
-              </Link>
+            )}
+
+            <Card className="border-border/70">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold">Permissions</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Features granted to {me.username}.
+                  </p>
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  {capabilities.length} permission{capabilities.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {capabilities.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {capabilities.map((c) => (
+                    <span
+                      key={c.key}
+                      className="inline-flex items-center rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-[11px] font-medium text-foreground"
+                    >
+                      {c.label}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-3">
+                  No permissions assigned.
+                </p>
+              )}
             </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+          </div>
+        ),
+      },
+      ...(canApproveRivalryWithdrawals || canApproveMy11NameChange
+        ? [
+            {
+              id: "approvals",
+              label: "Approvals",
+              badge: withdrawalRows.length + my11NameRows.length,
+              content: requestsTab,
+            },
+          ]
+        : []),
+      ...(canViewBugs
+        ? [
+            {
+              id: "bugs",
+              label: "Bug reports",
+              badge: openBugCount,
+              content: (
+                <BugReportsAdmin
+                  initial={bugRows}
+                  canManage={canManageBugs}
+                  assignees={bugAssignees}
+                />
+              ),
+            },
+          ]
+        : []),
+    ];
+
+    return <AdminOverviewTabs tabs={nonAdminTabs} />;
+  }
 
   return (
     <AdminOverviewTabs
       tabs={[
-        ...(isAdminRole ? [{ id: "dashboard", label: "Overview", content: dashboardTab }] : [{ id: "tools-landing", label: "Your tools", content: yourToolsTab }]),
+        { id: "dashboard", label: "Overview", content: dashboardTab },
         ...(canApproveRivalryWithdrawals || canApproveMy11NameChange
           ? [
               {
