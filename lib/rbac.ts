@@ -18,16 +18,15 @@ export async function requireRole(...roles: Role[]) {
 /**
  * Allows access to the admin console for:
  *  - superadmin (legacy full access)
- *  - any user (any role) that has at least one feature flag granted to them,
- *    either directly or via a custom role.
- *
- * Note: the legacy "admin" system role no longer grants implicit access — it
- * must be paired with explicit features or a custom role.
+ *  - any user with at least one feature flag granted directly OR via a custom role
+ *  - any user with a `customRoleId` assigned (so they reach an Overview page
+ *    explaining "no features yet" instead of being silently redirected away)
  */
 export async function requireAdminAccess() {
   const u = await requireUser();
   if (u.role === "superadmin") return u;
   if ((u.enabledFeatures ?? []).length > 0) return u;
+  if (u.customRoleId) return u;
   redirect("/");
 }
 
@@ -45,8 +44,9 @@ export async function isAdmin() {
 /**
  * Non-redirecting visibility check used to gate UI sections by feature.
  *  - superadmin: always true
- *  - everyone else (including the legacy "admin" role): must have the feature
- *    listed in `enabledFeatures`
+ *  - everyone else: must have the feature listed in their (already-merged)
+ *    `enabledFeatures`. The legacy "admin" system role no longer implies
+ *    anything on its own — features must be explicit.
  */
 export function userHasFeature(
   user: { role: Role; enabledFeatures?: string[] | null } | null | undefined,
@@ -62,9 +62,15 @@ export function userHasFeature(
  * Non-redirecting check for whether the user can see the Admin tab at all.
  */
 export function userHasAdminAccess(
-  user: { role: Role; enabledFeatures?: string[] | null } | null | undefined,
+  user: {
+    role: Role;
+    enabledFeatures?: string[] | null;
+    customRoleId?: unknown;
+  } | null | undefined,
 ): boolean {
   if (!user) return false;
   if (user.role === "superadmin") return true;
-  return (user.enabledFeatures ?? []).length > 0;
+  if ((user.enabledFeatures ?? []).length > 0) return true;
+  if (user.customRoleId) return true;
+  return false;
 }

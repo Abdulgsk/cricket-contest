@@ -312,14 +312,20 @@ export async function assignUserRoleAction(payload: unknown) {
 /* -------------------------- Custom Roles (CRUD) -------------------------- */
 
 const RoleNameSchema = z.string().trim().min(1).max(40);
-const RoleFeaturesSchema = z.array(z.enum(FEATURE_KEYS)).default([]);
+const RoleFeaturesSchema = z
+  .array(z.enum(FEATURE_KEYS))
+  .min(1, "Pick at least one feature for the role")
+  .default([]);
 
 export async function createRoleAction(payload: unknown) {
   const me = await requireAdminFeature("users.roles.assign");
   const parsed = z
     .object({ name: RoleNameSchema, features: RoleFeaturesSchema })
     .safeParse(payload);
-  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Invalid payload";
+    return { ok: false as const, error: msg };
+  }
 
   await connectDB();
   const name = parsed.data.name;
@@ -345,7 +351,10 @@ export async function updateRoleAction(payload: unknown) {
   const parsed = z
     .object({ id: z.string().min(1), name: RoleNameSchema, features: RoleFeaturesSchema })
     .safeParse(payload);
-  if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Invalid payload";
+    return { ok: false as const, error: msg };
+  }
 
   await connectDB();
   if (["user", "admin", "superadmin"].includes(parsed.data.name.toLowerCase())) {
