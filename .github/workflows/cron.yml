@@ -1,7 +1,7 @@
 name: Scheduled cron pings
 
 # Free replacement for Vercel Pro crons. Hits our protected cron endpoints
-# every 5 minutes so match reminders + contest auto-mapping work on Hobby.
+# every 5 minutes so match reminders fire on Hobby.
 #
 # Setup once:
 #   1. In repo Settings -> Secrets and variables -> Actions, add:
@@ -11,6 +11,10 @@ name: Scheduled cron pings
 #
 # Note: GitHub's scheduler is best-effort; ticks can drift a few minutes
 # under load. Good enough for 30/20/10-min reminders.
+#
+# Contest auto-mapping is NOT cron-driven — it runs lazily inside
+# autoUpdateMatchStatuses() on every protected page render, same pattern
+# as the upcoming→live match status flip.
 
 on:
   schedule:
@@ -31,9 +35,3 @@ jobs:
           curl -sS -m 60 -o /dev/null -w "reminders: %{http_code}\n" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.APP_BASE_URL }}/api/cron/match-reminders"
-
-      - name: Contest auto-map
-        run: |
-          curl -sS -m 60 -o /dev/null -w "auto-map:  %{http_code}\n" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_BASE_URL }}/api/cron/contest-auto-map"
