@@ -3,6 +3,7 @@ import { Badge, Card } from "@/components/ui/card";
 import { ProfileForms } from "@/components/profile-forms";
 import { getPointsBreakdown } from "@/services/points-breakdown";
 import { PointsBreakdownCard } from "@/components/points-breakdown-card";
+import { LogoutButton } from "@/components/logout-button";
 
 export default async function ProfilePage() {
   const me = await requireUser();
@@ -52,18 +53,22 @@ export default async function ProfilePage() {
         }}
       />
 
-      <Card>
-        <p className="text-sm text-muted-foreground">
-          Your charts and results analytics have moved to the Analytics tab.
-        </p>
-      </Card>
-
       <PointsBreakdownCard
         breakdown={breakdown}
         title="Your points, source by source"
         subtitle="A full audit of where every point on your card came from."
         compact
       />
+
+      <Card className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold">Sign out</h2>
+          <p className="text-xs text-muted-foreground">
+            End your session on this device.
+          </p>
+        </div>
+        <LogoutButton />
+      </Card>
     </div>
   );
 }

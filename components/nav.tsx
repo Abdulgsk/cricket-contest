@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";
-import { LogoutButton } from "@/components/logout-button";
 import { BugReportButton } from "@/components/bug-report-button";
 
 const NAV = [
@@ -123,9 +122,6 @@ export function Nav({
         <div className="pt-2">
           <BugReportButton />
         </div>
-        <div className="pt-1">
-          <LogoutButton />
-        </div>
       </aside>
 
       {/* Mobile hamburger button - top left, high z-index */}
@@ -158,26 +154,29 @@ export function Nav({
       {/* Mobile drawer - only render when open */}
       {open && (
         <aside
-          className="md:hidden fixed top-0 left-0 z-50 h-dvh w-56 flex flex-col p-4 gap-3 border-r border-border bg-card animate-in slide-in-from-left duration-200 overflow-y-auto pb-[max(env(safe-area-inset-bottom),16px)]"
+          className="md:hidden fixed top-0 left-0 z-50 h-dvh w-56 flex flex-col border-r border-border bg-card animate-in slide-in-from-left duration-200"
           role="dialog"
           aria-modal="true"
           aria-label="Navigation"
         >
-          <button
-            type="button"
-            aria-label="Close menu"
-            onClick={() => setOpen(false)}
-            className="p-2 rounded-lg hover:bg-muted w-fit"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          {renderLinks(() => setOpen(false))}
-          <div className="mt-auto pt-4 flex flex-col gap-2 border-t border-border/60">
+          <div className="p-4 pb-2 shrink-0">
+            <button
+              type="button"
+              aria-label="Close menu"
+              onClick={() => setOpen(false)}
+              className="p-2 rounded-lg hover:bg-muted w-fit"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          </div>
+          <nav className="flex-1 overflow-y-auto px-4 pb-3 flex flex-col gap-1">
+            {renderLinks(() => setOpen(false))}
+          </nav>
+          <div className="shrink-0 border-t border-border/60 bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),12px)] flex flex-col gap-2">
             <ThemeToggle />
             <BugReportButton />
-            <LogoutButton />
           </div>
         </aside>
       )}

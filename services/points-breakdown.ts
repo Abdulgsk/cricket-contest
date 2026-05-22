@@ -6,6 +6,7 @@
 import { connectDB } from "@/lib/db";
 import { MatchResult } from "@/models/MatchResult";
 import { Prediction } from "@/models/Prediction";
+import { CustomPoolPrediction } from "@/models/CustomPoolPrediction";
 import { loadCivilWarBreakdowns } from "@/lib/civil-war-breakdown";
 import { BONUSES, PENALTIES, PREDICTION_POINTS } from "@/lib/constants";
 
@@ -19,7 +20,7 @@ export type PointsBucket = {
 
 export type PointsBreakdown = {
   groups: {
-    key: "league" | "bonus" | "civil_war" | "prediction" | "penalty";
+    key: "league" | "bonus" | "civil_war" | "prediction" | "custom_pool" | "penalty";
     label: string;
     total: number;
     buckets: PointsBucket[];
@@ -29,6 +30,7 @@ export type PointsBreakdown = {
     prediction: number;
     bonus: number;
     civilWar: number;
+    customPool: number;
     penalty: number;
     grand: number;
   };
@@ -64,9 +66,10 @@ const PENALTY_LABELS: Record<string, { label: string; hint?: string }> = {
 
 export async function getPointsBreakdown(userId: string): Promise<PointsBreakdown> {
   await connectDB();
-  const [results, predictions] = await Promise.all([
+  const [results, predictions, poolPicks] = await Promise.all([
     MatchResult.find({ userId }).lean(),
     Prediction.find({ userId, scored: true }).lean(),
+    CustomPoolPrediction.find({ userId, scored: true }).lean(),
   ]);
 
   const matchIds = results.map((r) => String(r.matchId));
@@ -154,6 +157,18 @@ export async function getPointsBreakdown(userId: string): Promise<PointsBreakdow
     if (p.allThreeBonus) {
       predAllThree.points += PREDICTION_POINTS.ALL_THREE_BONUS;
       predAllThree.count++;
+    }
+  }
+
+  // ---- Custom pools (admin-defined per-match side bets) ------------------
+  let poolCorrect = { points: 0, count: 0 };
+  let poolWrong = 0;
+  for (const p of poolPicks) {
+    if (p.correct && p.pointsAwarded > 0) {
+      poolCorrect.points += p.pointsAwarded;
+      poolCorrect.count += 1;
+    } else if (p.correct === false) {
+      poolWrong += 1;
     }
   }
 
@@ -271,12 +286,25 @@ export async function getPointsBreakdown(userId: string): Promise<PointsBreakdow
     .sort((a, b) => a.points - b.points);
   const penaltyTotal = penaltyBuckets.reduce((s, b) => s + b.points, 0);
 
+  const customPoolBuckets: PointsBucket[] = [];
+  if (poolCorrect.count > 0) {
+    customPoolBuckets.push({
+      key: "pool_correct",
+      label: "Correct side-bets",
+      hint: poolWrong > 0 ? `${poolWrong} wrong pick${poolWrong === 1 ? "" : "s"}` : "Per-match admin pools",
+      points: poolCorrect.points,
+      count: poolCorrect.count,
+    });
+  }
+  const customPoolTotal = customPoolBuckets.reduce((s, b) => s + b.points, 0);
+
   return {
     groups: [
       { key: "league", label: "League core", total: leagueTotal, buckets: leagueBuckets },
       { key: "bonus", label: "Bonuses", total: bonusTotal, buckets: bonusBuckets },
       { key: "civil_war", label: "Civil War", total: civilWarTotal, buckets: civilWarBuckets },
       { key: "prediction", label: "Predictions", total: predictionTotal, buckets: predictionBuckets },
+      { key: "custom_pool", label: "Custom pools", total: customPoolTotal, buckets: customPoolBuckets },
       { key: "penalty", label: "Penalties", total: penaltyTotal, buckets: penaltyBuckets },
     ],
     totals: {
@@ -284,8 +312,9 @@ export async function getPointsBreakdown(userId: string): Promise<PointsBreakdow
       prediction: predictionTotal,
       bonus: bonusTotal,
       civilWar: civilWarTotal,
+      customPool: customPoolTotal,
       penalty: penaltyTotal,
-      grand: leagueTotal + bonusTotal + civilWarTotal + predictionTotal + penaltyTotal,
+      grand: leagueTotal + bonusTotal + civilWarTotal + predictionTotal + customPoolTotal + penaltyTotal,
     },
     meta: { matchesPlayed, matchesMissed },
   };

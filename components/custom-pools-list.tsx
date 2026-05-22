@@ -93,6 +93,28 @@ function PoolCard({ pool, canPredict }: { pool: CustomPoolView; canPredict: bool
         </div>
       )}
 
+      {/* Per-user result once scored */}
+      {pool.scored && pool.myChoice && (
+        <div
+          className={`mt-3 rounded-lg px-3 py-2 text-xs font-medium ${
+            pool.myChoice === pool.correctOption
+              ? "bg-success/10 text-success"
+              : "bg-danger/10 text-danger"
+          }`}
+        >
+          {pool.myChoice === pool.correctOption ? (
+            <>✓ You picked {pool.myChoice} · +{pool.pointsValue} pts added to your total</>
+          ) : (
+            <>✗ You picked {pool.myChoice} · correct answer was {pool.correctOption ?? "—"}</>
+          )}
+        </div>
+      )}
+      {pool.scored && !pool.myChoice && (
+        <div className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          You did not lock in a pick · correct answer was {pool.correctOption ?? "—"}
+        </div>
+      )}
+
       {/* Aggregate split — always visible */}
       <div className="mt-3 space-y-1.5">
         {pool.split.map((s) => (
