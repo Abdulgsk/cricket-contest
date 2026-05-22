@@ -21,7 +21,7 @@ import { processMatchResults } from "@/services/scoring";
 import { adminResetPrediction } from "@/services/prediction-engine";
 import { syncIplMatches, refreshSquads, refreshMatchPlayers } from "@/services/ipl-sync";
 import { scoreCustomPools } from "@/actions/custom-pools";
-import { requireAdminFeature, requireRole } from "@/lib/rbac";
+import { requireAdminFeature, requireRole, requireUser } from "@/lib/rbac";
 import { env } from "@/lib/env";
 import { normalizeMy11circleName } from "@/lib/my11circle";
 import { fetchLeaderboardFromContestUrl } from "@/lib/my11-api";
@@ -665,7 +665,14 @@ export async function setUserFeaturesAction(payload: unknown) {
 }
 
 export async function checkMy11SessionAction() {
-  await requireRole("superadmin");
+  // This is polled from the result-entry form on mount. The my11 cookie /
+  // login probe is superadmin-only, but non-superadmin admins (e.g. users
+  // with `results.manage`) shouldn't be redirected away from the page just
+  // for opening it — return a benign "no session" payload instead.
+  const me = await requireUser();
+  if (me.role !== "superadmin") {
+    return { ok: true as const, hasCookie: false, loggedIn: false, expiresAt: null };
+  }
   try {
     const { checkLogin, getSessionCookieMeta } = await import("@/lib/my11-api");
     const meta = await getSessionCookieMeta();
