@@ -72,11 +72,18 @@ async function notifyBugResolved(opts: {
   });
 }
 
+const DataUrlImage = z
+  .string()
+  .regex(/^data:image\/(png|jpe?g|webp|gif);base64,/i, "Invalid image")
+  // ~900KB worst-case data URL ≈ ~670KB raw; we ask the client to keep them small.
+  .max(900_000, "Image too large");
+
 const SubmitSchema = z.object({
   title: z.string().trim().min(3).max(140),
   description: z.string().trim().min(5).max(4000),
   severity: z.enum(["low", "medium", "high"]).default("medium"),
   pageUrl: z.string().trim().max(500).optional().or(z.literal("")),
+  screenshots: z.array(DataUrlImage).max(3).optional().default([]),
 });
 
 export async function submitBugReportAction(payload: unknown) {
@@ -99,6 +106,7 @@ export async function submitBugReportAction(payload: unknown) {
     pageUrl: parsed.data.pageUrl?.trim() || null,
     userAgent,
     status: "open",
+    screenshots: parsed.data.screenshots ?? [],
   });
 
   await recordAudit({

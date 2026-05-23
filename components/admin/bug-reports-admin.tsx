@@ -65,6 +65,7 @@ export type BugRow = {
   submission: BugSubmission | null;
   needsAdminReview: boolean;
   activity: ActivityEntry[];
+  screenshots: string[];
   createdAt: string;
 };
 
@@ -584,6 +585,25 @@ function BugCard({
             </button>
           )}
         </div>
+
+        {/* Screenshots */}
+        {row.screenshots && row.screenshots.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {row.screenshots.map((src, i) => (
+              <a
+                key={i}
+                href={src}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block h-20 w-20 rounded-md border border-border overflow-hidden hover:ring-2 hover:ring-primary/40 transition"
+                title="Open full size"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={`Screenshot ${i + 1}`} className="h-full w-full object-cover" />
+              </a>
+            ))}
+          </div>
+        )}
 
         {/* Assignee submission */}
         {row.submission && <SubmissionPanel sub={row.submission} />}

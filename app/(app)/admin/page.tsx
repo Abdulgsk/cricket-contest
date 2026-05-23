@@ -115,6 +115,7 @@ export default async function AdminHome() {
           text: a.text ?? "",
           meta: (a.meta ?? null) as Record<string, unknown> | null,
         })),
+        screenshots: b.screenshots ?? [],
         createdAt: new Date(b.createdAt).toISOString(),
       }))
     : [];

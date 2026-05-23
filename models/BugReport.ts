@@ -60,6 +60,8 @@ export interface IBugReport {
   needsAdminReview?: boolean;
   /** Conversation log: comments + lifecycle events. */
   activity: IBugActivity[];
+  /** Optional screenshots attached by the reporter (data: URLs, max 3). */
+  screenshots: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -134,6 +136,14 @@ const BugReportSchema = new Schema<IBugReport>(
     submission: { type: BugSubmissionSchema, default: null },
     needsAdminReview: { type: Boolean, default: false, index: true },
     activity: { type: [BugActivitySchema], default: [] },
+    screenshots: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (arr: string[]) => Array.isArray(arr) && arr.length <= 3,
+        message: "Up to 3 screenshots allowed",
+      },
+    },
   },
   { timestamps: true }
 );

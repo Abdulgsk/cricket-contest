@@ -207,6 +207,22 @@ export default async function MyBugsPage() {
               <div className="text-sm whitespace-pre-wrap text-foreground/90">
                 {b.description}
               </div>
+              {b.screenshots && b.screenshots.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {b.screenshots.map((src: string, i: number) => (
+                    <a
+                      key={i}
+                      href={src}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block h-20 w-20 rounded-md border border-border overflow-hidden hover:ring-2 hover:ring-primary/40 transition"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={src} alt={`Screenshot ${i + 1}`} className="h-full w-full object-cover" />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
               {b.adminNotes ? (
                 <div className="rounded-lg border border-border/60 bg-muted/40 p-2.5 text-xs">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">

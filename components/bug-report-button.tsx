@@ -1,12 +1,49 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { submitBugReportAction } from "@/actions/bugs";
 
 type Severity = "low" | "medium" | "high";
+
+const MAX_SHOTS = 3;
+
+/** Downscale + JPEG-compress an image File to a data URL under ~600KB. */
+async function compressImage(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error("Image load failed"));
+    im.src = dataUrl;
+  });
+  const MAX_DIM = 1600;
+  let { width, height } = img;
+  if (width > MAX_DIM || height > MAX_DIM) {
+    const scale = MAX_DIM / Math.max(width, height);
+    width = Math.round(width * scale);
+    height = Math.round(height * scale);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, width, height);
+  // Try progressively lower quality until under threshold.
+  for (const q of [0.82, 0.7, 0.6, 0.5, 0.4]) {
+    const out = canvas.toDataURL("image/jpeg", q);
+    if (out.length <= 700_000) return out;
+  }
+  return canvas.toDataURL("image/jpeg", 0.35);
+}
 
 export function BugReportButton({
   variant = "nav",
@@ -18,6 +55,9 @@ export function BugReportButton({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<Severity>("medium");
+  const [shots, setShots] = useState<string[]>([]);
+  const [compressing, setCompressing] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const [pending, start] = useTransition();
   const pathname = usePathname();
 
@@ -40,6 +80,33 @@ export function BugReportButton({
     setTitle("");
     setDescription("");
     setSeverity("medium");
+    setShots([]);
+  };
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const room = MAX_SHOTS - shots.length;
+    if (room <= 0) {
+      toast.error(`Maximum ${MAX_SHOTS} screenshots.`);
+      return;
+    }
+    const list = Array.from(files).slice(0, room).filter((f) => /^image\//.test(f.type));
+    if (list.length === 0) return;
+    setCompressing(true);
+    try {
+      const out: string[] = [];
+      for (const f of list) {
+        try {
+          out.push(await compressImage(f));
+        } catch {
+          toast.error(`Couldn't read ${f.name}`);
+        }
+      }
+      if (out.length) setShots((prev) => [...prev, ...out]);
+    } finally {
+      setCompressing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
   const submit = () => {
@@ -57,6 +124,7 @@ export function BugReportButton({
         description: description.trim(),
         severity,
         pageUrl: pathname || "",
+        screenshots: shots,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Couldn't submit bug.");
@@ -174,6 +242,53 @@ export function BugReportButton({
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                Screenshots <span className="normal-case text-muted-foreground/70">(optional, up to {MAX_SHOTS})</span>
+              </label>
+              <span className="text-[10px] text-muted-foreground">{shots.length}/{MAX_SHOTS}</span>
+            </div>
+            {shots.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {shots.map((src, i) => (
+                  <div key={i} className="relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={src}
+                      alt={`Screenshot ${i + 1}`}
+                      className="h-16 w-16 object-cover rounded-md border border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShots((prev) => prev.filter((_, j) => j !== i))}
+                      disabled={pending}
+                      aria-label="Remove screenshot"
+                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-foreground text-background text-[11px] leading-5 text-center shadow opacity-90 hover:opacity-100"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={pending || compressing || shots.length >= MAX_SHOTS}
+              className="mt-2 h-9 w-full rounded-lg border border-dashed border-border bg-background/50 text-xs text-muted-foreground hover:bg-muted/40 disabled:opacity-50 transition"
+            >
+              {compressing ? "Compressing…" : shots.length >= MAX_SHOTS ? "Limit reached" : "+ Add screenshot"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => handleFiles(e.target.files)}
+            />
           </div>
         </div>
 
