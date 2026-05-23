@@ -148,6 +148,7 @@ export async function deleteBugReportAction(id: string) {
 const AssignSchema = z.object({
   id: z.string().min(1),
   userId: z.string().min(1).nullable(),
+  adminNotes: z.string().trim().max(2000).optional(),
 });
 
 export async function assignBugReportAction(payload: unknown) {
@@ -159,17 +160,21 @@ export async function assignBugReportAction(payload: unknown) {
   await connectDB();
 
   if (parsed.data.userId === null) {
+    const unset: Record<string, unknown> = {
+      assignedTo: null,
+      assignedToHandle: null,
+      assignedToName: null,
+      assignedAt: null,
+      assignedBy: null,
+    };
+    // Only overwrite notes if the admin actually typed something; an
+    // omitted field leaves the existing note in place.
+    if (parsed.data.adminNotes !== undefined) {
+      unset.adminNotes = parsed.data.adminNotes || null;
+    }
     await BugReport.updateOne(
       { _id: parsed.data.id },
-      {
-        $set: {
-          assignedTo: null,
-          assignedToHandle: null,
-          assignedToName: null,
-          assignedAt: null,
-          assignedBy: null,
-        },
-      },
+      { $set: unset },
     );
     await recordAudit({
       category: "update",
@@ -186,17 +191,19 @@ export async function assignBugReportAction(payload: unknown) {
   const target = await User.findById(parsed.data.userId).select("userId username").lean();
   if (!target) return { ok: false as const, error: "User not found" };
 
+  const set: Record<string, unknown> = {
+    assignedTo: target._id,
+    assignedToHandle: target.userId,
+    assignedToName: target.username,
+    assignedAt: new Date(),
+    assignedBy: me._id,
+  };
+  if (parsed.data.adminNotes !== undefined) {
+    set.adminNotes = parsed.data.adminNotes || null;
+  }
   await BugReport.updateOne(
     { _id: parsed.data.id },
-    {
-      $set: {
-        assignedTo: target._id,
-        assignedToHandle: target.userId,
-        assignedToName: target.username,
-        assignedAt: new Date(),
-        assignedBy: me._id,
-      },
-    },
+    { $set: set },
   );
   // If still "open", promote to in_progress for clarity.
   await BugReport.updateOne(

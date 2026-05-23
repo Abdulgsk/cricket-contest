@@ -438,9 +438,14 @@ function BugCard({
       });
     });
 
-  const assign = (userId: string | null) =>
+  const assign = (userId: string | null, adminNotes?: string) =>
     run("assign", async () => {
-      const res = await assignBugReportAction({ id: row.id, userId });
+      const payload: { id: string; userId: string | null; adminNotes?: string } = {
+        id: row.id,
+        userId,
+      };
+      if (adminNotes !== undefined) payload.adminNotes = adminNotes;
+      const res = await assignBugReportAction(payload);
       if (!res.ok) {
         toast.error(res.error ?? "Failed to assign");
         return;
@@ -450,6 +455,7 @@ function BugCard({
         assignedToId: userId,
         assignedToHandle: picked?.handle ?? null,
         assignedToName: picked?.name ?? null,
+        ...(adminNotes !== undefined ? { adminNotes: adminNotes || null } : {}),
         ...(userId && row.status === "open" ? { status: "in_progress" } : {}),
       });
       setAssignOpen(false);
@@ -569,7 +575,7 @@ function BugCard({
         {/* Quick actions */}
         {canManage && (
           <div className="flex flex-wrap gap-2">
-            {row.submission ? (
+            {row.submission && !isClosed ? (
               <>
                 <Button
                   size="sm"
@@ -693,10 +699,11 @@ function BugCard({
         {assignOpen && canManage && (
           <AssigneePicker
             current={row.assignedToId}
+            currentNotes={row.adminNotes}
             assignees={assignees}
             workload={workload}
             onClose={() => setAssignOpen(false)}
-            onPick={(id) => assign(id)}
+            onSave={(id, notes) => assign(id, notes)}
           />
         )}
       </div>
@@ -813,24 +820,30 @@ function OverridePanel({
 
 function AssigneePicker({
   current,
+  currentNotes,
   assignees,
   workload,
   onClose,
-  onPick,
+  onSave,
 }: {
   current: string | null;
+  currentNotes: string | null;
   assignees: BugAssignee[];
   workload: Map<string, number>;
   onClose: () => void;
-  onPick: (id: string | null) => void;
+  onSave: (id: string | null, adminNotes: string | undefined) => void;
 }) {
   const [q, setQ] = useState("");
   // Staged selection: clicking a row only highlights it. Nothing is sent to
   // the server until the admin clicks "Save". `null` here is ambiguous with
   // "unassign", so we use a sentinel `undefined` to mean "no change yet".
   const [staged, setStaged] = useState<string | null | undefined>(undefined);
+  const [notes, setNotes] = useState(currentNotes ?? "");
   const effective = staged === undefined ? current : staged;
-  const dirty = staged !== undefined && staged !== current;
+  const baseNotes = currentNotes ?? "";
+  const notesDirty = notes !== baseNotes;
+  const assigneeDirty = staged !== undefined && staged !== current;
+  const dirty = assigneeDirty || notesDirty;
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -927,11 +940,24 @@ function AssigneePicker({
           })
         )}
       </ul>
+      <div className="space-y-1 pt-1">
+        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          Private admin note (optional)
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          maxLength={2000}
+          placeholder="e.g. Context for the assignee, repro steps, links…"
+          className="w-full rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs resize-y"
+        />
+      </div>
       <div className="flex items-center justify-between gap-2 pt-1">
         <p className="text-[10px] text-muted-foreground">
           {dirty
-            ? "Unsaved change — click Save to apply."
-            : "Pick someone (or Unassign), then Save."}
+            ? "Unsaved changes — click Save to apply."
+            : "Pick someone (or Unassign) and add a note, then Save."}
         </p>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={onClose}>
@@ -941,7 +967,8 @@ function AssigneePicker({
             size="sm"
             disabled={!dirty}
             onClick={() => {
-              if (staged !== undefined) onPick(staged);
+              const id = staged === undefined ? current : staged;
+              onSave(id, notesDirty ? notes.trim() : undefined);
             }}
           >
             Save
