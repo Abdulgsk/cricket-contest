@@ -20,7 +20,7 @@ export default async function RivalryPage() {
   ]);
 
   const settledRivalries = record.recentRivalries.filter(
-    (r) => r.outcome !== "pending"
+    (r) => r.outcome !== "pending" && r.outcome !== "cancelled"
   );
 
   const rivalryTab = (
