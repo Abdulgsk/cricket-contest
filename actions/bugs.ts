@@ -6,8 +6,32 @@ import { headers } from "next/headers";
 import { connectDB } from "@/lib/db";
 import { BugReport } from "@/models/BugReport";
 import { User } from "@/models/User";
+import { Notification } from "@/models/Notification";
 import { requireUser, requireAdminFeature, assertFeature } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+
+/**
+ * Send a "your bug was fixed" notification to the reporter. Best-effort:
+ * notifications never block the admin's close action.
+ */
+async function notifyBugResolved(opts: {
+  reporterId: unknown;
+  bugId: string;
+  title: string;
+}) {
+  if (!opts.reporterId) return;
+  try {
+    await Notification.create({
+      userId: opts.reporterId as never,
+      kind: "bug",
+      title: "Your bug report was fixed\u00a0\u{1F389}",
+      body: `Thanks for reporting \u201C${opts.title}\u201D \u2014 it\u2019s been resolved. Appreciate you keeping the app sharp!`,
+      link: "/my-bugs",
+    });
+  } catch {
+    // best-effort
+  }
+}
 
 const SubmitSchema = z.object({
   title: z.string().trim().min(3).max(140),
@@ -67,6 +91,10 @@ export async function updateBugReportAction(payload: unknown) {
   const parsed = UpdateSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid payload" };
   await connectDB();
+  const prev = await BugReport.findById(parsed.data.id)
+    .select("status reporterId title")
+    .lean();
+  if (!prev) return { ok: false as const, error: "Bug not found" };
   const isResolved = parsed.data.status === "resolved" || parsed.data.status === "wont_fix";
   await BugReport.updateOne(
     { _id: parsed.data.id },
@@ -79,6 +107,15 @@ export async function updateBugReportAction(payload: unknown) {
       },
     },
   );
+  // Notify only when transitioning into "resolved" (the actual fix);
+  // wont_fix is silent so we don't ping users about declined reports.
+  if (parsed.data.status === "resolved" && prev.status !== "resolved") {
+    await notifyBugResolved({
+      reporterId: prev.reporterId,
+      bugId: parsed.data.id,
+      title: prev.title,
+    });
+  }
   await recordAudit({
     category: "update",
     action: "bug.report.update",
@@ -281,7 +318,9 @@ export async function acceptBugSubmissionAction(id: string) {
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   await connectDB();
-  const bug = await BugReport.findById(id).select("submission status").lean();
+  const bug = await BugReport.findById(id)
+    .select("submission status reporterId title")
+    .lean();
   if (!bug) return { ok: false as const, error: "Bug not found" };
   if (!bug.submission) {
     return { ok: false as const, error: "Nothing to accept — no submission yet." };
@@ -299,6 +338,13 @@ export async function acceptBugSubmissionAction(id: string) {
       },
     },
   );
+  if (closedStatus === "resolved" && bug.status !== "resolved") {
+    await notifyBugResolved({
+      reporterId: bug.reporterId,
+      bugId: id,
+      title: bug.title,
+    });
+  }
   await recordAudit({
     category: "update",
     action: "bug.report.accept",

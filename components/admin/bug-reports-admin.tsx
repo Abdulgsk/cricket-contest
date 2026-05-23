@@ -199,7 +199,25 @@ export function BugReportsAdmin({
   assignees: BugAssignee[];
 }) {
   const [rows, setRows] = useState(initial);
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]["key"]>("review");
+  // Pick the first filter that actually has entries so the list isn't empty
+  // on first open. Order of preference: needs-review → open → in-progress →
+  // closed → all. Falls back to "all" if everything is zero.
+  const initialFilter: (typeof FILTERS)[number]["key"] = useMemo(() => {
+    const needsReview = initial.some((r) => r.needsAdminReview);
+    if (needsReview) return "review";
+    if (initial.some((r) => r.status === "open")) return "open";
+    if (initial.some((r) => r.status === "in_progress")) return "in_progress";
+    if (
+      initial.some(
+        (r) => r.status === "resolved" || r.status === "wont_fix",
+      )
+    )
+      return "closed";
+    return "all";
+    // Only seed once from `initial` — user can change it freely afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["key"]>(initialFilter);
   const [search, setSearch] = useState("");
 
   // Workload per assignee, used to annotate the picker.
@@ -807,6 +825,13 @@ function AssigneePicker({
   onPick: (id: string | null) => void;
 }) {
   const [q, setQ] = useState("");
+  // Staged selection: clicking a row only highlights it. Nothing is sent to
+  // the server until the admin clicks "Save". `null` here is ambiguous with
+  // "unassign", so we use a sentinel `undefined` to mean "no change yet".
+  const [staged, setStaged] = useState<string | null | undefined>(undefined);
+  const effective = staged === undefined ? current : staged;
+  const dirty = staged !== undefined && staged !== current;
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     if (!term) return assignees;
@@ -843,12 +868,16 @@ function AssigneePicker({
         />
       </div>
       <ul className="max-h-64 overflow-y-auto divide-y divide-border/40 rounded-lg border border-border/40">
-        {current && (
+        {(current || staged) && (
           <li>
             <button
               type="button"
-              onClick={() => onPick(null)}
-              className="w-full text-left px-3 py-2 text-xs text-rose-300 hover:bg-muted/30 inline-flex items-center gap-2"
+              onClick={() => setStaged(null)}
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/30 inline-flex items-center gap-2 ${
+                effective === null
+                  ? "bg-rose-500/10 text-rose-200"
+                  : "text-rose-300"
+              }`}
             >
               <XCircle className="h-3.5 w-3.5" />
               Unassign
@@ -859,13 +888,13 @@ function AssigneePicker({
           <li className="px-3 py-3 text-xs text-muted-foreground">No matches.</li>
         ) : (
           filtered.map((a) => {
-            const active = current === a.id;
+            const active = effective === a.id;
             const load = workload.get(a.id) ?? 0;
             return (
               <li key={a.id}>
                 <button
                   type="button"
-                  onClick={() => onPick(a.id)}
+                  onClick={() => setStaged(a.id)}
                   className={`w-full text-left px-3 py-2 flex items-center gap-2 ${
                     active ? "bg-primary/10" : "hover:bg-muted/30"
                   }`}
@@ -898,6 +927,27 @@ function AssigneePicker({
           })
         )}
       </ul>
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <p className="text-[10px] text-muted-foreground">
+          {dirty
+            ? "Unsaved change — click Save to apply."
+            : "Pick someone (or Unassign), then Save."}
+        </p>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={!dirty}
+            onClick={() => {
+              if (staged !== undefined) onPick(staged);
+            }}
+          >
+            Save
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

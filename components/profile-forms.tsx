@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { changePasswordAction, logoutAction, updateProfileAction } from "@/actions/auth";
+import { changePasswordAction, updateProfileAction } from "@/actions/auth";
 import { AvatarUploader } from "@/components/avatar-uploader";
 import {
   My11NameChangeDialog,
@@ -149,9 +149,6 @@ export function ProfileForms({
           <Button loading={pwPending}>{pwPending ? "Updating…" : "Update password"}</Button>
         </form>
 
-        <form action={logoutAction} className="mt-6">
-          <Button type="submit" variant="outline" className="w-full">Log out</Button>
-        </form>
       </Card>
 
       {my11DialogOpen && (

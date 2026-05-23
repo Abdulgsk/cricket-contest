@@ -7,6 +7,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { updateMatchLockExtensionsAction } from "@/actions/admin";
 import { getModuleLockDeadline } from "@/lib/match-locks";
+import { formatDate } from "@/lib/utils";
 
 export function MatchLockExtensionsPanel({
   matchId,
@@ -97,8 +98,7 @@ export function MatchLockExtensionsPanel({
     submit(minutes, minutes);
   };
 
-  const fmt = (d: Date) =>
-    d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const fmt = (d: Date) => formatDate(d);
 
   return (
     <Card>
