@@ -1,14 +1,59 @@
 "use server";
 
 import { z } from "zod";
+import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { connectDB } from "@/lib/db";
-import { BugReport } from "@/models/BugReport";
+import { BugReport, type BugActivityKind } from "@/models/BugReport";
 import { User } from "@/models/User";
 import { Notification } from "@/models/Notification";
 import { requireUser, requireAdminFeature, assertFeature } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+
+type Actor = {
+  _id: mongoose.Types.ObjectId | string;
+  userId: string;
+  username: string;
+};
+
+function makeActivity(
+  actor: Actor,
+  kind: BugActivityKind,
+  text?: string,
+  meta?: Record<string, unknown>,
+) {
+  return {
+    at: new Date(),
+    byId: actor._id,
+    byName: actor.username,
+    byHandle: actor.userId,
+    kind,
+    text: text ?? "",
+    meta: meta ?? null,
+  };
+}
+
+/** Best-effort notification helper. */
+async function notify(opts: {
+  userId: unknown;
+  title: string;
+  body: string;
+  link?: string;
+}) {
+  if (!opts.userId) return;
+  try {
+    await Notification.create({
+      userId: opts.userId as never,
+      kind: "bug",
+      title: opts.title,
+      body: opts.body,
+      link: opts.link ?? "/my-bugs",
+    });
+  } catch {
+    // best-effort
+  }
+}
 
 /**
  * Send a "your bug was fixed" notification to the reporter. Best-effort:
@@ -19,18 +64,12 @@ async function notifyBugResolved(opts: {
   bugId: string;
   title: string;
 }) {
-  if (!opts.reporterId) return;
-  try {
-    await Notification.create({
-      userId: opts.reporterId as never,
-      kind: "bug",
-      title: "Your bug report was fixed\u00a0\u{1F389}",
-      body: `Thanks for reporting \u201C${opts.title}\u201D \u2014 it\u2019s been resolved. Appreciate you keeping the app sharp!`,
-      link: "/my-bugs",
-    });
-  } catch {
-    // best-effort
-  }
+  await notify({
+    userId: opts.reporterId,
+    title: "Your bug report was fixed\u00a0\u{1F389}",
+    body: `Thanks for reporting \u201C${opts.title}\u201D \u2014 it\u2019s been resolved. Appreciate you keeping the app sharp!`,
+    link: "/my-bugs",
+  });
 }
 
 const SubmitSchema = z.object({
@@ -174,7 +213,14 @@ export async function assignBugReportAction(payload: unknown) {
     }
     await BugReport.updateOne(
       { _id: parsed.data.id },
-      { $set: unset },
+      {
+        $set: unset,
+        $push: {
+          activity: makeActivity(me, "assignment_change", parsed.data.adminNotes ?? "", {
+            unassigned: true,
+          }),
+        },
+      },
     );
     await recordAudit({
       category: "update",
@@ -203,13 +249,30 @@ export async function assignBugReportAction(payload: unknown) {
   }
   await BugReport.updateOne(
     { _id: parsed.data.id },
-    { $set: set },
+    {
+      $set: set,
+      $push: {
+        activity: makeActivity(me, "assignment_change", parsed.data.adminNotes ?? "", {
+          assigneeHandle: target.userId,
+          assigneeName: target.username,
+        }),
+      },
+    },
   );
   // If still "open", promote to in_progress for clarity.
   await BugReport.updateOne(
     { _id: parsed.data.id, status: "open" },
     { $set: { status: "in_progress" } },
   );
+
+  // Notify the new assignee.
+  await notify({
+    userId: target._id,
+    title: "A bug was assigned to you",
+    body: parsed.data.adminNotes
+      ? `${me.username}: \u201C${parsed.data.adminNotes}\u201D`
+      : `\u201C${(await BugReport.findById(parsed.data.id).select("title").lean())?.title ?? ""}\u201D \u2014 open My queue.`,
+  });
 
   await recordAudit({
     category: "update",
@@ -262,10 +325,7 @@ export async function submitBugResolutionAction(payload: unknown) {
     return { ok: false as const, error: "This bug isn't assigned to you." };
   }
   if (bug.submission) {
-    return {
-      ok: false as const,
-      error: "You already submitted. Wait for the admin to review.",
-    };
+    // Re-submission is allowed (previous one becomes part of the activity log).
   }
   if (bug.status === "resolved" || bug.status === "wont_fix") {
     return { ok: false as const, error: "This bug is already closed." };
@@ -301,6 +361,11 @@ export async function submitBugResolutionAction(payload: unknown) {
         resolutionNote: parsed.data.note,
         resolvedAt: parsed.data.kind === "fixed" ? now : null,
         resolvedBy: parsed.data.kind === "fixed" ? me._id : null,
+      },
+      $push: {
+        activity: makeActivity(me, "submission", parsed.data.note, {
+          kind: parsed.data.kind,
+        }),
       },
     },
   );
@@ -343,6 +408,9 @@ export async function acceptBugSubmissionAction(id: string) {
         resolvedAt: new Date(),
         resolvedBy: me._id,
       },
+      $push: {
+        activity: makeActivity(me, "accept", "", { closedStatus }),
+      },
     },
   );
   if (closedStatus === "resolved" && bug.status !== "resolved") {
@@ -350,6 +418,14 @@ export async function acceptBugSubmissionAction(id: string) {
       reporterId: bug.reporterId,
       bugId: id,
       title: bug.title,
+    });
+  }
+  // Also tell the assignee their work was accepted.
+  if (bug.submission?.submittedById) {
+    await notify({
+      userId: bug.submission.submittedById,
+      title: "Your bug submission was accepted \u2713",
+      body: `\u201C${bug.title}\u201D \u2014 ${me.username} closed it as ${closedStatus === "resolved" ? "fixed" : "won\u2019t fix"}.`,
     });
   }
   await recordAudit({
@@ -406,7 +482,27 @@ export async function reopenBugAction(payload: unknown) {
     update.adminNotes = parsed.data.reason;
   }
 
-  await BugReport.updateOne({ _id: parsed.data.id }, { $set: update });
+  await BugReport.updateOne(
+    { _id: parsed.data.id },
+    {
+      $set: update,
+      $push: {
+        activity: makeActivity(me, "reopen", parsed.data.reason ?? "", {
+          keepAssignee: parsed.data.keepAssignee,
+        }),
+      },
+    },
+  );
+  // Tell the (still-assigned) assignee they're back on the hook.
+  if (parsed.data.keepAssignee && bug.assignedTo) {
+    await notify({
+      userId: bug.assignedTo,
+      title: "A bug was reopened for you",
+      body: parsed.data.reason
+        ? `${me.username}: \u201C${parsed.data.reason}\u201D`
+        : `${me.username} reopened a bug assigned to you. Open My queue.`,
+    });
+  }
   await recordAudit({
     category: "update",
     action: "bug.report.reopen",
@@ -415,6 +511,148 @@ export async function reopenBugAction(payload: unknown) {
     targetId: parsed.data.id,
     meta: { keepAssignee: parsed.data.keepAssignee, reason: parsed.data.reason ?? null },
   });
+  revalidatePath("/admin");
+  revalidatePath("/my-bugs");
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Conversation: comments + request-changes
+// ===========================================================================
+
+const CommentSchema = z.object({
+  id: z.string().trim().min(1),
+  text: z.string().trim().min(1, "Say something.").max(4000),
+});
+
+/**
+ * Anyone with access to the bug (reporter, assignee, manager) can comment.
+ * Notifies the other active participants in the thread (assignee + previous
+ * commenters), but never the reporter unless they're also a participant.
+ */
+export async function addBugCommentAction(payload: unknown) {
+  const me = await requireUser();
+  const parsed = CommentSchema.safeParse(payload);
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Invalid comment.";
+    return { ok: false as const, error: msg };
+  }
+  await connectDB();
+  const bug = await BugReport.findById(parsed.data.id)
+    .select("reporterId assignedTo activity title")
+    .lean();
+  if (!bug) return { ok: false as const, error: "Bug not found." };
+
+  const isReporter = String(bug.reporterId) === String(me._id);
+  const isAssignee = bug.assignedTo && String(bug.assignedTo) === String(me._id);
+  const canManageRes = await assertFeature("bugs.manage");
+  const canManage = canManageRes.ok;
+  if (!isReporter && !isAssignee && !canManage) {
+    return { ok: false as const, error: "You can't comment here." };
+  }
+
+  const entry = makeActivity(me, "comment", parsed.data.text);
+  await BugReport.updateOne(
+    { _id: parsed.data.id },
+    { $push: { activity: entry } },
+  );
+
+  // Notify everyone in the conversation EXCEPT the reporter (per policy).
+  const targets = new Set<string>();
+  if (bug.assignedTo) targets.add(String(bug.assignedTo));
+  for (const a of (bug.activity ?? []) as Array<{ byId?: unknown; kind?: string }>) {
+    if (a.kind === "comment" && a.byId) targets.add(String(a.byId));
+  }
+  targets.delete(String(me._id));
+  targets.delete(String(bug.reporterId)); // reporter is silent until "fixed"
+  await Promise.all(
+    Array.from(targets).map((uid) =>
+      notify({
+        userId: uid,
+        title: `New comment on "${bug.title}"`,
+        body: `${me.username}: ${parsed.data.text.slice(0, 140)}`,
+      }),
+    ),
+  );
+
+  await recordAudit({
+    category: "update",
+    action: "bug.report.comment",
+    actor: me,
+    targetType: "BugReport",
+    targetId: parsed.data.id,
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/my-bugs");
+  return { ok: true as const };
+}
+
+const RequestChangesSchema = z.object({
+  id: z.string().trim().min(1),
+  note: z
+    .string()
+    .trim()
+    .min(3, "Tell the assignee what to change (3+ chars).")
+    .max(4000),
+});
+
+/**
+ * Manager rejects a submission and sends it back to the assignee with a
+ * mandatory note. Submission is cleared; status reverts to in_progress so the
+ * assignee can submit a fresh outcome.
+ */
+export async function requestBugChangesAction(payload: unknown) {
+  const _auth = await assertFeature("bugs.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
+  const parsed = RequestChangesSchema.safeParse(payload);
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Invalid input.";
+    return { ok: false as const, error: msg };
+  }
+  await connectDB();
+  const bug = await BugReport.findById(parsed.data.id)
+    .select("assignedTo title submission")
+    .lean();
+  if (!bug) return { ok: false as const, error: "Bug not found." };
+  if (!bug.submission) {
+    return { ok: false as const, error: "Nothing to request changes on yet." };
+  }
+
+  await BugReport.updateOne(
+    { _id: parsed.data.id },
+    {
+      $set: {
+        submission: null,
+        needsAdminReview: false,
+        status: bug.assignedTo ? "in_progress" : "open",
+        resolutionNote: null,
+        resolvedAt: null,
+        resolvedBy: null,
+      },
+      $push: {
+        activity: makeActivity(me, "request_changes", parsed.data.note),
+      },
+    },
+  );
+
+  if (bug.assignedTo) {
+    await notify({
+      userId: bug.assignedTo,
+      title: `Changes requested on "${bug.title}"`,
+      body: `${me.username}: ${parsed.data.note.slice(0, 200)}`,
+    });
+  }
+
+  await recordAudit({
+    category: "update",
+    action: "bug.report.request_changes",
+    actor: me,
+    targetType: "BugReport",
+    targetId: parsed.data.id,
+  });
+
   revalidatePath("/admin");
   revalidatePath("/my-bugs");
   return { ok: true as const };

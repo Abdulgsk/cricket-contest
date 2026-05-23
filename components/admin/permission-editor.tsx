@@ -34,6 +34,7 @@ const GROUP_BLURB: Record<FeatureGroup, string> = {
   Audit: "Read-only access to history.",
   Tools: "Maintenance and automations.",
   Content: "Narratives and AI-generated content.",
+  Developer: "Dev workspace: bugs, work items, diagnostics.",
 };
 
 export function PermissionEditor({

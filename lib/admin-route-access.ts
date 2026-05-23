@@ -44,11 +44,6 @@ export const ADMIN_ROUTES: readonly AdminRoute[] = [
     anyOf: ["users.roles.assign"],
   },
   {
-    path: "/admin/audit-logs",
-    label: "Audit logs",
-    anyOf: ["audit.view"],
-  },
-  {
     path: "/admin/settings",
     label: "Settings",
     anyOf: [],
@@ -104,14 +99,39 @@ export function getAccessibleAdminRoutes(user: RbacUser): AdminRoute[] {
 }
 
 /**
+ * Features that belong to the standalone Developer Tools area, NOT to the
+ * Admin Console. Granting only these features should not make the user
+ * appear as an admin in the top nav or in `requireAdminAccess`.
+ */
+export const DEVELOPER_FEATURES: readonly FeatureKey[] = [
+  "bugs.view",
+  "bugs.manage",
+  "audit.view",
+  "dev.workitems.view",
+  "dev.workitems.manage",
+  "dev.diagnostics.view",
+] as const;
+
+/**
  * Returns true if the user has access to ANY admin functionality. Used by the
  * top-level nav to decide whether the "Admin" link is visible.
  */
 export function hasAnyAdminRouteAccess(user: RbacUser): boolean {
   if (user.role === "superadmin") return true;
-  if ((user.enabledFeatures ?? []).length > 0) return true;
+  const enabled = (user.enabledFeatures ?? []) as FeatureKey[];
+  const adminFeatures = enabled.filter(
+    (f) => !DEVELOPER_FEATURES.includes(f),
+  );
+  if (adminFeatures.length > 0) return true;
   if (user.customRoleId) return true;
   return false;
+}
+
+/** True if the user can see the standalone Developer Tools page. */
+export function hasDeveloperToolsAccess(user: RbacUser): boolean {
+  if (user.role === "superadmin") return true;
+  const enabled = (user.enabledFeatures ?? []) as FeatureKey[];
+  return DEVELOPER_FEATURES.some((f) => enabled.includes(f));
 }
 
 // ---- Back-compat shims (kept so older imports keep compiling) -----------

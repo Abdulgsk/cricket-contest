@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, AlertOctagon, XCircle, Loader2, Lock } from "lucide-react";
+import { CheckCircle2, AlertOctagon, XCircle, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { submitBugResolutionAction } from "@/actions/bugs";
+import { submitWorkItemResolutionAction } from "@/actions/work-items";
 
-type Kind = "fixed" | "blocked" | "wont_fix";
+type Kind = "done" | "blocked" | "wont_do";
 
 const OPTIONS: {
   kind: Kind;
@@ -17,9 +17,9 @@ const OPTIONS: {
   ring: string;
 }[] = [
   {
-    kind: "fixed",
-    label: "Fixed",
-    hint: "I shipped a fix. Admin will verify and close.",
+    kind: "done",
+    label: "Done",
+    hint: "I finished the work. Manager will verify and close.",
     icon: CheckCircle2,
     tone: "text-emerald-700 dark:text-emerald-300",
     ring: "ring-emerald-500/40 bg-emerald-500/10",
@@ -27,15 +27,15 @@ const OPTIONS: {
   {
     kind: "blocked",
     label: "Blocked",
-    hint: "I hit something I can't get past. Need help / more info.",
+    hint: "I'm stuck. Need help or more info to continue.",
     icon: AlertOctagon,
     tone: "text-amber-700 dark:text-amber-300",
     ring: "ring-amber-500/40 bg-amber-500/10",
   },
   {
-    kind: "wont_fix",
-    label: "Won't fix",
-    hint: "Not a bug, or out of scope. Admin will decide.",
+    kind: "wont_do",
+    label: "Won't do",
+    hint: "Not feasible or out of scope. Manager will decide.",
     icon: XCircle,
     tone: "text-rose-700 dark:text-rose-300",
     ring: "ring-rose-500/40 bg-rose-500/10",
@@ -43,12 +43,12 @@ const OPTIONS: {
 ];
 
 const PLACEHOLDERS: Record<Kind, string> = {
-  fixed: "What did you do? Commit hash, steps taken, things to verify…",
-  blocked: "What are you stuck on? What info or access do you need to continue?",
-  wont_fix: "Why isn't this a bug? Link any earlier discussion or rule that backs you up.",
+  done: "What did you do? Commit hash, steps taken, things to verify…",
+  blocked: "What's blocking you? What info or access do you need?",
+  wont_do: "Why isn't this worth doing? Link any earlier discussion that backs you up.",
 };
 
-export function MyBugResolveForm({ id }: { id: string }) {
+export function MyWorkItemResolveForm({ id }: { id: string }) {
   const [kind, setKind] = useState<Kind | null>(null);
   const [note, setNote] = useState("");
   const [pending, start] = useTransition();
@@ -58,14 +58,10 @@ export function MyBugResolveForm({ id }: { id: string }) {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/5 px-3 py-2.5 text-xs text-emerald-700 dark:text-emerald-300">
         <Lock className="h-4 w-4 shrink-0" />
-        <span>
-          Submitted. The admin will review and close — refresh to see status.
-        </span>
+        <span>Submitted. A manager will review — refresh to see status.</span>
       </div>
     );
   }
-
-  const canSubmit = kind !== null && note.trim().length >= 3 && !pending;
 
   const submit = () => {
     if (!kind) return;
@@ -74,7 +70,7 @@ export function MyBugResolveForm({ id }: { id: string }) {
       return;
     }
     start(async () => {
-      const res = await submitBugResolutionAction({
+      const res = await submitWorkItemResolutionAction({
         id,
         kind,
         note: note.trim(),
@@ -83,7 +79,7 @@ export function MyBugResolveForm({ id }: { id: string }) {
         toast.error(res.error ?? "Failed to submit");
         return;
       }
-      toast.success("Submitted — admin will review");
+      toast.success("Submitted — manager will review");
       setDone(true);
     });
   };
@@ -120,39 +116,22 @@ export function MyBugResolveForm({ id }: { id: string }) {
           );
         })}
       </div>
-
       {kind && (
-        <div className="space-y-2">
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground">
-            Your note
-          </label>
+        <>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
-            placeholder={PLACEHOLDERS[kind]}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/40"
             maxLength={4000}
-            disabled={pending}
-            autoFocus
+            placeholder={PLACEHOLDERS[kind]}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y"
           />
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-[11px] text-muted-foreground">
-              You can&apos;t edit this after submitting. The admin will accept
-              or reopen.
-            </p>
-            <Button size="sm" onClick={submit} disabled={!canSubmit}>
-              {pending ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                  Submitting…
-                </>
-              ) : (
-                "Submit"
-              )}
+          <div className="flex justify-end">
+            <Button size="sm" onClick={submit} disabled={pending}>
+              {pending ? "Submitting…" : "Submit"}
             </Button>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

@@ -4,6 +4,26 @@ export type BugStatus = "open" | "in_progress" | "resolved" | "wont_fix";
 export type BugSeverity = "low" | "medium" | "high";
 export type BugSubmissionKind = "fixed" | "blocked" | "wont_fix";
 
+export type BugActivityKind =
+  | "comment"
+  | "submission"
+  | "request_changes"
+  | "accept"
+  | "reopen"
+  | "assignment_change"
+  | "status_change";
+
+export interface IBugActivity {
+  _id: mongoose.Types.ObjectId;
+  at: Date;
+  byId: mongoose.Types.ObjectId | null;
+  byName: string;
+  byHandle: string;
+  kind: BugActivityKind;
+  text?: string;
+  meta?: Record<string, unknown>;
+}
+
 export interface IBugSubmission {
   kind: BugSubmissionKind;
   note: string;
@@ -38,6 +58,8 @@ export interface IBugReport {
   submission?: IBugSubmission | null;
   /** True after assignee submits anything until admin accepts or reopens. */
   needsAdminReview?: boolean;
+  /** Conversation log: comments + lifecycle events. */
+  activity: IBugActivity[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +74,31 @@ const BugSubmissionSchema = new Schema<IBugSubmission>(
     submittedByName: { type: String, required: true },
   },
   { _id: false },
+);
+
+const BugActivitySchema = new Schema<IBugActivity>(
+  {
+    at: { type: Date, required: true, default: () => new Date() },
+    byId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    byName: { type: String, required: true },
+    byHandle: { type: String, required: true },
+    kind: {
+      type: String,
+      enum: [
+        "comment",
+        "submission",
+        "request_changes",
+        "accept",
+        "reopen",
+        "assignment_change",
+        "status_change",
+      ],
+      required: true,
+    },
+    text: { type: String, default: "", maxlength: 4000 },
+    meta: { type: Schema.Types.Mixed, default: null },
+  },
+  { _id: true, timestamps: false },
 );
 
 const BugReportSchema = new Schema<IBugReport>(
@@ -86,6 +133,7 @@ const BugReportSchema = new Schema<IBugReport>(
     resolutionNote: { type: String, default: null, maxlength: 4000 },
     submission: { type: BugSubmissionSchema, default: null },
     needsAdminReview: { type: Boolean, default: false, index: true },
+    activity: { type: [BugActivitySchema], default: [] },
   },
   { timestamps: true }
 );

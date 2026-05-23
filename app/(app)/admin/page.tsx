@@ -12,7 +12,7 @@ import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
 import { BonusSettingsPanel } from "@/components/admin/bonus-settings-panel";
 import { CivilWarSettingsPanel } from "@/components/admin/civil-war-settings-panel";
 import { My11LiveSettingsPanel } from "@/components/admin/my11-live-settings-panel";
-import { BugReportsAdmin, type BugRow, type BugAssignee } from "@/components/admin/bug-reports-admin";
+import { type BugRow } from "@/components/admin/bug-reports-admin";
 import { BugReport } from "@/models/BugReport";
 import { CIVIL_WAR_DEFAULTS } from "@/services/civil-war";
 import { formatDate } from "@/lib/utils";
@@ -105,20 +105,22 @@ export default async function AdminHome() {
             }
           : null,
         needsAdminReview: Boolean(b.needsAdminReview),
+        activity: (b.activity ?? []).map((a) => ({
+          _id: a._id ? String(a._id) : undefined,
+          at: new Date(a.at).toISOString(),
+          byId: a.byId ? String(a.byId) : null,
+          byName: a.byName,
+          byHandle: a.byHandle,
+          kind: a.kind,
+          text: a.text ?? "",
+          meta: (a.meta ?? null) as Record<string, unknown> | null,
+        })),
         createdAt: new Date(b.createdAt).toISOString(),
       }))
     : [];
   const openBugCount = bugRows.filter(
     (b) => b.needsAdminReview || b.status === "open",
   ).length;
-
-  const bugAssignees: BugAssignee[] = canManageBugs
-    ? (await User.find().select("userId username").sort({ username: 1 }).lean()).map((u) => ({
-        id: String(u._id),
-        handle: u.userId,
-        name: u.username,
-      }))
-    : [];
 
   const bonusTab = (
     <BonusSettingsPanel
@@ -421,9 +423,9 @@ export default async function AdminHome() {
         subtitle: canManageBugs
           ? "Triage user-submitted reports, assign owners, resolve issues."
           : "User-submitted bug reports for visibility.",
-        href: "/admin#bugs",
+        href: "/developer",
         stat: { value: openBugCount, label: "open", tone: openBugCount > 0 ? "warning" : "default" },
-        actions: [{ label: "Open queue", href: "/admin#bugs", primary: true }],
+        actions: [{ label: "Open Developer Tools", href: "/developer", primary: true }],
       });
     }
     if (userHasFeature(me, "audit.view")) {
@@ -431,8 +433,8 @@ export default async function AdminHome() {
         key: "audit",
         title: "Audit log",
         subtitle: "Full history of admin actions across the league.",
-        href: "/admin/audit-logs",
-        actions: [{ label: "Open audit log", href: "/admin/audit-logs", primary: true }],
+        href: "/developer/audit-logs",
+        actions: [{ label: "Open audit log", href: "/developer/audit-logs", primary: true }],
       });
     }
 
@@ -538,22 +540,6 @@ export default async function AdminHome() {
             },
           ]
         : []),
-      ...(canViewBugs
-        ? [
-            {
-              id: "bugs",
-              label: "Bug reports",
-              badge: openBugCount,
-              content: (
-                <BugReportsAdmin
-                  initial={bugRows}
-                  canManage={canManageBugs}
-                  assignees={bugAssignees}
-                />
-              ),
-            },
-          ]
-        : []),
     ];
 
     return <AdminOverviewTabs tabs={nonAdminTabs} />;
@@ -574,16 +560,6 @@ export default async function AdminHome() {
             ]
           : []),
         ...(canEditBonus ? [{ id: "bonus", label: "Bonus Rules", content: bonusTab }] : []),
-        ...(canViewBugs
-          ? [
-              {
-                id: "bugs",
-                label: "Bugs",
-                badge: openBugCount,
-                content: <BugReportsAdmin initial={bugRows} canManage={canManageBugs} assignees={bugAssignees} />,
-              },
-            ]
-          : []),
         ...(showCivilWarTab
           ? [
               {

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { connectDB } from "@/lib/db";
 import { AuditLog } from "@/models/AuditLog";
-import { requireAdminAccess } from "@/lib/rbac";
+import { requireUser, userHasFeature } from "@/lib/rbac";
+import { NoAccessCard } from "@/components/no-access-card";
 import { Card, Badge } from "@/components/ui/card";
 
 type SearchParams = Promise<{
@@ -13,13 +14,15 @@ type SearchParams = Promise<{
 
 const PAGE_SIZE = 50;
 
-export default async function AdminAuditLogsPage({
+export default async function AuditLogsPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  // Route access (audit.view) is enforced by app/(app)/admin/layout.tsx.
-  await requireAdminAccess();
+  const me = await requireUser();
+  if (!userHasFeature(me, "audit.view")) {
+    return <NoAccessCard anyOf={["audit.view"]} />;
+  }
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const filter: Record<string, unknown> = {};
@@ -66,12 +69,12 @@ export default async function AdminAuditLogsPage({
               {total.toLocaleString()} event{total === 1 ? "" : "s"} · showing page {page} of {totalPages}.
             </p>
           </div>
-          <Link href="/admin" className="text-xs text-muted-foreground hover:text-foreground">
-            ← Back to admin
+          <Link href="/developer" className="text-xs text-muted-foreground hover:text-foreground">
+            ← Back to Developer Tools
           </Link>
         </div>
 
-        <form className="mt-4 flex flex-wrap gap-2 items-end" action="/admin/audit-logs" method="get">
+        <form className="mt-4 flex flex-wrap gap-2 items-end" action="/developer/audit-logs" method="get">
           <div>
             <label className="block text-[10px] uppercase text-muted-foreground tracking-wider">Category</label>
             <select
@@ -119,7 +122,7 @@ export default async function AdminAuditLogsPage({
           </button>
           {(sp.category || sp.action || sp.actor) && (
             <Link
-              href="/admin/audit-logs"
+              href="/developer/audit-logs"
               className="h-9 px-3 inline-flex items-center rounded-lg border border-border text-xs"
             >
               Clear
@@ -252,7 +255,7 @@ export default async function AdminAuditLogsPage({
             </div>
             <div className="flex gap-2">
               <Link
-                href={page > 1 ? `/admin/audit-logs${queryString({ page: String(page - 1) })}` : "#"}
+                href={page > 1 ? `/developer/audit-logs${queryString({ page: String(page - 1) })}` : "#"}
                 className={`px-3 py-1.5 rounded-lg border border-border ${
                   page > 1 ? "hover:bg-muted/50" : "opacity-40 pointer-events-none"
                 }`}
@@ -262,7 +265,7 @@ export default async function AdminAuditLogsPage({
               <Link
                 href={
                   page < totalPages
-                    ? `/admin/audit-logs${queryString({ page: String(page + 1) })}`
+                    ? `/developer/audit-logs${queryString({ page: String(page + 1) })}`
                     : "#"
                 }
                 className={`px-3 py-1.5 rounded-lg border border-border ${

@@ -17,6 +17,7 @@ const GROUPS_ORDER: FeatureGroup[] = [
   "Audit",
   "Tools",
   "Content",
+  "Developer",
 ];
 
 const GROUP_HINTS: Record<FeatureGroup, string> = {
@@ -28,6 +29,7 @@ const GROUP_HINTS: Record<FeatureGroup, string> = {
   Audit: "History of every admin action",
   Tools: "Automations & backfills",
   Content: "AI storylines & narrative",
+  Developer: "Bug triage, work items, diagnostics",
 };
 
 export function FeatureChecklist({

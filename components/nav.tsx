@@ -22,11 +22,13 @@ const NAV = [
 export function Nav({
   role,
   hasAdminAccess = false,
+  hasDeveloperAccess = false,
   rivalryUnseen = 0,
   assignedBugs = 0,
 }: {
   role: "user" | "admin" | "superadmin";
   hasAdminAccess?: boolean;
+  hasDeveloperAccess?: boolean;
   rivalryUnseen?: number;
   assignedBugs?: number;
 }) {
@@ -34,9 +36,11 @@ export function Nav({
   const [open, setOpen] = useState(false);
   const [showMenuButton, setShowMenuButton] = useState(true);
   const showAdmin = role === "superadmin" || hasAdminAccess;
+  const showDeveloper = role === "superadmin" || hasDeveloperAccess;
   const items = [
     ...NAV,
-    ...(assignedBugs > 0 ? [{ href: "/my-bugs", label: "My bugs" }] : []),
+    ...(assignedBugs > 0 ? [{ href: "/my-bugs", label: "My queue" }] : []),
+    ...(showDeveloper ? [{ href: "/developer", label: "Developer" }] : []),
     ...(showAdmin ? [{ href: "/admin", label: "Admin" }] : []),
   ];
 

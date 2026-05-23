@@ -12,7 +12,8 @@ export type FeatureGroup =
   | "Users"
   | "Audit"
   | "Tools"
-  | "Content";
+  | "Content"
+  | "Developer";
 
 export type FeatureDef = {
   key: string;
@@ -126,6 +127,27 @@ export const FEATURE_DEFS = [
       "Pick or clear the bounty target (and reason) for individual matches.",
     group: "Matches",
   },
+  {
+    key: "dev.workitems.view",
+    label: "View work items",
+    description: "See the developer work-item board (tasks, bugs-as-tickets).",
+    group: "Developer",
+  },
+  {
+    key: "dev.workitems.manage",
+    label: "Manage work items",
+    description:
+      "Create, assign, change status and delete work items in Developer Tools.",
+    group: "Developer",
+    sensitive: true,
+  },
+  {
+    key: "dev.diagnostics.view",
+    label: "View diagnostics",
+    description:
+      "Runtime metrics: memory usage, uptime, DB counts, recent activity graph.",
+    group: "Developer",
+  },
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURE_DEFS)[number]["key"];
@@ -157,6 +179,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
   "Audit",
   "Tools",
   "Content",
+  "Developer",
 ];
 
 export function featuresByGroup(): Record<FeatureGroup, FeatureDef[]> {

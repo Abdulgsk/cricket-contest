@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { FEATURE_LABELS, type FeatureKey } from "@/lib/features";
+import { FEATURE_BY_KEY, FEATURE_GROUPS, FEATURE_LABELS, type FeatureGroup, type FeatureKey } from "@/lib/features";
 import { FeatureChecklist } from "@/components/admin/feature-checklist";
 import {
   createRoleAction,
@@ -193,16 +193,7 @@ export function RolesEditor({ initial }: { initial: CustomRoleRow[] }) {
                     </div>
                   </div>
                   {r.features.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {r.features.map((f) => (
-                        <span
-                          key={f}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
-                        >
-                          {FEATURE_LABELS[f]}
-                        </span>
-                      ))}
-                    </div>
+                    <GroupedFeaturePills features={r.features} />
                   )}
                 </>
               ) : (
@@ -240,5 +231,48 @@ export function RolesEditor({ initial }: { initial: CustomRoleRow[] }) {
 
 function FeatureChecklistLegacy_REMOVED() {
   return null;
+}
+
+const GROUP_TONES: Record<FeatureGroup, string> = {
+  Matches: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  Results: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  Bonuses: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  "Civil War": "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  Users: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  Audit: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  Tools: "border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+  Content: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300",
+  Developer: "border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+};
+
+function GroupedFeaturePills({ features }: { features: FeatureKey[] }) {
+  const set = new Set(features);
+  const byGroup = FEATURE_GROUPS.map((g) => ({
+    group: g,
+    keys: features.filter((k) => FEATURE_BY_KEY[k]?.group === g && set.has(k)),
+  })).filter((x) => x.keys.length > 0);
+
+  if (byGroup.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {byGroup.map(({ group, keys }) => (
+        <div key={group} className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
+            {group}
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {keys.map((f) => (
+              <span
+                key={f}
+                className={`text-[10px] px-1.5 py-0.5 rounded border ${GROUP_TONES[FEATURE_BY_KEY[f]!.group]}`}
+              >
+                {FEATURE_LABELS[f]}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 

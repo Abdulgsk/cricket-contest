@@ -1,9 +1,11 @@
 import { requireUser, userHasAdminAccess } from "@/lib/rbac";
+import { hasDeveloperToolsAccess } from "@/lib/admin-route-access";
 import { Nav } from "@/components/nav";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { User } from "@/models/User";
 import { BugReport } from "@/models/BugReport";
+import { WorkItem } from "@/models/WorkItem";
 import { getSettings } from "@/models/Settings";
 import { BONUSES } from "@/lib/constants";
 import { getUnseenRivalryCount } from "@/actions/rivalry";
@@ -24,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
 
-  const [settings, bountyMatch, rivalryUnseen, assignedBugs] = await Promise.all([
+  const [settings, bountyMatch, rivalryUnseen, assignedBugs, assignedWorkItems] = await Promise.all([
     getSettings(),
     Match.findOne({
       bountyUserId: { $exists: true, $ne: null },
@@ -38,11 +40,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       assignedTo: me._id,
       status: { $in: ["open", "in_progress"] },
     }),
+    WorkItem.countDocuments({
+      assignedToId: me._id,
+      status: { $ne: "done" },
+    }),
   ]);
   const bountyReward = settings.bonusConfig?.bounty ?? BONUSES.BOUNTY;
   return (
     <div className="flex flex-1 min-h-screen">
-      <Nav role={me.role} hasAdminAccess={userHasAdminAccess(me)} rivalryUnseen={rivalryUnseen} assignedBugs={assignedBugs} />
+      <Nav role={me.role} hasAdminAccess={userHasAdminAccess(me)} hasDeveloperAccess={hasDeveloperToolsAccess(me)} rivalryUnseen={rivalryUnseen} assignedBugs={assignedBugs + assignedWorkItems} />
       <div className="flex-1 flex flex-col min-w-0">
         {settings.announcement ? (
           <div className="m-3 md:m-4 ml-14 md:ml-3 glass rounded-xl px-4 py-2 text-sm text-primary">

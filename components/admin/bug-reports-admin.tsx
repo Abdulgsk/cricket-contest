@@ -16,6 +16,8 @@ import {
   Inbox,
   Bug,
   Pencil,
+  Megaphone,
+  MessageSquare,
 } from "lucide-react";
 import { Card, Badge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +27,12 @@ import {
   assignBugReportAction,
   acceptBugSubmissionAction,
   reopenBugAction,
+  addBugCommentAction,
+  requestBugChangesAction,
 } from "@/actions/bugs";
+import { ActivityThread, type ActivityEntry } from "@/components/activity-thread";
+import { CommentComposer } from "@/components/comment-composer";
+import { RequestChangesDialog } from "@/components/request-changes-dialog";
 
 type BugStatus = "open" | "in_progress" | "resolved" | "wont_fix";
 type Severity = "low" | "medium" | "high";
@@ -57,6 +64,7 @@ export type BugRow = {
   resolutionNote: string | null;
   submission: BugSubmission | null;
   needsAdminReview: boolean;
+  activity: ActivityEntry[];
   createdAt: string;
 };
 
@@ -70,18 +78,18 @@ const SEVERITY_META: Record<
 > = {
   high: {
     label: "High",
-    chip: "bg-rose-500/15 text-rose-300 border-rose-500/30",
-    dot: "bg-rose-400",
+    chip: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/25",
+    dot: "bg-rose-500",
   },
   medium: {
     label: "Medium",
-    chip: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-    dot: "bg-amber-400",
+    chip: "bg-amber-400/10 text-amber-800 dark:text-amber-200 border-amber-500/25",
+    dot: "bg-amber-500",
   },
   low: {
     label: "Low",
-    chip: "bg-slate-500/15 text-slate-300 border-slate-500/30",
-    dot: "bg-slate-400",
+    chip: "bg-muted/60 text-muted-foreground border-border/60",
+    dot: "bg-muted-foreground/60",
   },
 };
 
@@ -91,19 +99,19 @@ const STATUS_META: Record<
 > = {
   open: {
     label: "Open",
-    chip: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+    chip: "bg-primary/10 text-primary border-primary/25",
   },
   in_progress: {
     label: "In progress",
-    chip: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
+    chip: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25",
   },
   resolved: {
     label: "Resolved",
-    chip: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    chip: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/25",
   },
   wont_fix: {
-    label: "Won't fix",
-    chip: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+    label: "Won’t fix",
+    chip: "bg-muted/60 text-muted-foreground border-border/60",
   },
 };
 
@@ -114,20 +122,20 @@ const SUBMISSION_META: Record<
   fixed: {
     label: "Fixed",
     icon: CheckCircle2,
-    tone: "text-emerald-300",
-    ring: "border-emerald-500/30 bg-emerald-500/5",
+    tone: "text-violet-700 dark:text-violet-300",
+    ring: "border-violet-500/25 bg-violet-500/[0.06] dark:bg-violet-500/[0.08]",
   },
   blocked: {
     label: "Blocked",
     icon: AlertOctagon,
-    tone: "text-amber-300",
-    ring: "border-amber-500/30 bg-amber-500/5",
+    tone: "text-amber-800 dark:text-amber-200",
+    ring: "border-amber-500/25 bg-amber-400/[0.06] dark:bg-amber-500/[0.08]",
   },
   wont_fix: {
-    label: "Won't fix",
+    label: "Not a bug",
     icon: XCircle,
-    tone: "text-rose-300",
-    ring: "border-rose-500/30 bg-rose-500/5",
+    tone: "text-rose-700 dark:text-rose-300",
+    ring: "border-rose-500/25 bg-rose-500/[0.06] dark:bg-rose-500/[0.08]",
   },
 };
 
@@ -381,13 +389,20 @@ function BugCard({
   const [expanded, setExpanded] = useState(false);
   const [showOverride, setShowOverride] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [showRequestChanges, setShowRequestChanges] = useState(false);
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
 
   const sev = SEVERITY_META[row.severity];
   const stat = STATUS_META[row.status];
 
-  const isClosed = row.status === "resolved" || row.status === "wont_fix";
+  // A bug is "closed" only after admin acceptance. While `needsAdminReview`
+  // is true, the assignee's submission has set status to its proposed value
+  // (e.g. "resolved") but the admin still owns the final call — so we must
+  // keep the review actions visible.
+  const inReview = Boolean(row.needsAdminReview && row.submission);
+  const isClosed =
+    !inReview && (row.status === "resolved" || row.status === "wont_fix");
   const truncated = !expanded && row.description.length > 280;
 
   function run(label: string, fn: () => Promise<unknown>) {
@@ -478,8 +493,8 @@ function BugCard({
   return (
     <article className="rounded-2xl border border-border/60 bg-card/40 overflow-hidden">
       {/* Top accent stripe on needs-review */}
-      {row.needsAdminReview && (
-        <div className="h-0.5 bg-gradient-to-r from-amber-500/40 via-amber-400 to-amber-500/40" />
+      {inReview && (
+        <div className="h-0.5 bg-gradient-to-r from-amber-400/40 via-amber-500/70 to-amber-400/40" />
       )}
 
       <div className="p-3 sm:p-4 space-y-3">
@@ -492,12 +507,13 @@ function BugCard({
                 <span className={`h-1.5 w-1.5 rounded-full ${sev.dot}`} />
                 {sev.label}
               </Chip>
-              <Chip className={stat.chip}>{stat.label}</Chip>
-              {row.needsAdminReview && (
-                <Chip className="bg-amber-500/15 text-amber-300 border-amber-500/30">
+              {inReview ? (
+                <Chip className="bg-amber-400/10 text-amber-800 dark:text-amber-200 border-amber-500/25">
                   <Clock className="h-3 w-3" />
-                  Needs review
+                  Awaiting your review
                 </Chip>
+              ) : (
+                <Chip className={stat.chip}>{stat.label}</Chip>
               )}
             </div>
             <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
@@ -572,16 +588,34 @@ function BugCard({
         {/* Assignee submission */}
         {row.submission && <SubmissionPanel sub={row.submission} />}
 
+        {/* Inline request-changes composer */}
+        {showRequestChanges && row.submission && !isClosed && (
+          <RequestChangesDialog
+            id={row.id}
+            onSubmit={async (p) => requestBugChangesAction(p)}
+            onCancel={() => setShowRequestChanges(false)}
+            onDone={() => {
+              setShowRequestChanges(false);
+              onUpdated(row.id, {
+                submission: null,
+                needsAdminReview: false,
+                status: row.assignedToId ? "in_progress" : "open",
+                resolutionNote: null,
+              });
+            }}
+          />
+        )}
+
         {/* Quick actions */}
         {canManage && (
-          <div className="flex flex-wrap gap-2">
-            {row.submission && !isClosed ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {inReview ? (
               <>
                 <Button
                   size="sm"
                   onClick={accept}
                   disabled={pending}
-                  className="bg-emerald-600 hover:bg-emerald-600/90"
+                  className="bg-violet-600 hover:bg-violet-600/90 text-white"
                 >
                   {busy === "accept" ? (
                     <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -593,16 +627,27 @@ function BugCard({
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={() => setShowRequestChanges((v) => !v)}
+                  disabled={pending}
+                  className="border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                >
+                  <Megaphone className="h-3.5 w-3.5 mr-1.5" />
+                  Request changes
+                </Button>
+                <button
+                  type="button"
                   onClick={() => reopen(true)}
                   disabled={pending}
+                  className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition disabled:opacity-50"
+                  title="Discard submission without a note and let the assignee try again"
                 >
                   {busy === "reopen" ? (
-                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
-                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                    <RotateCcw className="h-3 w-3" />
                   )}
-                  Reopen for assignee
-                </Button>
+                  Reopen silently
+                </button>
               </>
             ) : isClosed ? (
               <Button
@@ -629,7 +674,7 @@ function BugCard({
                 Assign
               </Button>
             ) : null}
-            {!isClosed && (
+            {!isClosed && !inReview && (
               <button
                 type="button"
                 onClick={() => setShowOverride((v) => !v)}
@@ -646,7 +691,7 @@ function BugCard({
                 type="button"
                 onClick={del}
                 disabled={pending}
-                className="ml-auto inline-flex items-center gap-1 text-[11px] text-rose-300/80 hover:text-rose-300 transition"
+                className="ml-auto inline-flex items-center gap-1 text-[11px] text-rose-600/80 hover:text-rose-600 dark:text-rose-300/80 dark:hover:text-rose-300 transition"
               >
                 {busy === "delete" ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -706,6 +751,34 @@ function BugCard({
             onSave={(id, notes) => assign(id, notes)}
           />
         )}
+
+        {/* Activity / conversation thread */}
+        <details className="group rounded-2xl border border-border/60 bg-card/30 overflow-hidden" open>
+          <summary className="flex items-center gap-2 cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/30 select-none">
+            <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
+            <MessageSquare className="h-3.5 w-3.5" />
+            Activity
+            <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-foreground/70">
+              {row.activity?.length ?? 0}
+            </span>
+          </summary>
+          <div className="p-3 space-y-3 border-t border-border/40">
+            <ActivityThread entries={row.activity ?? []} />
+            {!isClosed && (
+              <CommentComposer
+                id={row.id}
+                onSend={async (p) => {
+                  const res = await addBugCommentAction(p);
+                  if (res.ok) {
+                    // Optimistic: append a placeholder entry; full text already
+                    // saved server-side. On next navigation it'll re-fetch.
+                  }
+                  return res;
+                }}
+              />
+            )}
+          </div>
+        </details>
       </div>
     </article>
   );
@@ -719,20 +792,27 @@ function SubmissionPanel({ sub }: { sub: BugSubmission }) {
   const meta = SUBMISSION_META[sub.kind];
   const Icon = meta.icon;
   return (
-    <div className={`rounded-xl border ${meta.ring} p-3 space-y-1.5`}>
+    <div className={`rounded-2xl border ${meta.ring} p-3.5 space-y-2`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className={`flex items-center gap-1.5 text-xs font-semibold ${meta.tone}`}>
-          <Icon className="h-3.5 w-3.5" />
-          <span>{meta.label} — from assignee</span>
+        <div className={`flex items-center gap-2 text-sm font-semibold ${meta.tone}`}>
+          <Icon className="h-4 w-4" />
+          <span>
+            {sub.submittedByName} marked it{" "}
+            <span className="underline decoration-dotted underline-offset-4">
+              {meta.label}
+            </span>
+          </span>
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <Avatar name={sub.submittedByName} size={16} />
-          <span>{sub.submittedByName}</span>
+          <span>@{sub.submittedByHandle}</span>
           <span>·</span>
           <span>{relativeTime(sub.submittedAt)}</span>
         </div>
       </div>
-      <div className="whitespace-pre-wrap text-xs text-foreground/90">{sub.note}</div>
+      <div className="whitespace-pre-wrap text-sm text-foreground/90 break-words">
+        {sub.note}
+      </div>
     </div>
   );
 }
@@ -794,7 +874,7 @@ function OverridePanel({
           variant="outline"
           onClick={onDelete}
           disabled={pending}
-          className="text-rose-300"
+          className="text-rose-600 dark:text-rose-300"
         >
           {busy === "delete" ? (
             <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -888,8 +968,8 @@ function AssigneePicker({
               onClick={() => setStaged(null)}
               className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/30 inline-flex items-center gap-2 ${
                 effective === null
-                  ? "bg-rose-500/10 text-rose-200"
-                  : "text-rose-300"
+                  ? "bg-rose-500/10 text-rose-700 dark:text-rose-200"
+                  : "text-rose-600 dark:text-rose-300"
               }`}
             >
               <XCircle className="h-3.5 w-3.5" />
@@ -922,10 +1002,10 @@ function AssigneePicker({
                   <span
                     className={`text-[10px] rounded-full px-2 py-0.5 ${
                       load === 0
-                        ? "bg-emerald-500/10 text-emerald-300"
+                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                         : load < 3
-                          ? "bg-amber-500/10 text-amber-300"
-                          : "bg-rose-500/10 text-rose-300"
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                          : "bg-rose-500/10 text-rose-700 dark:text-rose-300"
                     }`}
                     title="Active bugs assigned"
                   >
