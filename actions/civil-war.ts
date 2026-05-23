@@ -779,7 +779,7 @@ export async function getMyRivalryAndCivilWarRecord(
   return {
     rivalry: rivalryRecord,
     civilWar: cwRecord,
-    recentRivalries: recentRivalries.slice(0, 10),
-    recentCivilWars: recentCivilWars.slice(0, 10),
+    recentRivalries: recentRivalries.slice(0, 50), // Increased from 10 to 50
+    recentCivilWars: recentCivilWars.slice(0, 50), // Increased from 10 to 50
   };
 }
