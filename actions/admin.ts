@@ -552,7 +552,7 @@ const MatchBountySchema = z.object({
 });
 
 export async function updateMatchBountyAction(payload: unknown) {
-  const _auth = await assertFeature("bonus.manage");
+  const _auth = await assertFeature("match.bounty.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   const parsed = MatchBountySchema.safeParse(payload);
@@ -581,7 +581,7 @@ export async function updateMatchBountyAction(payload: unknown) {
 }
 
 export async function setBountyAction(userId: string | null) {
-  const _auth = await assertFeature("bonus.manage");
+  const _auth = await assertFeature("match.bounty.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   await connectDB();

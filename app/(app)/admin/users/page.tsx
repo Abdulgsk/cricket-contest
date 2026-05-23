@@ -6,7 +6,7 @@ import { Card, Badge } from "@/components/ui/card";
 import { UserRoleAssign } from "@/components/admin/user-role-assign";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { RolesEditor, type CustomRoleRow } from "@/components/admin/roles-editor";
-import type { FeatureKey } from "@/lib/features";
+import { bitmapToKeys, keysToBitmap, type FeatureKey } from "@/lib/features";
 
 export default async function AdminUsers() {
   // Route access is enforced by app/(app)/admin/layout.tsx.
@@ -28,12 +28,22 @@ export default async function AdminUsers() {
       customRoleUsage.set(id, (customRoleUsage.get(id) ?? 0) + 1);
     }
   }
-  const editorRoles: CustomRoleRow[] = roles.map((r) => ({
-    id: String(r._id),
-    name: r.name,
-    features: (r.features ?? []) as FeatureKey[],
-    usageCount: customRoleUsage.get(String(r._id)) ?? 0,
-  }));
+  const editorRoles: CustomRoleRow[] = roles.map((r) => {
+    // Prefer the bitmap (current source of truth); fall back to the legacy
+    // `features[]` array for any role that hasn't been re-saved yet.
+    // `updateRoleAction` $unsets the legacy field, so reading it alone would
+    // make every previously-edited role show up as having zero features.
+    const bitmap =
+      r.permissionBitmap && r.permissionBitmap !== "0"
+        ? r.permissionBitmap
+        : keysToBitmap((r.features ?? []) as FeatureKey[]);
+    return {
+      id: String(r._id),
+      name: r.name,
+      features: bitmapToKeys(bitmap),
+      usageCount: customRoleUsage.get(String(r._id)) ?? 0,
+    };
+  });
   const customRoleNameById = new Map(customRoleOptions.map((r) => [r.id, r.name]));
 
   return (

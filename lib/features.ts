@@ -28,7 +28,7 @@ export const FEATURE_DEFS = [
     key: "matches.manage",
     label: "Manage matches",
     description:
-      "Create / sync fixtures, edit chaos / double-points modes, contest URL, bounty, custom pools.",
+      "Create / sync fixtures, edit chaos / double-points modes, contest URL, custom pools.",
     group: "Matches",
   },
   {
@@ -118,6 +118,13 @@ export const FEATURE_DEFS = [
       "Change status (in progress / resolved / won't fix), add internal notes and delete reports.",
     group: "Users",
     sensitive: true,
+  },
+  {
+    key: "match.bounty.manage",
+    label: "Set match bounty",
+    description:
+      "Pick or clear the bounty target (and reason) for individual matches.",
+    group: "Matches",
   },
 ] as const satisfies readonly FeatureDef[];
 

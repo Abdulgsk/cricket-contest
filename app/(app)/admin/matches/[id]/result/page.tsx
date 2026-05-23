@@ -28,6 +28,7 @@ export default async function AdminMatchResultPage({
   const isSuperadmin = me.role === "superadmin";
   const canManageLockExtensions = userHasFeature(me, "match.lock.extend");
   const canManageMatch = userHasFeature(me, "matches.manage");
+  const canManageBounty = userHasFeature(me, "match.bounty.manage");
   const canManageResults = userHasFeature(me, "results.manage");
   // Route access is enforced by app/(app)/admin/layout.tsx.
   const { id } = await params;
@@ -119,7 +120,7 @@ export default async function AdminMatchResultPage({
         <ContestUrlForm matchId={id} initial={match.contestUrl} />
       )}
 
-      {canManageMatch && (
+      {canManageBounty && (
         <MatchBountyPanel
           matchId={id}
           initialBountyUserId={match.bountyUserId ? String(match.bountyUserId) : ""}
