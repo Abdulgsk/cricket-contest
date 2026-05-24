@@ -121,7 +121,7 @@ export const FEATURE_DEFS = [
     retired: true,
   },
   {
-    key: "bugs.manage",
+    key: "dev.bug.manage",
     label: "Manage bug reports",
     description:
       "Assign bugs to others, change status, accept/reopen submissions, delete reports. Lets a developer act on any bug, not just ones assigned to them.",

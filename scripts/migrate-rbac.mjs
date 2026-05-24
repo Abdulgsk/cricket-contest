@@ -69,7 +69,7 @@ const FEATURE_KEYS = [
   "automation.run",
   "rivalry.manage",
   "content.facts",
-  "bugs.manage",
+  "dev.bug.manage",
 ];
 
 const BIT = Object.fromEntries(FEATURE_KEYS.map((k, i) => [k, i]));

@@ -52,7 +52,7 @@ const FEATURE_KEYS = [
   "automation.run",
   "facts.regenerate",
   "bugs.view",
-  "bugs.manage",
+  "dev.bug.manage",
   "match.bounty.manage",
   "dev.workitems.view",
   "dev.workitems.manage",

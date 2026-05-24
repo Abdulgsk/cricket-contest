@@ -183,7 +183,7 @@ const UpdateSchema = z.object({
 });
 
 export async function updateBugReportAction(payload: unknown) {
-  const _auth = await assertFeature("bugs.manage");
+  const _auth = await assertFeature("dev.bug.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   const parsed = UpdateSchema.safeParse(payload);
@@ -233,7 +233,7 @@ export async function updateBugReportAction(payload: unknown) {
 }
 
 export async function deleteBugReportAction(id: string) {
-  const _auth = await assertFeature("bugs.manage");
+  const _auth = await assertFeature("dev.bug.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   await connectDB();
@@ -266,7 +266,7 @@ const AssignSchema = z.object({
 });
 
 export async function assignBugReportAction(payload: unknown) {
-  const _auth = await assertFeature("bugs.manage");
+  const _auth = await assertFeature("dev.bug.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   const parsed = AssignSchema.safeParse(payload);
@@ -461,7 +461,7 @@ export async function submitBugResolutionAction(payload: unknown) {
 
 /** Admin confirms the assignee's submission and closes the bug. */
 export async function acceptBugSubmissionAction(id: string) {
-  const _auth = await assertFeature("bugs.manage");
+  const _auth = await assertFeature("dev.bug.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   await connectDB();
@@ -524,7 +524,7 @@ const ReopenSchema = z.object({
 
 /** Admin reopens — clears the assignee submission so they can re-submit. */
 export async function reopenBugAction(payload: unknown) {
-  const _auth = await assertFeature("bugs.manage");
+  const _auth = await assertFeature("dev.bug.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   const parsed = ReopenSchema.safeParse(payload);
@@ -620,7 +620,7 @@ export async function addBugCommentAction(payload: unknown) {
 
   const isReporter = String(bug.reporterId) === String(me._id);
   const isAssignee = bug.assignedTo && String(bug.assignedTo) === String(me._id);
-  const canManageRes = await assertFeature("bugs.manage");
+  const canManageRes = await assertFeature("dev.bug.manage");
   const canManage = canManageRes.ok;
   const isDev = (await assertFeature("dev.member")).ok;
   if (!isReporter && !isAssignee && !canManage && !isDev) {
@@ -699,7 +699,7 @@ const RequestChangesSchema = z.object({
  * assignee can submit a fresh outcome.
  */
 export async function requestBugChangesAction(payload: unknown) {
-  const _auth = await assertFeature("bugs.manage");
+  const _auth = await assertFeature("dev.bug.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   const parsed = RequestChangesSchema.safeParse(payload);
@@ -769,7 +769,7 @@ const ReactionSchema = z.object({
 /**
  * Toggle a reaction on an activity entry. If the actor already reacted with
  * the same emoji, it's removed; otherwise it's added. Anyone with read
- * access (reporter / assignee / bugs.manage / dev.member) can react.
+ * access (reporter / assignee / dev.bug.manage / dev.member) can react.
  */
 export async function toggleBugReactionAction(payload: unknown) {
   const me = await requireUser();
@@ -783,7 +783,7 @@ export async function toggleBugReactionAction(payload: unknown) {
 
   const isReporter = String(bug.reporterId) === String(me._id);
   const isAssignee = bug.assignedTo && String(bug.assignedTo) === String(me._id);
-  const canManageRes = await assertFeature("bugs.manage");
+  const canManageRes = await assertFeature("dev.bug.manage");
   const isDev = (await assertFeature("dev.member")).ok;
   if (!isReporter && !isAssignee && !canManageRes.ok && !isDev) {
     return { ok: false as const, error: "Can't react here." };
@@ -977,7 +977,7 @@ const DueSchema = z.object({
 });
 
 export async function setBugDueAction(payload: unknown) {
-  const _auth = await assertFeature("bugs.manage");
+  const _auth = await assertFeature("dev.bug.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   const parsed = DueSchema.safeParse(payload);
@@ -1092,7 +1092,7 @@ function csvEscape(s: unknown): string {
 }
 
 export async function exportBugsCsvAction() {
-  const _auth = await assertFeature("bugs.manage");
+  const _auth = await assertFeature("dev.bug.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   await connectDB();

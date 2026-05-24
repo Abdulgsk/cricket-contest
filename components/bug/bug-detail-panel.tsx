@@ -328,7 +328,7 @@ function SubmissionPanel({
 export function BugDetailPanel({
   bug,
   myUserId,
-  /** True if the viewer holds bugs.manage — enables deleting any comment. */
+  /** True if the viewer holds dev.bug.manage — enables deleting any comment. */
   canManage = false,
   /** Slot for status / assign / due / accept / reopen buttons. */
   actions,

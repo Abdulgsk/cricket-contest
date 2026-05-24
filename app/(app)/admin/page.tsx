@@ -71,8 +71,8 @@ export default async function AdminHome() {
   // Bug reports are part of Developer Tools now; the admin overview still
   // surfaces them for managers and league members with the developer flag.
   const canViewBugs =
-    userHasFeature(me, "dev.member") || userHasFeature(me, "bugs.manage");
-  const canManageBugs = userHasFeature(me, "bugs.manage");
+    userHasFeature(me, "dev.member") || userHasFeature(me, "dev.bug.manage");
+  const canManageBugs = userHasFeature(me, "dev.bug.manage");
   const canSeeMatches =
     userHasFeature(me, "matches.manage") ||
     userHasFeature(me, "results.manage") ||
@@ -334,7 +334,7 @@ export default async function AdminHome() {
       "audit.view": "Audit log",
       "automation.run": "Automations",
       "facts.regenerate": "Storyline regeneration",
-      "bugs.manage": "Bug triage",
+      "dev.bug.manage": "Bug triage",
       "dev.member": "Developer",
       "bonus.manage": "Bonus rules",
       "civilwar.points.manage": "Civil War scoring",

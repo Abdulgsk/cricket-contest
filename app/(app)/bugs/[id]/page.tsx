@@ -21,7 +21,7 @@ export default async function BugPermalinkPage({
   const bug = await getBugDetail(id);
   if (!bug) notFound();
 
-  const canManage = userCan(me, "bugs.manage");
+  const canManage = userCan(me, "dev.bug.manage");
   const isReporter = bug.reporter.id === String(me._id);
   const isAssignee = bug.assignee?.id === String(me._id);
 

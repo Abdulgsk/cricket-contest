@@ -114,7 +114,7 @@ export function getAccessibleAdminRoutes(user: RbacUser): AdminRoute[] {
 export const DEVELOPER_FEATURES: readonly FeatureKey[] = [
   "dev.member",
   "bugs.view", // retired but kept so legacy grants still classify as developer
-  "bugs.manage",
+  "dev.bug.manage",
   "audit.view",
   "dev.workitems.view", // retired but kept so legacy grants still classify as developer
   "dev.workitems.manage",

@@ -206,7 +206,7 @@ async function loadDiagnostics(): Promise<DiagnosticsData> {
 
 export default async function DeveloperToolsPage() {
   const me = await requireUser();
-  const canManageBugs = userHasFeature(me, "bugs.manage");
+  const canManageBugs = userHasFeature(me, "dev.bug.manage");
   const canManageWorkItems = userHasFeature(me, "dev.workitems.manage");
   // The "Developer" flag grants view of ALL bugs + work items (and the
   // ability to comment), but action buttons stay hidden until the item is
@@ -241,7 +241,7 @@ export default async function DeveloperToolsPage() {
       <NoAccessCard
         anyOf={[
           "dev.member",
-          "bugs.manage",
+          "dev.bug.manage",
           "dev.workitems.manage",
           "audit.view",
           "dev.diagnostics.view",
