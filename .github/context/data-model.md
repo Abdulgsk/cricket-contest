@@ -143,5 +143,22 @@ Per-user inbox row (rivalry events, approvals decided, etc).
 - `resolutionNote?`, `resolvedAt?` — legacy fields, still populated for
   back-compat readers.
 - Compound index `{ assignedTo: 1, "submission.submittedAt": -1 }`.
+- **Soft-delete**: `deletedAt?: Date | null` (indexed), `deletedById?: ObjectId | null`. Set by `deleteBugReportAction`. All reader queries filter `{ deletedAt: null }`; the doc is kept for audit.
+- **Activity log** (`activity[]`, embedded `BugActivitySchema`): comment + lifecycle entries. Each entry has its own `_id`, `at`, `byId`, `byName`, `byHandle`, `kind`, `text`, `mentions`, `reactions`, plus `deletedAt`, `deletedById`, `deletedByName`, `deletedByHandle` for tombstoned comments (text/mentions/reactions are cleared on delete).
 
 Full workflow: see [admin.md](admin.md#bug-reports).
+
+## WorkItem
+
+`models/WorkItem.ts` — internal tasks/tickets owned by the developer role.
+
+- `title`, `description`, `priority`, `dueAt?`
+- `status: "todo"|"in_progress"|"blocked"|"done"`
+- `assignedToId?`, `assignedToHandle?`, `assignedToName?`
+- `submission`, `needsReview` — same write-once accept/reject pattern as bugs.
+- **Soft-delete**: `deletedAt?: Date | null` (indexed), `deletedById?: ObjectId | null`. Set by `deleteWorkItemAction`. All reader queries filter `{ deletedAt: null }`.
+- **Activity log** (`activity[]`, `WorkItemActivitySchema`): same shape and soft-delete fields as `BugReport.activity`.
+
+## Soft-delete policy (cross-cutting)
+
+User-generated content is never hard-deleted. See [conventions.md#soft-deletes-hard-rule](conventions.md#soft-deletes-hard-rule) for the rule. Affected collections today: `BugReport` (doc + `activity[]`), `WorkItem` (doc + `activity[]`).

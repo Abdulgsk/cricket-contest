@@ -25,6 +25,9 @@ function serializeActivity(raw: IBugActivity[]): BugThreadEntry[] {
       byHandle: r.byHandle,
       byName: r.byName,
     })),
+    deletedAt: a.deletedAt ? new Date(a.deletedAt).toISOString() : null,
+    deletedByName: a.deletedByName ?? null,
+    deletedByHandle: a.deletedByHandle ?? null,
   }));
 }
 
@@ -34,12 +37,12 @@ function serializeActivity(raw: IBugActivity[]): BugThreadEntry[] {
  */
 export async function getBugDetail(bugId: string): Promise<BugDetail | null> {
   await connectDB();
-  const raw = await BugReport.findById(bugId).lean();
+  const raw = await BugReport.findOne({ _id: bugId, deletedAt: null }).lean();
   if (!raw) return null;
 
   let relatedTo: BugDetail["relatedTo"] = [];
   if (Array.isArray(raw.relatedTo) && raw.relatedTo.length) {
-    const rows = await BugReport.find({ _id: { $in: raw.relatedTo } })
+    const rows = await BugReport.find({ _id: { $in: raw.relatedTo }, deletedAt: null })
       .select("title status")
       .lean();
     relatedTo = rows.map((r) => ({

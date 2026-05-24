@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   CheckCircle2,
@@ -15,6 +16,7 @@ import {
   Filter,
   Pencil,
   Trash2,
+  Copy,
   MoreHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,6 +24,7 @@ import { MarkdownLite } from "@/components/ui/markdown";
 import { ReactionsBar, groupReactions } from "@/components/ui/reactions-bar";
 import { RichComposer } from "@/components/ui/rich-composer";
 import { useConfirm } from "@/components/ui/use-confirm";
+import { MessageMenu, type MessageMenuItem } from "@/components/ui/message-menu";
 import { useLocaleTitle } from "@/lib/use-locale-title";
 import { colorFromString, initials, relTimeLong } from "@/lib/bug-format";
 import {
@@ -50,6 +53,10 @@ export type BugThreadEntry = {
   meta?: Record<string, unknown> | null;
   mentions?: Array<{ userId: string; handle: string; name: string }>;
   reactions?: Array<{ emoji: string; byId: string; byHandle: string; byName: string }>;
+  /** Soft-delete: when present, render a tombstone and lock the row. */
+  deletedAt?: string | null;
+  deletedByName?: string | null;
+  deletedByHandle?: string | null;
 };
 
 function Avatar({ name, size = 30 }: { name: string; size?: number }) {
@@ -76,21 +83,87 @@ function CommentRow({
   bugId,
   myUserId,
   isMine,
+  canManage,
 }: {
   e: BugThreadEntry;
   bugId: string;
   myUserId: string;
   isMine: boolean;
+  canManage: boolean;
 }) {
   const [editing, setEditing] = React.useState(false);
-  const [menuOpen, setMenuOpen] = React.useState(false);
   const reactions = groupReactions(e.reactions ?? []);
   const confirm = useConfirm();
+  const router = useRouter();
   const atTitle = useLocaleTitle(e.at);
   const editedTitle = useLocaleTitle(e.editedAt);
+  const isDeleted = !!e.deletedAt;
+
+  const onDelete = async () => {
+    if (!isMine) return;
+    const ok = await confirm({
+      title: "Delete this comment?",
+      description: "It will disappear for everyone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const r = await deleteBugCommentAction({ bugId, activityId: e._id });
+    if (!r.ok) {
+      toast.error(r.error ?? "Failed to delete");
+      return;
+    }
+    router.refresh();
+  };
+
+  const menuItems: MessageMenuItem[] = [];
+  if (!isDeleted && e.text) {
+    menuItems.push({
+      label: "Copy text",
+      icon: Copy,
+      onSelect: () => {
+        navigator.clipboard?.writeText(e.text ?? "").then(
+          () => toast.success("Copied"),
+          () => toast.error("Couldn’t copy"),
+        );
+      },
+    });
+  }
+  if (!isDeleted && isMine) {
+    menuItems.push({ label: "Edit", icon: Pencil, onSelect: () => setEditing(true) });
+  }
+  if (!isDeleted && isMine) {
+    menuItems.push({ label: "Delete", icon: Trash2, onSelect: onDelete, danger: true });
+  }
+
+  if (isDeleted) {
+    return (
+      <li className="group flex items-start gap-3">
+        <Avatar name={e.byName} />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-center gap-2 text-[11.5px]">
+            <span className="font-semibold text-foreground">{e.byName}</span>
+            <span className="text-muted-foreground">@{e.byHandle}</span>
+            <span className="text-muted-foreground/70">·</span>
+            <span className="text-muted-foreground" title={atTitle}>
+              {relTimeLong(e.at)}
+            </span>
+          </div>
+          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 px-3 py-2 text-[12.5px] italic text-muted-foreground">
+            This message was deleted
+            {e.deletedByHandle && e.deletedByHandle !== e.byHandle
+              ? ` by @${e.deletedByHandle}`
+              : ""}
+            .
+          </div>
+        </div>
+      </li>
+    );
+  }
 
   return (
-    <li className="group flex items-start gap-3">
+    <MessageMenu items={menuItems} as="li" className="group flex items-start gap-3">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <Avatar name={e.byName} />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex items-center gap-2 text-[11.5px]">
@@ -105,56 +178,21 @@ function CommentRow({
               · edited
             </span>
           ) : null}
-          {isMine ? (
-            <div className="relative ml-auto opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-              <button
-                type="button"
-                onClick={() => setMenuOpen((o) => !o)}
-                className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="More"
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-              {menuOpen ? (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-lg border border-border bg-popover text-[12px] shadow-xl"
-                  onMouseLeave={() => setMenuOpen(false)}
+          {menuItems.length > 0 ? (
+            <MessageMenu
+              items={menuItems}
+              className="relative ml-auto opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
+              renderTrigger={(open) => (
+                <button
+                  type="button"
+                  onClick={open}
+                  className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="More"
                 >
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setEditing(true);
-                    }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" /> Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-rose-700 hover:bg-rose-500/10 dark:text-rose-300"
-                    onClick={async () => {
-                      setMenuOpen(false);
-                      const ok = await confirm({
-                        title: "Delete this comment?",
-                        description: "It will disappear for everyone.",
-                        confirmLabel: "Delete",
-                        tone: "danger",
-                      });
-                      if (!ok) return;
-                      const r = await deleteBugCommentAction({
-                        bugId,
-                        activityId: e._id,
-                      });
-                      if (!r.ok) toast.error(r.error ?? "Failed to delete");
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
-                  </button>
-                </div>
-              ) : null}
-            </div>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              )}
+            />
           ) : null}
         </div>
 
@@ -170,14 +208,18 @@ function CommentRow({
                 activityId: e._id,
                 text,
               });
-              if (r.ok) setEditing(false);
-              else toast.error(r.error ?? "Save failed");
+              if (r.ok) {
+                setEditing(false);
+                router.refresh();
+              } else {
+                toast.error(r.error ?? "Save failed");
+              }
               return r;
             }}
           />
         ) : (
           <div className="rounded-2xl border border-border/60 bg-card/70 px-3 py-2.5 shadow-sm">
-            <MarkdownLite text={e.text ?? ""} />
+            <MarkdownLite text={e.text ?? ""} mentions={e.mentions} />
           </div>
         )}
 
@@ -188,7 +230,7 @@ function CommentRow({
           myUserId={myUserId}
         />
       </div>
-    </li>
+    </MessageMenu>
   );
 }
 
@@ -244,11 +286,13 @@ export function BugActivityThread({
   entries,
   bugId,
   myUserId,
+  canManage = false,
   className,
 }: {
   entries: BugThreadEntry[];
   bugId: string;
   myUserId: string;
+  canManage?: boolean;
   className?: string;
 }) {
   const [filter, setFilter] = React.useState<"all" | "comments">("all");
@@ -310,6 +354,7 @@ export function BugActivityThread({
                 bugId={bugId}
                 myUserId={myUserId}
                 isMine={String(e.byId) === String(myUserId)}
+                canManage={canManage}
               />
             );
           }
@@ -333,7 +378,7 @@ export function BugActivityThread({
                       <Icon className="h-3.5 w-3.5" />
                       {meta.label.replace("marked as ", "")}
                     </div>
-                    {e.text ? <MarkdownLite className="mt-1.5" text={e.text} /> : null}
+                    {e.text ? <MarkdownLite className="mt-1.5" text={e.text} mentions={e.mentions} /> : null}
                   </div>
                   <ReactionsBar
                     bugId={bugId}

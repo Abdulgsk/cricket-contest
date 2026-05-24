@@ -64,6 +64,22 @@ useEffect(() => {
 - My11 errors: narrow on `instanceof My11AuthError` / `My11NotReadyError`; map to friendly text.
 - Don't swallow validation errors silently — propagate to the toast.
 
+## Soft deletes (HARD RULE)
+
+**Nothing the user generates is ever hard-deleted.** All "delete" actions are reversible flags:
+
+- **Top-level docs** (`BugReport`, `WorkItem`) carry `deletedAt: Date | null` (indexed) and `deletedById: ObjectId | null`. Deletion = `updateOne({ _id, deletedAt: null }, { $set: { deletedAt: new Date(), deletedById: me._id } })`. Never `deleteOne` / `deleteMany` user content.
+- **Embedded activity rows** (comments, system events in `bug.activity[]` / `workItem.activity[]`) carry `deletedAt`, `deletedById`, `deletedByName`, `deletedByHandle`. Deletion = `updateOne({ _id, "activity._id": new ObjectId(activityId) }, { $set: { "activity.$.deletedAt": now, "activity.$.deletedById": me._id, "activity.$.deletedByName": me.username, "activity.$.deletedByHandle": me.userId, "activity.$.text": "", "activity.$.mentions": [], "activity.$.reactions": [] } })`. The row stays in the array so thread ordering and permalinks survive. The UI renders a tombstone ("This message was deleted").
+- **All list / detail queries** must include `{ deletedAt: null }` in their filter. This applies to:
+  - `BugReport.find` / `findOne` / `findById` for reader paths.
+  - `WorkItem.find` / `findOne` / `findById` for reader paths.
+  - Every `countDocuments` used for badge counts (sidebar, admin tabs, developer dashboard).
+  - CSV exports, duplicate-search, related-bug lookups.
+- **Mutation paths** (assign, comment, status change) may continue using `findById` without the filter, since soft-deleted docs are not surfaced in any UI — but a top-level `deletedAt` check inside the mutation is welcome as defence-in-depth.
+- **Idempotency**: comment-delete actions should treat an already-deleted activity as `{ ok: true }` (no-op) instead of erroring.
+- **Audit**: every soft-delete writes `recordAudit({ category: "delete", action: "bug.report.delete" | "bug.comment.delete" | "workitem.delete" | "workitem.comment.delete", ... })`.
+- **Subdoc `_id` cast**: when matching by activity `_id`, always wrap the string in `new mongoose.Types.ObjectId(...)`. Mongoose does not always auto-cast string IDs inside positional subdoc filters.
+
 ## Date / format helpers
 
 - `lib/utils.ts::formatDate(date)` — IST-friendly display

@@ -40,10 +40,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     BugReport.countDocuments({
       assignedTo: me._id,
       status: { $in: ["open", "in_progress"] },
+      deletedAt: null,
     }),
     WorkItem.countDocuments({
       assignedToId: me._id,
       status: { $ne: "done" },
+      deletedAt: null,
     }),
   ]);
   const bountyReward = settings.bonusConfig?.bounty ?? BONUSES.BOUNTY;

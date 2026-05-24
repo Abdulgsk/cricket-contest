@@ -12,24 +12,44 @@ export async function syncIplMatches(opts: { includePlayoffs?: boolean } = {}) {
   await connectDB();
   const fixtures = await scrapeSchedule(SEASON, opts);
 
-  // Clean up any previously-imported TBD vs TBD playoff rows that were never
-  // claimed by real teams (so list doesn't show ghost matches).
-  const tbdDeleted = await Match.deleteMany({
-    teamA: "TBD",
-    teamB: "TBD",
-    resultsEntered: false,
-  });
-
   let created = 0;
   let updated = 0;
+  let promotedFromTbd = 0;
 
   for (const f of fixtures) {
-    const existing = await Match.findOne({ externalId: f.externalId });
+    // 1) Exact externalId match (steady state once team names are known).
+    let existing = await Match.findOne({ externalId: f.externalId });
+
+    // 2) Playoff placeholder reconciliation: when a slot like
+    //    "tba-vs-tba-qualifier-1-..." flips to real teams, the externalId
+    //    changes. Re-bind the same DB row by stage + same calendar day so
+    //    predictions / ids stay stable instead of creating a duplicate.
+    if (!existing && f.stage !== "League") {
+      const dayStart = new Date(f.startTime);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+      existing = await Match.findOne({
+        stage: f.stage,
+        startTime: { $gte: dayStart, $lt: dayEnd },
+        resultsEntered: false,
+      });
+      if (existing) {
+        const wasTbd = existing.teamA === "TBD" || existing.teamB === "TBD";
+        existing.externalId = f.externalId;
+        if (wasTbd && (f.teamA !== "TBD" || f.teamB !== "TBD")) promotedFromTbd++;
+      }
+    }
+
     if (existing) {
       if (!existing.resultsEntered) {
         existing.startTime = f.startTime;
         existing.venue = f.venue ?? existing.venue;
         existing.stage = f.stage;
+        // Keep team names in sync — playoff placeholders flip from "TBD"
+        // to real teams as the schedule firms up.
+        if (existing.teamA !== f.teamA) existing.teamA = f.teamA;
+        if (existing.teamB !== f.teamB) existing.teamB = f.teamB;
         await existing.save();
         updated++;
       }
@@ -49,10 +69,10 @@ export async function syncIplMatches(opts: { includePlayoffs?: boolean } = {}) {
   return {
     created,
     updated,
+    promotedFromTbd,
     total: fixtures.length,
     season: SEASON,
     includedPlayoffs: !!opts.includePlayoffs,
-    tbdRemoved: tbdDeleted.deletedCount ?? 0,
   };
 }
 

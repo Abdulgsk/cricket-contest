@@ -55,6 +55,7 @@ scripts/        One-off maintenance scripts (node .mjs)
 8. **Anti-hallucination AI** — every number in an AI fact must exist in the verified payload. See `services/facts-ai.ts::validateFacts`.
 9. **Don't bypass admin approval flows** — my11 name changes, rivalry withdrawals, prediction resets all have explicit admin queues.
 10. **No emojis in code unless they already exist in surrounding context** (UI uses some). Don't sprinkle them.
+11. **Deletes are soft.** Never call `deleteOne`/`deleteMany`/`$pull` on user-generated content (`BugReport`, `WorkItem`, their embedded `activity[]`). Set `deletedAt`/`deletedById` (and `deletedByName`/`deletedByHandle` on activity rows); clear `text`/`mentions`/`reactions` on deleted comments. Every reader query and `countDocuments` must include `{ deletedAt: null }`. Deleted activity rows stay in the array and render as tombstones in the thread. See [.github/context/conventions.md#soft-deletes-hard-rule](.github/context/conventions.md#soft-deletes-hard-rule).
 
 ## Build / dev commands
 

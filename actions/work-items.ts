@@ -253,13 +253,18 @@ export async function updateWorkItemAction(payload: unknown) {
 }
 
 export async function deleteWorkItemAction(id: string) {
-  await requireAdminFeature("dev.workitems.manage");
+  const _auth = await assertFeature("dev.workitems.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return { ok: false as const, error: "Invalid id." };
   }
   await connectDB();
-  const res = await WorkItem.deleteOne({ _id: id });
-  if (res.deletedCount === 0) {
+  const res = await WorkItem.updateOne(
+    { _id: id, deletedAt: null },
+    { $set: { deletedAt: new Date(), deletedById: me._id } },
+  );
+  if (res.matchedCount === 0) {
     return { ok: false as const, error: "Not found." };
   }
   await recordAudit({
@@ -268,7 +273,6 @@ export async function deleteWorkItemAction(id: string) {
     targetType: "WorkItem",
     targetId: id,
   });
-  revalidatePath("/developer");
   revalidatePath("/developer");
   return { ok: true as const };
 }
@@ -600,35 +604,46 @@ export async function deleteWorkItemCommentAction(payload: unknown) {
   });
   const parsed = schema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid input." };
-  if (!mongoose.Types.ObjectId.isValid(parsed.data.id)) {
+  if (
+    !mongoose.Types.ObjectId.isValid(parsed.data.id) ||
+    !mongoose.Types.ObjectId.isValid(parsed.data.activityId)
+  ) {
     return { ok: false as const, error: "Invalid id." };
   }
   await connectDB();
-  const canManageRes = await assertFeature("dev.workitems.manage");
   const item = await WorkItem.findById(parsed.data.id)
-    .select("activity._id activity.byId activity.kind")
+    .select("activity._id activity.byId activity.kind activity.deletedAt")
     .lean();
   if (!item) return { ok: false as const, error: "Not found." };
   const entry = (item.activity ?? []).find(
     (a: { _id?: unknown }) => String(a._id) === String(parsed.data.activityId),
-  ) as { byId?: unknown; kind?: string } | undefined;
+  ) as { byId?: unknown; kind?: string; deletedAt?: Date | null } | undefined;
   if (!entry) return { ok: false as const, error: "Comment not found." };
   if (entry.kind !== "comment") return { ok: false as const, error: "Not deletable." };
-  const isAuthor = String(entry.byId) === String(me._id);
-  if (!isAuthor && !canManageRes.ok) {
-    return { ok: false as const, error: "Not allowed." };
+  if (entry.deletedAt) return { ok: true as const };
+  if (String(entry.byId) !== String(me._id)) {
+    return { ok: false as const, error: "You can only delete your own comments." };
   }
+  const activityObjectId = new mongoose.Types.ObjectId(parsed.data.activityId);
   await WorkItem.updateOne(
-    { _id: parsed.data.id },
-    { $pull: { activity: { _id: parsed.data.activityId } } },
+    { _id: parsed.data.id, "activity._id": activityObjectId },
+    {
+      $set: {
+        "activity.$.deletedAt": new Date(),
+        "activity.$.deletedById": me._id,
+        "activity.$.deletedByName": me.username,
+        "activity.$.deletedByHandle": me.userId,
+        "activity.$.text": "",
+      },
+    },
   );
   await recordAudit({
-    category: "update",
+    category: "delete",
     action: "workitem.comment.delete",
     targetType: "WorkItem",
     targetId: parsed.data.id,
+    meta: { activityId: parsed.data.activityId, byManager: false },
   });
-  revalidatePath("/developer");
   revalidatePath("/developer");
   return { ok: true as const };
 }

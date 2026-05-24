@@ -237,7 +237,16 @@ export async function deleteBugReportAction(id: string) {
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
   const me = _auth.user;
   await connectDB();
-  await BugReport.deleteOne({ _id: id });
+  // Soft-delete: keep the row for audit; readers/loaders filter on deletedAt.
+  await BugReport.updateOne(
+    { _id: id, deletedAt: null },
+    {
+      $set: { deletedAt: new Date(), deletedById: me._id },
+      $push: {
+        activity: makeActivity(me, "system", "Bug deleted", { deleted: true }),
+      },
+    },
+  );
   await recordAudit({
     category: "delete",
     action: "bug.report.delete",
@@ -246,6 +255,7 @@ export async function deleteBugReportAction(id: string) {
     targetId: id,
   });
   revalidatePath("/admin");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -835,22 +845,30 @@ export async function editBugCommentAction(payload: unknown) {
   const me = await requireUser();
   const parsed = EditCommentSchema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (
+    !mongoose.isValidObjectId(parsed.data.bugId) ||
+    !mongoose.isValidObjectId(parsed.data.activityId)
+  ) {
+    return { ok: false as const, error: "Invalid id." };
+  }
   await connectDB();
   const bug = await BugReport.findById(parsed.data.bugId)
-    .select("activity._id activity.byId activity.kind")
+    .select("activity._id activity.byId activity.kind activity.deletedAt")
     .lean();
   if (!bug) return { ok: false as const, error: "Bug not found." };
   const entry = (bug.activity ?? []).find(
     (a: { _id?: unknown }) => String(a._id) === String(parsed.data.activityId),
-  ) as { _id?: unknown; byId?: unknown; kind?: string } | undefined;
+  ) as { _id?: unknown; byId?: unknown; kind?: string; deletedAt?: Date | null } | undefined;
   if (!entry) return { ok: false as const, error: "Comment not found." };
   if (entry.kind !== "comment") return { ok: false as const, error: "Not editable." };
+  if (entry.deletedAt) return { ok: false as const, error: "Comment was deleted." };
   if (String(entry.byId) !== String(me._id)) {
     return { ok: false as const, error: "You can only edit your own comments." };
   }
   const mentions = await resolveMentions(parsed.data.text);
+  const activityObjectId = new mongoose.Types.ObjectId(parsed.data.activityId);
   await BugReport.updateOne(
-    { _id: parsed.data.bugId, "activity._id": parsed.data.activityId },
+    { _id: parsed.data.bugId, "activity._id": activityObjectId },
     {
       $set: {
         "activity.$.text": parsed.data.text,
@@ -859,6 +877,18 @@ export async function editBugCommentAction(payload: unknown) {
       },
     },
   );
+  await recordAudit({
+    category: "update",
+    action: "bug.comment.edit",
+    actor: me,
+    targetType: "BugReport",
+    targetId: parsed.data.bugId,
+    meta: {
+      activityId: parsed.data.activityId,
+      mentions: mentions.map((m) => m.handle),
+      length: parsed.data.text.length,
+    },
+  });
   revalidatePath("/admin");
   revalidatePath("/developer");
   revalidatePath(bugLink(parsed.data.bugId));
@@ -870,25 +900,51 @@ export async function deleteBugCommentAction(payload: unknown) {
   const schema = z.object({ bugId: z.string().min(1), activityId: z.string().min(1) });
   const parsed = schema.safeParse(payload);
   if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (!mongoose.isValidObjectId(parsed.data.bugId) || !mongoose.isValidObjectId(parsed.data.activityId)) {
+    return { ok: false as const, error: "Invalid id." };
+  }
   await connectDB();
-  const canManageRes = await assertFeature("bugs.manage");
   const bug = await BugReport.findById(parsed.data.bugId)
-    .select("activity._id activity.byId activity.kind")
+    .select("activity._id activity.byId activity.kind activity.deletedAt")
     .lean();
   if (!bug) return { ok: false as const, error: "Bug not found." };
   const entry = (bug.activity ?? []).find(
     (a: { _id?: unknown }) => String(a._id) === String(parsed.data.activityId),
-  ) as { byId?: unknown; kind?: string } | undefined;
+  ) as { byId?: unknown; kind?: string; deletedAt?: Date | null } | undefined;
   if (!entry) return { ok: false as const, error: "Comment not found." };
   if (entry.kind !== "comment") return { ok: false as const, error: "Not deletable." };
-  const isAuthor = String(entry.byId) === String(me._id);
-  if (!isAuthor && !canManageRes.ok) {
-    return { ok: false as const, error: "Not allowed." };
+  if (entry.deletedAt) return { ok: true as const }; // already deleted, idempotent
+  if (String(entry.byId) !== String(me._id)) {
+    return { ok: false as const, error: "You can only delete your own comments." };
   }
+  // Soft-delete: keep the activity row so the thread keeps its order and
+  // permalinks stay valid; the UI renders a tombstone.
+  const now = new Date();
+  const activityObjectId = new mongoose.Types.ObjectId(parsed.data.activityId);
   await BugReport.updateOne(
-    { _id: parsed.data.bugId },
-    { $pull: { activity: { _id: parsed.data.activityId } } },
+    { _id: parsed.data.bugId, "activity._id": activityObjectId },
+    {
+      $set: {
+        "activity.$.deletedAt": now,
+        "activity.$.deletedById": me._id,
+        "activity.$.deletedByName": me.username,
+        "activity.$.deletedByHandle": me.userId,
+        // Also clear the text + mentions so the deleted content never leaks
+        // (the tombstone shows "This message was deleted").
+        "activity.$.text": "",
+        "activity.$.mentions": [],
+        "activity.$.reactions": [],
+      },
+    },
   );
+  await recordAudit({
+    category: "delete",
+    action: "bug.comment.delete",
+    actor: me,
+    targetType: "BugReport",
+    targetId: parsed.data.bugId,
+    meta: { activityId: parsed.data.activityId, byManager: false },
+  });
   revalidatePath("/admin");
   revalidatePath("/developer");
   revalidatePath(bugLink(parsed.data.bugId));
@@ -1038,8 +1094,9 @@ function csvEscape(s: unknown): string {
 export async function exportBugsCsvAction() {
   const _auth = await assertFeature("bugs.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   await connectDB();
-  const rows = await BugReport.find({})
+  const rows = await BugReport.find({ deletedAt: null })
     .select(
       "title severity status reporterName reporterHandle assignedToName assignedToHandle createdAt updatedAt resolvedAt dueAt needsAdminReview submission.kind pageUrl",
     )
@@ -1082,6 +1139,13 @@ export async function exportBugsCsvAction() {
       csvEscape(r.pageUrl ?? ""),
     ].join(","),
   );
+  await recordAudit({
+    category: "action",
+    action: "bug.csv.export",
+    actor: me,
+    targetType: "BugReport",
+    meta: { count: rows.length },
+  });
   return { ok: true as const, csv: [header, ...lines].join("\n") };
 }
 
@@ -1108,6 +1172,7 @@ export async function findDuplicateBugsAction(rawTitle: string) {
   const regex = new RegExp(tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "i");
   const rows = await BugReport.find({
     status: { $in: ["open", "in_progress"] },
+    deletedAt: null,
     title: regex,
   })
     .select("title severity status assignedToName createdAt")

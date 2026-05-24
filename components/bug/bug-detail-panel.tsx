@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Bug,
@@ -327,6 +328,8 @@ function SubmissionPanel({
 export function BugDetailPanel({
   bug,
   myUserId,
+  /** True if the viewer holds bugs.manage — enables deleting any comment. */
+  canManage = false,
   /** Slot for status / assign / due / accept / reopen buttons. */
   actions,
   /** If true, the live-sync hook is enabled (default). */
@@ -338,6 +341,7 @@ export function BugDetailPanel({
 }: {
   bug: BugDetail;
   myUserId: string;
+  canManage?: boolean;
   actions?: React.ReactNode;
   live?: boolean;
   embedded?: boolean;
@@ -345,10 +349,33 @@ export function BugDetailPanel({
 }) {
   useLiveSync({ enabled: live });
 
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const lastBugIdRef = React.useRef<string | null>(null);
+  const lastActivityLenRef = React.useRef<number>(0);
+
+  // Auto-scroll thread to bottom when:
+  //  - the panel opens / a different bug is shown, or
+  //  - a new activity row arrives (comment sent/received).
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isNewBug = lastBugIdRef.current !== bug.id;
+    const grew = bug.activity.length > lastActivityLenRef.current;
+    lastBugIdRef.current = bug.id;
+    lastActivityLenRef.current = bug.activity.length;
+    if (!isNewBug && !grew) return;
+    // Defer until after the DOM paints the new content.
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: isNewBug ? "auto" : "smooth" });
+    });
+  }, [bug.id, bug.activity.length]);
+
   // mark-read on view
   React.useEffect(() => {
     markBugReadAction(bug.id).catch(() => undefined);
   }, [bug.id, bug.activity.length]);
+
+  const router = useRouter();
 
   return (
     <article className={cn("flex h-full min-h-0 flex-col", embedded ? "" : "max-w-3xl mx-auto w-full")}>
@@ -399,7 +426,7 @@ export function BugDetailPanel({
       </header>
 
       {/* scrollable body */}
-      <div className="flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
+      <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
         {/* meta strip */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] text-muted-foreground">
           {bug.pageUrl ? (
@@ -483,7 +510,7 @@ export function BugDetailPanel({
 
         {/* activity */}
         <section>
-          <BugActivityThread entries={bug.activity} bugId={bug.id} myUserId={myUserId} />
+          <BugActivityThread entries={bug.activity} bugId={bug.id} myUserId={myUserId} canManage={canManage} />
         </section>
       </div>
 
@@ -501,6 +528,7 @@ export function BugDetailPanel({
           onSubmit={async (text) => {
             const r = await addBugCommentAction({ id: bug.id, text });
             if (!r.ok) toast.error(r.error ?? "Comment failed");
+            else router.refresh();
             return r;
           }}
         />

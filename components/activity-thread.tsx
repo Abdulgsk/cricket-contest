@@ -14,8 +14,10 @@ import {
   Megaphone,
   MoreHorizontal,
   Trash2,
+  Copy,
 } from "lucide-react";
 import { useConfirm } from "@/components/ui/use-confirm";
+import { MessageMenu, type MessageMenuItem } from "@/components/ui/message-menu";
 import { deleteWorkItemCommentAction } from "@/actions/work-items";
 
 export type ActivityKind =
@@ -38,6 +40,10 @@ export type ActivityEntry = {
   kind: ActivityKind;
   text?: string;
   meta?: Record<string, unknown> | null;
+  /** Soft-delete: when present, render a tombstone and lock the row. */
+  deletedAt?: string | null;
+  deletedByName?: string | null;
+  deletedByHandle?: string | null;
 };
 
 function relTime(iso: string): string {
@@ -324,70 +330,99 @@ function CommentRow({
   myUserId?: string;
   canManage: boolean;
 }) {
-  const [menuOpen, setMenuOpen] = React.useState(false);
   const [pending, start] = React.useTransition();
   const confirm = useConfirm();
   const isMine = myUserId && entry.byId && String(entry.byId) === String(myUserId);
-  const canDelete = workItemId && entry._id && (isMine || canManage);
+  const isDeleted = !!entry.deletedAt;
+  const canDelete = !isDeleted && !!(workItemId && entry._id && isMine);
+
+  const onDelete = () => {
+    if (!canDelete) return;
+    start(async () => {
+      const ok = await confirm({
+        title: "Delete this comment?",
+        description: "It will disappear for everyone.",
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
+      if (!ok) return;
+      const r = await deleteWorkItemCommentAction({
+        id: workItemId!,
+        activityId: entry._id!,
+      });
+      if (!r.ok) toast.error(r.error ?? "Failed to delete");
+      else toast.success("Comment deleted");
+    });
+  };
+
+  const menuItems: MessageMenuItem[] = [];
+  if (!isDeleted && entry.text) {
+    menuItems.push({
+      label: "Copy text",
+      icon: Copy,
+      onSelect: () =>
+        navigator.clipboard?.writeText(entry.text ?? "").then(
+          () => toast.success("Copied"),
+          () => toast.error("Couldn\u2019t copy"),
+        ),
+    });
+  }
+  if (canDelete) {
+    menuItems.push({ label: "Delete", icon: Trash2, onSelect: onDelete, danger: true });
+  }
+
+  if (isDeleted) {
+    return (
+      <li className="group flex items-start gap-2.5">
+        <Avatar name={entry.byName} size={28} />
+        <div className="min-w-0 flex-1 rounded-2xl border border-dashed border-border/60 bg-muted/30 px-3 py-2">
+          <div className="flex items-center gap-2 text-[11px] mb-0.5">
+            <span className="font-semibold text-foreground">{entry.byName}</span>
+            <span className="text-muted-foreground">@{entry.byHandle}</span>
+            <span className="text-muted-foreground">· {when}</span>
+          </div>
+          <div className="text-[12.5px] italic text-muted-foreground">
+            This message was deleted
+            {entry.deletedByHandle && entry.deletedByHandle !== entry.byHandle
+              ? ` by @${entry.deletedByHandle}`
+              : ""}
+            .
+          </div>
+        </div>
+      </li>
+    );
+  }
 
   return (
-    <li className="group flex items-start gap-2.5">
+    <MessageMenu items={menuItems} as="li" className="group flex items-start gap-2.5">
       <Avatar name={entry.byName} size={28} />
       <div className="min-w-0 flex-1 rounded-2xl border border-border/60 bg-card/60 px-3 py-2">
         <div className="flex items-center gap-2 text-[11px] mb-0.5">
           <span className="font-semibold text-foreground">{entry.byName}</span>
           <span className="text-muted-foreground">@{entry.byHandle}</span>
           <span className="text-muted-foreground">· {when}</span>
-          {canDelete ? (
-            <div className="relative ml-auto opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-              <button
-                type="button"
-                onClick={() => setMenuOpen((o) => !o)}
-                className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="More"
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-              {menuOpen ? (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-lg border border-border bg-popover text-[12px] shadow-xl"
-                  onMouseLeave={() => setMenuOpen(false)}
+          {menuItems.length > 0 ? (
+            <MessageMenu
+              items={menuItems}
+              className="relative ml-auto opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
+              renderTrigger={(open) => (
+                <button
+                  type="button"
+                  onClick={open}
+                  disabled={pending}
+                  className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  aria-label="More"
                 >
-                  <button
-                    type="button"
-                    disabled={pending}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-rose-700 hover:bg-rose-500/10 dark:text-rose-300 disabled:opacity-50"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      start(async () => {
-                        const ok = await confirm({
-                          title: "Delete this comment?",
-                          description: "It will disappear for everyone.",
-                          confirmLabel: "Delete",
-                          tone: "danger",
-                        });
-                        if (!ok) return;
-                        const r = await deleteWorkItemCommentAction({
-                          id: workItemId,
-                          activityId: entry._id!,
-                        });
-                        if (!r.ok) toast.error(r.error ?? "Failed to delete");
-                        else toast.success("Comment deleted");
-                      });
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
-                  </button>
-                </div>
-              ) : null}
-            </div>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              )}
+            />
           ) : null}
         </div>
         <div className="whitespace-pre-wrap text-sm text-foreground/90 break-words">
           {entry.text}
         </div>
       </div>
-    </li>
+    </MessageMenu>
   );
 }

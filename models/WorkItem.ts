@@ -22,6 +22,11 @@ export interface IWorkItemActivity {
   kind: WorkItemActivityKind;
   text?: string;
   meta?: Record<string, unknown>;
+  /** Soft-delete: when set the row is rendered as a tombstone and locked. */
+  deletedAt?: Date | null;
+  deletedById?: mongoose.Types.ObjectId | null;
+  deletedByName?: string | null;
+  deletedByHandle?: string | null;
 }
 
 export interface IWorkItemSubmission {
@@ -56,6 +61,9 @@ export interface IWorkItem {
   needsReview?: boolean;
   /** Conversation log: comments + lifecycle events. */
   activity: IWorkItemActivity[];
+  /** Soft-delete: when set, the work item is hidden from queues but kept for audit. */
+  deletedAt?: Date | null;
+  deletedById?: mongoose.Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -93,6 +101,10 @@ const WorkItemActivitySchema = new Schema<IWorkItemActivity>(
     },
     text: { type: String, default: "", maxlength: 4000 },
     meta: { type: Schema.Types.Mixed, default: null },
+    deletedAt: { type: Date, default: null },
+    deletedById: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    deletedByName: { type: String, default: null },
+    deletedByHandle: { type: String, default: null },
   },
   { _id: true, timestamps: false },
 );
@@ -124,6 +136,8 @@ const WorkItemSchema = new Schema<IWorkItem>(
     submission: { type: WorkItemSubmissionSchema, default: null },
     needsReview: { type: Boolean, default: false, index: true },
     activity: { type: [WorkItemActivitySchema], default: [] },
+    deletedAt: { type: Date, default: null, index: true },
+    deletedById: { type: Schema.Types.ObjectId, ref: "User", default: null },
   },
   { timestamps: true },
 );

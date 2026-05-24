@@ -32,6 +32,13 @@ type Token =
 const URL_RE = /\b(https?:\/\/[^\s<>"')]+)/g;
 const MENTION_RE = /(^|[\s(])@([a-z0-9_.-]{2,32})/gi;
 
+/**
+ * Lets the surrounding chat row supply a `handle → display name` map so
+ * mentions render as `@Name` instead of `@handle`. Falls back to the raw
+ * handle when no name is known (keeps it copy-pasteable + server-resolvable).
+ */
+const MentionNamesContext = React.createContext<Record<string, string> | null>(null);
+
 function parseInline(src: string): Token[] {
   const out: Token[] = [];
   let i = 0;
@@ -200,38 +207,55 @@ function Render({ tokens }: { tokens: Token[] }): React.ReactElement {
               </a>
             );
           case "mention":
-            return (
-              <span
-                key={i}
-                data-mention={tok.handle}
-                className="rounded-md bg-primary/10 px-1 py-0.5 font-semibold text-primary"
-              >
-                @{tok.handle}
-              </span>
-            );
+            return <MentionChip key={i} handle={tok.handle} />;
         }
       })}
     </>
   );
 }
 
+function MentionChip({ handle }: { handle: string }) {
+  const names = React.useContext(MentionNamesContext);
+  const display = names?.[handle.toLowerCase()] ?? handle;
+  return (
+    <span
+      data-mention={handle}
+      title={`@${handle}`}
+      className="rounded-md bg-primary/10 px-1 py-0.5 font-semibold text-primary"
+    >
+      @{display}
+    </span>
+  );
+}
+
 export function MarkdownLite({
   text,
   className,
+  mentions,
 }: {
   text: string;
   className?: string;
+  /** Optional `handle → name` map so `@handle` renders as `@Name`. */
+  mentions?: Array<{ handle: string; name: string }>;
 }) {
   const tokens = React.useMemo(() => parseBlocks(text ?? ""), [text]);
+  const names = React.useMemo(() => {
+    if (!mentions?.length) return null;
+    const m: Record<string, string> = {};
+    for (const u of mentions) m[u.handle.toLowerCase()] = u.name;
+    return m;
+  }, [mentions]);
   return (
-    <div
-      className={cn(
-        "whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90",
-        className,
-      )}
-    >
-      <Render tokens={tokens} />
-    </div>
+    <MentionNamesContext.Provider value={names}>
+      <div
+        className={cn(
+          "whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90",
+          className,
+        )}
+      >
+        <Render tokens={tokens} />
+      </div>
+    </MentionNamesContext.Provider>
   );
 }
 

@@ -34,7 +34,7 @@ async function loadBugData(
   myUserId: string,
   opts?: { assignedToMeOnly?: boolean },
 ): Promise<{ rows: InboxBugRow[]; openCount: number }> {
-  const filter: Record<string, unknown> = {};
+  const filter: Record<string, unknown> = { deletedAt: null };
   if (opts?.assignedToMeOnly) filter.assignedTo = myUserId;
   const docs = await BugReport.find(filter)
     .sort({ needsAdminReview: -1, status: 1, updatedAt: -1 })
@@ -88,7 +88,7 @@ async function loadAssignees(): Promise<BugAssignee[]> {  const users = await Us
 async function loadWorkItems(opts?: {
   assignedToMeId?: string;
 }): Promise<{ rows: WorkItemRow[]; openCount: number }> {
-  const filter: Record<string, unknown> = {};
+  const filter: Record<string, unknown> = { deletedAt: null };
   if (opts?.assignedToMeId) filter.assignedToId = opts.assignedToMeId;
   const docs = await WorkItem.find(filter)
     .sort({ needsReview: -1, createdAt: -1 })
@@ -126,6 +126,9 @@ async function loadWorkItems(opts?: {
       kind: a.kind,
       text: a.text ?? "",
       meta: (a.meta ?? null) as Record<string, unknown> | null,
+      deletedAt: a.deletedAt ? new Date(a.deletedAt).toISOString() : null,
+      deletedByName: a.deletedByName ?? null,
+      deletedByHandle: a.deletedByHandle ?? null,
     })),
   }));
   const openCount = rows.filter((r) => r.status !== "done" || r.needsReview).length;
@@ -220,8 +223,8 @@ export default async function DeveloperToolsPage() {
   // Anyone with an assigned bug or work item can use the developer queue,
   // even without the developer flag (they only see their own rows).
   const [myBugCount, myWorkCount] = await Promise.all([
-    BugReport.countDocuments({ assignedTo: me._id }),
-    WorkItem.countDocuments({ assignedToId: me._id }),
+    BugReport.countDocuments({ assignedTo: me._id, deletedAt: null }),
+    WorkItem.countDocuments({ assignedToId: me._id, deletedAt: null }),
   ]);
   const hasAssignedBugs = myBugCount > 0;
   const hasAssignedWork = myWorkCount > 0;

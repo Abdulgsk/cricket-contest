@@ -84,6 +84,7 @@ export default async function AdminHome() {
 
   const openBugCount = canViewBugs
     ? await BugReport.countDocuments({
+        deletedAt: null,
         $or: [{ needsAdminReview: true }, { status: "open" }],
       })
     : 0;

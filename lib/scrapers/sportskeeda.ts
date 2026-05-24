@@ -39,7 +39,7 @@ export function teamSlug(name: string): string | null {
  */
 export async function scrapeSchedule(
   _season: string,
-  opts: { includePlayoffs?: boolean } = {}
+  _opts: { includePlayoffs?: boolean } = {}
 ): Promise<ScrapedMatch[]> {
   const html = await fetchHtml("https://www.sportskeeda.com/go/ipl/schedule");
   const $ = cheerio.load(html);
@@ -53,9 +53,9 @@ export async function scrapeSchedule(
 
     const parsed = parseSlug(matchSlug);
     if (!parsed) return;
-    if (parsed.stage !== "League" && !opts.includePlayoffs) return;
-    // Don't add playoffs until at least one team is announced.
-    if (parsed.teamA === "TBD" && parsed.teamB === "TBD") return;
+    // Import every scheduled match — league + all playoffs, including
+    // placeholder TBD vs TBD playoff rows so the fixtures list mirrors
+    // the official schedule exactly.
 
     const venue = $card
       .find("span.cricket-match-card--match-venue")
@@ -127,9 +127,12 @@ function parseSlug(
       stage: "League" | "Qualifier 1" | "Eliminator" | "Qualifier 2" | "Final";
     }
   | null {
-  // Playoffs: "tba-vs-tba-qualifier-1-ipl-2026t20-26-may-2026"
+  // Playoffs: Sportskeeda uses two slug shapes
+  //   TBD form:        "tba-vs-tba-qualifier-1-ipl-2026t20-26-may-2026"
+  //   Real-teams form: "royal-challengers-bengaluru-vs-gujarat-titans-qualifier-1-26-may-2026"
+  // The "ipl-NNNNtNN" segment is optional.
   const playoff = slug.match(
-    /^(.+?)-vs-(.+?)-(qualifier-1|qualifier-2|eliminator|final)-ipl-\d+t20-(\d{1,2})-([a-z]+)-(\d{4})$/
+    /^(.+?)-vs-(.+?)-(qualifier-1|qualifier-2|eliminator|final)(?:-ipl-\d+t\d+)?-(\d{1,2})-([a-z]+)-(\d{4})$/
   );
   if (playoff) {
     const [, aSlug, bSlug, kind, dd, monthName, yyyy] = playoff;

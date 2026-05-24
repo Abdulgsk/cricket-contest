@@ -719,6 +719,7 @@ export function BugsInboxClient({
             key={selected.id}
             bug={selected.detail}
             myUserId={myUserId}
+            canManage={canManage}
             embedded
             actions={
               <BugActionBar

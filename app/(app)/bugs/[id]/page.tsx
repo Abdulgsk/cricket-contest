@@ -63,6 +63,7 @@ export default async function BugPermalinkPage({
       <BugDetailPanel
         bug={bug}
         myUserId={String(me._id)}
+        canManage={canManage}
         actions={
           isAssignee || canManage ? (
             <BugActionBar
