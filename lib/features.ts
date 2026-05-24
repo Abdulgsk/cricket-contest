@@ -22,6 +22,12 @@ export type FeatureDef = {
   group: FeatureGroup;
   /** Marks features that can mutate scoring or delete data; the UI flags them. */
   sensitive?: boolean;
+  /**
+   * Feature retired — keep the slot to preserve bit positions, but hide from
+   * admin UI and ignore in access checks where it's been replaced. Existing
+   * grants stay readable so audit history makes sense.
+   */
+  retired?: boolean;
 };
 
 export const FEATURE_DEFS = [
@@ -109,15 +115,17 @@ export const FEATURE_DEFS = [
   {
     key: "bugs.view",
     label: "View bug reports",
-    description: "See bug reports submitted by users in the admin console.",
-    group: "Users",
+    description:
+      "Retired — replaced by ‘Developer member’. Grants are kept readable for audit history.",
+    group: "Developer",
+    retired: true,
   },
   {
     key: "bugs.manage",
     label: "Manage bug reports",
     description:
-      "Change status (in progress / resolved / won't fix), add internal notes and delete reports.",
-    group: "Users",
+      "Assign bugs to others, change status, accept/reopen submissions, delete reports. Lets a developer act on any bug, not just ones assigned to them.",
+    group: "Developer",
     sensitive: true,
   },
   {
@@ -130,14 +138,16 @@ export const FEATURE_DEFS = [
   {
     key: "dev.workitems.view",
     label: "View work items",
-    description: "See the developer work-item board (tasks, bugs-as-tickets).",
+    description:
+      "Retired — replaced by ‘Developer member’. Grants are kept readable for audit history.",
     group: "Developer",
+    retired: true,
   },
   {
     key: "dev.workitems.manage",
     label: "Manage work items",
     description:
-      "Create, assign, change status and delete work items in Developer Tools.",
+      "Assign work items to others, change status, accept/reopen submissions, delete items. Lets a developer act on any work item, not just ones assigned to them.",
     group: "Developer",
     sensitive: true,
   },
@@ -146,6 +156,13 @@ export const FEATURE_DEFS = [
     label: "View diagnostics",
     description:
       "Runtime metrics: memory usage, uptime, DB counts, recent activity graph.",
+    group: "Developer",
+  },
+  {
+    key: "dev.member",
+    label: "Developer",
+    description:
+      "Eligible to be assigned bugs and work items. Sees all reported bugs and work items, can comment freely, but can only act on items assigned to them.",
     group: "Developer",
   },
 ] as const satisfies readonly FeatureDef[];
@@ -186,7 +203,10 @@ export function featuresByGroup(): Record<FeatureGroup, FeatureDef[]> {
   const out = Object.fromEntries(
     FEATURE_GROUPS.map((g) => [g, [] as FeatureDef[]]),
   ) as Record<FeatureGroup, FeatureDef[]>;
-  for (const f of FEATURE_DEFS) out[f.group].push(f);
+  for (const f of FEATURE_DEFS) {
+    if ((f as FeatureDef).retired) continue; // hide retired features from admin UIs
+    out[f.group].push(f);
+  }
   return out;
 }
 

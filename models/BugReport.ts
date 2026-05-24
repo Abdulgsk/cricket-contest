@@ -11,7 +11,18 @@ export type BugActivityKind =
   | "accept"
   | "reopen"
   | "assignment_change"
-  | "status_change";
+  | "status_change"
+  | "due_change"
+  | "system";
+
+/** A single emoji reaction on a comment/activity entry. */
+export interface IBugReaction {
+  emoji: string;
+  byId: mongoose.Types.ObjectId;
+  byHandle: string;
+  byName: string;
+  at: Date;
+}
 
 export interface IBugActivity {
   _id: mongoose.Types.ObjectId;
@@ -22,6 +33,12 @@ export interface IBugActivity {
   kind: BugActivityKind;
   text?: string;
   meta?: Record<string, unknown>;
+  /** @userhandle references resolved at write-time so the thread stays stable. */
+  mentions?: Array<{ userId: mongoose.Types.ObjectId; handle: string; name: string }>;
+  /** Emoji reactions (👍 ❤️ 🎉 👋 🚀 👀). */
+  reactions?: IBugReaction[];
+  /** Edit history — last edit timestamp; if set, UI shows "edited". */
+  editedAt?: Date | null;
 }
 
 export interface IBugSubmission {
@@ -62,6 +79,23 @@ export interface IBugReport {
   activity: IBugActivity[];
   /** Optional screenshots attached by the reporter (data: URLs, max 3). */
   screenshots: string[];
+  /** Auto-captured runtime context from the reporter's browser. */
+  browserContext?: {
+    viewport?: { w: number; h: number } | null;
+    devicePixelRatio?: number | null;
+    locale?: string | null;
+    timezone?: string | null;
+    theme?: string | null;
+    referrer?: string | null;
+    consoleErrors?: Array<{ at: string; msg: string }>;
+    buildId?: string | null;
+  } | null;
+  /** Optional admin-set SLA / due target. */
+  dueAt?: Date | null;
+  /** Soft-link to related bugs (chosen via duplicate detection). */
+  relatedTo?: mongoose.Types.ObjectId[];
+  /** Per-user last-read marker for unread badges. */
+  viewerState?: Map<string, { lastReadAt: Date }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,6 +108,17 @@ const BugSubmissionSchema = new Schema<IBugSubmission>(
     submittedById: { type: Schema.Types.ObjectId, ref: "User", required: true },
     submittedByHandle: { type: String, required: true },
     submittedByName: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const BugReactionSchema = new Schema<IBugReaction>(
+  {
+    emoji: { type: String, required: true, maxlength: 8 },
+    byId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    byHandle: { type: String, required: true },
+    byName: { type: String, required: true },
+    at: { type: Date, required: true, default: () => new Date() },
   },
   { _id: false },
 );
@@ -94,11 +139,28 @@ const BugActivitySchema = new Schema<IBugActivity>(
         "reopen",
         "assignment_change",
         "status_change",
+        "due_change",
+        "system",
       ],
       required: true,
     },
     text: { type: String, default: "", maxlength: 4000 },
     meta: { type: Schema.Types.Mixed, default: null },
+    mentions: {
+      type: [
+        new Schema(
+          {
+            userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+            handle: { type: String, required: true },
+            name: { type: String, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+    reactions: { type: [BugReactionSchema], default: [] },
+    editedAt: { type: Date, default: null },
   },
   { _id: true, timestamps: false },
 );
@@ -144,12 +206,24 @@ const BugReportSchema = new Schema<IBugReport>(
         message: "Up to 3 screenshots allowed",
       },
     },
+    browserContext: { type: Schema.Types.Mixed, default: null },
+    dueAt: { type: Date, default: null, index: true },
+    relatedTo: { type: [Schema.Types.ObjectId], ref: "BugReport", default: [] },
+    viewerState: {
+      type: Map,
+      of: new Schema(
+        { lastReadAt: { type: Date, required: true } },
+        { _id: false },
+      ),
+      default: () => new Map(),
+    },
   },
   { timestamps: true }
 );
 
 BugReportSchema.index({ createdAt: -1 });
 BugReportSchema.index({ assignedTo: 1, "submission.submittedAt": -1 });
+BugReportSchema.index({ status: 1, severity: 1, createdAt: -1 });
 
 export const BugReport =
   (models.BugReport as mongoose.Model<IBugReport>) ||

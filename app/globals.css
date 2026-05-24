@@ -111,6 +111,8 @@
   --color-foreground: rgb(var(--foreground));
   --color-card: rgb(var(--card));
   --color-card-foreground: rgb(var(--card-foreground));
+  --color-popover: rgb(var(--card));
+  --color-popover-foreground: rgb(var(--card-foreground));
   --color-primary: rgb(var(--primary));
   --color-primary-foreground: rgb(var(--primary-foreground));
   --color-accent: rgb(var(--accent));

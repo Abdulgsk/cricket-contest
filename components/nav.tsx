@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ChevronDown, Bug, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";
@@ -19,6 +20,12 @@ const NAV = [
   { href: "/profile", label: "Profile" },
 ];
 
+type NavItem = {
+  href: string;
+  label: string;
+  children?: Array<{ href: string; label: string; icon?: React.ComponentType<{ className?: string }> }>;
+};
+
 export function Nav({
   role,
   hasAdminAccess = false,
@@ -33,16 +40,33 @@ export function Nav({
   assignedBugs?: number;
 }) {
   const path = usePathname();
+  const sp = useSearchParams();
+  const activeTab = sp.get("tab");
   const [open, setOpen] = useState(false);
   const [showMenuButton, setShowMenuButton] = useState(true);
   const showAdmin = role === "superadmin" || hasAdminAccess;
   const showDeveloper = role === "superadmin" || hasDeveloperAccess;
-  const items = [
+  const showDeveloperNav = showDeveloper || assignedBugs > 0;
+  const items: NavItem[] = [
     ...NAV,
-    ...(assignedBugs > 0 ? [{ href: "/my-bugs", label: "My queue" }] : []),
-    ...(showDeveloper ? [{ href: "/developer", label: "Developer" }] : []),
+    ...(showDeveloperNav
+      ? [
+          {
+            href: "/developer",
+            label: "Developer",
+            children: [
+              { href: "/developer?tab=bugs", label: "Bug reports", icon: Bug },
+              { href: "/developer?tab=workitems", label: "Work items", icon: Wrench },
+            ],
+          },
+        ]
+      : []),
     ...(showAdmin ? [{ href: "/admin", label: "Admin" }] : []),
   ];
+  const [devOpen, setDevOpen] = useState(() => path.startsWith("/developer"));
+  useEffect(() => {
+    if (path.startsWith("/developer")) setDevOpen(true);
+  }, [path]);
 
   // Close drawer when route changes
   useEffect(() => {
@@ -80,37 +104,92 @@ export function Nav({
   }, []);
 
   const renderLinks = (onClick?: () => void) =>
-    items.map((it) => (
-      <Link
-        key={it.href}
-        href={it.href}
-        onClick={onClick}
-        className={cn(
-          "px-3 py-2 rounded-xl text-sm transition flex items-center justify-between gap-2",
-          path === it.href || path.startsWith(it.href + "/")
-            ? "bg-primary/15 text-primary font-medium"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-        )}
-      >
-        <span>{it.label}</span>
-        {it.href === "/rivalry" && rivalryUnseen > 0 && (
-          <span
-            aria-label={`${rivalryUnseen} new rivalry update${rivalryUnseen === 1 ? "" : "s"}`}
-            className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-danger text-white text-[10px] font-semibold"
-          >
-            {rivalryUnseen > 9 ? "9+" : rivalryUnseen}
-          </span>
-        )}
-        {it.href === "/my-bugs" && assignedBugs > 0 && (
-          <span
-            aria-label={`${assignedBugs} bug${assignedBugs === 1 ? "" : "s"} assigned to you`}
-            className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-warning text-white text-[10px] font-semibold"
-          >
-            {assignedBugs > 9 ? "9+" : assignedBugs}
-          </span>
-        )}
-      </Link>
-    ));
+    items.map((it) => {
+      const isActive = path === it.href || path.startsWith(it.href + "/");
+      if (it.children && it.children.length > 0) {
+        const expanded = devOpen || isActive;
+        return (
+          <div key={it.href} className="flex flex-col">
+            <button
+              type="button"
+              onClick={() => setDevOpen((v) => !v)}
+              aria-expanded={expanded}
+              className={cn(
+                "px-3 py-2 rounded-xl text-sm transition flex items-center justify-between gap-2 w-full",
+                isActive
+                  ? "bg-primary/15 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                {it.label}
+                {assignedBugs > 0 ? (
+                  <span
+                    aria-label={`${assignedBugs} item${assignedBugs === 1 ? "" : "s"} assigned to you`}
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-warning text-white text-[10px] font-semibold"
+                  >
+                    {assignedBugs > 9 ? "9+" : assignedBugs}
+                  </span>
+                ) : null}
+              </span>
+              <ChevronDown
+                className={cn("h-3.5 w-3.5 transition", expanded && "rotate-180")}
+              />
+            </button>
+            {expanded ? (
+              <div className="ml-3 mt-1 flex flex-col gap-1 border-l border-border/50 pl-3">
+                {it.children.map((c) => {
+                  const Icon = c.icon;
+                  const cTab = new URL(c.href, "http://x").searchParams.get("tab");
+                  const childActive =
+                    (path === "/developer" || path.startsWith("/developer/")) &&
+                    activeTab === cTab;
+                  return (
+                    <Link
+                      key={c.href}
+                      href={c.href}
+                      onClick={onClick}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-lg text-[13px] transition flex items-center gap-2",
+                        childActive
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+                      <span>{c.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      }
+      return (
+        <Link
+          key={it.href}
+          href={it.href}
+          onClick={onClick}
+          className={cn(
+            "px-3 py-2 rounded-xl text-sm transition flex items-center justify-between gap-2",
+            isActive
+              ? "bg-primary/15 text-primary font-medium"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
+        >
+          <span>{it.label}</span>
+          {it.href === "/rivalry" && rivalryUnseen > 0 && (
+            <span
+              aria-label={`${rivalryUnseen} new rivalry update${rivalryUnseen === 1 ? "" : "s"}`}
+              className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-danger text-white text-[10px] font-semibold"
+            >
+              {rivalryUnseen > 9 ? "9+" : rivalryUnseen}
+            </span>
+          )}
+        </Link>
+      );
+    });
 
   return (
     <>

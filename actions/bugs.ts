@@ -48,11 +48,15 @@ async function notify(opts: {
       kind: "bug",
       title: opts.title,
       body: opts.body,
-      link: opts.link ?? "/my-bugs",
+      link: opts.link ?? "/developer",
     });
   } catch {
     // best-effort
   }
+}
+
+function bugLink(id: unknown) {
+  return `/bugs/${String(id)}`;
 }
 
 /**
@@ -68,8 +72,28 @@ async function notifyBugResolved(opts: {
     userId: opts.reporterId,
     title: "Your bug report was fixed\u00a0\u{1F389}",
     body: `Thanks for reporting \u201C${opts.title}\u201D \u2014 it\u2019s been resolved. Appreciate you keeping the app sharp!`,
-    link: "/my-bugs",
+    link: bugLink(opts.bugId),
   });
+}
+
+/** Extract @handles from free text and resolve to user records. */
+async function resolveMentions(text: string) {
+  const handles = Array.from(
+    new Set(
+      (text.match(/(?<=^|\s)@([a-z0-9_.-]{2,32})/gi) ?? []).map((m) =>
+        m.replace(/^@/, "").toLowerCase(),
+      ),
+    ),
+  );
+  if (handles.length === 0) return [] as Array<{ userId: mongoose.Types.ObjectId; handle: string; name: string }>;
+  const users = await User.find({ userId: { $in: handles } })
+    .select("_id userId username")
+    .lean();
+  return users.map((u) => ({
+    userId: u._id as mongoose.Types.ObjectId,
+    handle: u.userId,
+    name: u.username,
+  }));
 }
 
 const DataUrlImage = z
@@ -78,12 +102,34 @@ const DataUrlImage = z
   // ~900KB worst-case data URL ≈ ~670KB raw; we ask the client to keep them small.
   .max(900_000, "Image too large");
 
+const BrowserContextSchema = z
+  .object({
+    viewport: z
+      .object({ w: z.number().int().nonnegative(), h: z.number().int().nonnegative() })
+      .nullable()
+      .optional(),
+    devicePixelRatio: z.number().nullable().optional(),
+    locale: z.string().max(40).nullable().optional(),
+    timezone: z.string().max(80).nullable().optional(),
+    theme: z.string().max(40).nullable().optional(),
+    referrer: z.string().max(500).nullable().optional(),
+    consoleErrors: z
+      .array(z.object({ at: z.string().max(40), msg: z.string().max(2000) }))
+      .max(20)
+      .optional(),
+    buildId: z.string().max(80).nullable().optional(),
+  })
+  .nullable()
+  .optional();
+
 const SubmitSchema = z.object({
   title: z.string().trim().min(3).max(140),
   description: z.string().trim().min(5).max(4000),
   severity: z.enum(["low", "medium", "high"]).default("medium"),
   pageUrl: z.string().trim().max(500).optional().or(z.literal("")),
   screenshots: z.array(DataUrlImage).max(3).optional().default([]),
+  browserContext: BrowserContextSchema,
+  relatedTo: z.array(z.string()).max(5).optional(),
 });
 
 export async function submitBugReportAction(payload: unknown) {
@@ -107,6 +153,11 @@ export async function submitBugReportAction(payload: unknown) {
     userAgent,
     status: "open",
     screenshots: parsed.data.screenshots ?? [],
+    browserContext: parsed.data.browserContext ?? null,
+    relatedTo: (parsed.data.relatedTo ?? [])
+      .filter((s) => mongoose.isValidObjectId(s))
+      .slice(0, 5)
+      .map((s) => new mongoose.Types.ObjectId(s)),
   });
 
   await recordAudit({
@@ -151,6 +202,12 @@ export async function updateBugReportAction(payload: unknown) {
         adminNotes: parsed.data.adminNotes ?? null,
         resolvedAt: isResolved ? new Date() : null,
         resolvedBy: isResolved ? me._id : null,
+      },
+      $push: {
+        activity: makeActivity(me, "status_change", "", {
+          status: parsed.data.status,
+          from: prev.status,
+        }),
       },
     },
   );
@@ -238,7 +295,7 @@ export async function assignBugReportAction(payload: unknown) {
       targetId: parsed.data.id,
     });
     revalidatePath("/admin");
-    revalidatePath("/my-bugs");
+    revalidatePath("/developer");
     return { ok: true as const };
   }
 
@@ -292,7 +349,7 @@ export async function assignBugReportAction(payload: unknown) {
   });
 
   revalidatePath("/admin");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -388,7 +445,7 @@ export async function submitBugResolutionAction(payload: unknown) {
   });
 
   revalidatePath("/admin");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -445,7 +502,7 @@ export async function acceptBugSubmissionAction(id: string) {
     meta: { kind: bug.submission.kind, closedStatus },
   });
   revalidatePath("/admin");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const, status: closedStatus };
 }
 
@@ -520,7 +577,7 @@ export async function reopenBugAction(payload: unknown) {
     meta: { keepAssignee: parsed.data.keepAssignee, reason: parsed.data.reason ?? null },
   });
   revalidatePath("/admin");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -555,30 +612,49 @@ export async function addBugCommentAction(payload: unknown) {
   const isAssignee = bug.assignedTo && String(bug.assignedTo) === String(me._id);
   const canManageRes = await assertFeature("bugs.manage");
   const canManage = canManageRes.ok;
-  if (!isReporter && !isAssignee && !canManage) {
+  const isDev = (await assertFeature("dev.member")).ok;
+  if (!isReporter && !isAssignee && !canManage && !isDev) {
     return { ok: false as const, error: "You can't comment here." };
   }
 
-  const entry = makeActivity(me, "comment", parsed.data.text);
+  const mentions = await resolveMentions(parsed.data.text);
+  const entry = {
+    ...makeActivity(me, "comment", parsed.data.text),
+    mentions: mentions.map((m) => ({ userId: m.userId, handle: m.handle, name: m.name })),
+  };
   await BugReport.updateOne(
     { _id: parsed.data.id },
     { $push: { activity: entry } },
   );
 
-  // Notify everyone in the conversation EXCEPT the reporter (per policy).
+  // Notify everyone in the conversation EXCEPT the reporter (per policy),
+  // PLUS anyone explicitly @mentioned (mentions DO override the reporter rule
+  // so an explicit ping reaches them).
   const targets = new Set<string>();
   if (bug.assignedTo) targets.add(String(bug.assignedTo));
   for (const a of (bug.activity ?? []) as Array<{ byId?: unknown; kind?: string }>) {
     if (a.kind === "comment" && a.byId) targets.add(String(a.byId));
   }
+  const mentionIds = new Set(mentions.map((m) => String(m.userId)));
   targets.delete(String(me._id));
-  targets.delete(String(bug.reporterId)); // reporter is silent until "fixed"
+  // reporter is normally silent — but @mention overrides
+  if (!mentionIds.has(String(bug.reporterId))) {
+    targets.delete(String(bug.reporterId));
+  }
+  // ensure @mentions are always notified
+  mentionIds.forEach((id) => {
+    if (id !== String(me._id)) targets.add(id);
+  });
+
   await Promise.all(
     Array.from(targets).map((uid) =>
       notify({
         userId: uid,
-        title: `New comment on "${bug.title}"`,
-        body: `${me.username}: ${parsed.data.text.slice(0, 140)}`,
+        title: mentionIds.has(uid)
+          ? `${me.username} mentioned you on "${bug.title}"`
+          : `New comment on "${bug.title}"`,
+        body: `${me.username}: ${parsed.data.text.slice(0, 160)}`,
+        link: bugLink(parsed.data.id),
       }),
     ),
   );
@@ -589,10 +665,12 @@ export async function addBugCommentAction(payload: unknown) {
     actor: me,
     targetType: "BugReport",
     targetId: parsed.data.id,
+    meta: { mentions: mentions.map((m) => m.handle) },
   });
 
   revalidatePath("/admin");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
+  revalidatePath(bugLink(parsed.data.id));
   return { ok: true as const };
 }
 
@@ -662,6 +740,423 @@ export async function requestBugChangesAction(payload: unknown) {
   });
 
   revalidatePath("/admin");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
+}
+
+// ===========================================================================
+// Reactions
+// ===========================================================================
+
+const ALLOWED_EMOJI = ["👍", "❤️", "🎉", "👀", "🚀", "🙌", "😄", "🤔"] as const;
+
+const ReactionSchema = z.object({
+  bugId: z.string().min(1),
+  activityId: z.string().min(1),
+  emoji: z.enum(ALLOWED_EMOJI),
+});
+
+/**
+ * Toggle a reaction on an activity entry. If the actor already reacted with
+ * the same emoji, it's removed; otherwise it's added. Anyone with read
+ * access (reporter / assignee / bugs.manage / dev.member) can react.
+ */
+export async function toggleBugReactionAction(payload: unknown) {
+  const me = await requireUser();
+  const parsed = ReactionSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid reaction." };
+  await connectDB();
+  const bug = await BugReport.findById(parsed.data.bugId)
+    .select("reporterId assignedTo activity._id activity.reactions")
+    .lean();
+  if (!bug) return { ok: false as const, error: "Bug not found." };
+
+  const isReporter = String(bug.reporterId) === String(me._id);
+  const isAssignee = bug.assignedTo && String(bug.assignedTo) === String(me._id);
+  const canManageRes = await assertFeature("bugs.manage");
+  const isDev = (await assertFeature("dev.member")).ok;
+  if (!isReporter && !isAssignee && !canManageRes.ok && !isDev) {
+    return { ok: false as const, error: "Can't react here." };
+  }
+
+  const entry = (bug.activity ?? []).find(
+    (a: { _id?: unknown }) => String(a._id) === String(parsed.data.activityId),
+  );
+  if (!entry) return { ok: false as const, error: "Activity entry not found." };
+
+  const existing = (entry as { reactions?: Array<{ emoji: string; byId: unknown }> }).reactions ?? [];
+  const already = existing.find(
+    (r) => r.emoji === parsed.data.emoji && String(r.byId) === String(me._id),
+  );
+
+  if (already) {
+    await BugReport.updateOne(
+      { _id: parsed.data.bugId, "activity._id": parsed.data.activityId },
+      {
+        $pull: {
+          "activity.$.reactions": { emoji: parsed.data.emoji, byId: me._id },
+        },
+      },
+    );
+  } else {
+    await BugReport.updateOne(
+      { _id: parsed.data.bugId, "activity._id": parsed.data.activityId },
+      {
+        $push: {
+          "activity.$.reactions": {
+            emoji: parsed.data.emoji,
+            byId: me._id,
+            byHandle: me.userId,
+            byName: me.username,
+            at: new Date(),
+          },
+        },
+      },
+    );
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/developer");
+  revalidatePath(bugLink(parsed.data.bugId));
+  return { ok: true as const, toggled: already ? "off" : "on" };
+}
+
+// ===========================================================================
+// Edit / delete own comment
+// ===========================================================================
+
+const EditCommentSchema = z.object({
+  bugId: z.string().min(1),
+  activityId: z.string().min(1),
+  text: z.string().trim().min(1).max(4000),
+});
+
+export async function editBugCommentAction(payload: unknown) {
+  const me = await requireUser();
+  const parsed = EditCommentSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  await connectDB();
+  const bug = await BugReport.findById(parsed.data.bugId)
+    .select("activity._id activity.byId activity.kind")
+    .lean();
+  if (!bug) return { ok: false as const, error: "Bug not found." };
+  const entry = (bug.activity ?? []).find(
+    (a: { _id?: unknown }) => String(a._id) === String(parsed.data.activityId),
+  ) as { _id?: unknown; byId?: unknown; kind?: string } | undefined;
+  if (!entry) return { ok: false as const, error: "Comment not found." };
+  if (entry.kind !== "comment") return { ok: false as const, error: "Not editable." };
+  if (String(entry.byId) !== String(me._id)) {
+    return { ok: false as const, error: "You can only edit your own comments." };
+  }
+  const mentions = await resolveMentions(parsed.data.text);
+  await BugReport.updateOne(
+    { _id: parsed.data.bugId, "activity._id": parsed.data.activityId },
+    {
+      $set: {
+        "activity.$.text": parsed.data.text,
+        "activity.$.editedAt": new Date(),
+        "activity.$.mentions": mentions,
+      },
+    },
+  );
+  revalidatePath("/admin");
+  revalidatePath("/developer");
+  revalidatePath(bugLink(parsed.data.bugId));
+  return { ok: true as const };
+}
+
+export async function deleteBugCommentAction(payload: unknown) {
+  const me = await requireUser();
+  const schema = z.object({ bugId: z.string().min(1), activityId: z.string().min(1) });
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  await connectDB();
+  const canManageRes = await assertFeature("bugs.manage");
+  const bug = await BugReport.findById(parsed.data.bugId)
+    .select("activity._id activity.byId activity.kind")
+    .lean();
+  if (!bug) return { ok: false as const, error: "Bug not found." };
+  const entry = (bug.activity ?? []).find(
+    (a: { _id?: unknown }) => String(a._id) === String(parsed.data.activityId),
+  ) as { byId?: unknown; kind?: string } | undefined;
+  if (!entry) return { ok: false as const, error: "Comment not found." };
+  if (entry.kind !== "comment") return { ok: false as const, error: "Not deletable." };
+  const isAuthor = String(entry.byId) === String(me._id);
+  if (!isAuthor && !canManageRes.ok) {
+    return { ok: false as const, error: "Not allowed." };
+  }
+  await BugReport.updateOne(
+    { _id: parsed.data.bugId },
+    { $pull: { activity: { _id: parsed.data.activityId } } },
+  );
+  revalidatePath("/admin");
+  revalidatePath("/developer");
+  revalidatePath(bugLink(parsed.data.bugId));
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Mark-as-read (for unread badges)
+// ===========================================================================
+
+export async function markBugReadAction(bugId: string) {
+  if (!bugId || typeof bugId !== "string") return { ok: false as const };
+  const me = await requireUser();
+  await connectDB();
+  await BugReport.updateOne(
+    { _id: bugId },
+    { $set: { [`viewerState.${String(me._id)}.lastReadAt`]: new Date() } },
+  );
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// SLA / due date
+// ===========================================================================
+
+const DueSchema = z.object({
+  id: z.string().min(1),
+  /** ISO timestamp or null to clear. */
+  dueAt: z.string().datetime().nullable(),
+});
+
+export async function setBugDueAction(payload: unknown) {
+  const _auth = await assertFeature("bugs.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
+  const parsed = DueSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  await connectDB();
+  const nextDue = parsed.data.dueAt ? new Date(parsed.data.dueAt) : null;
+  await BugReport.updateOne(
+    { _id: parsed.data.id },
+    {
+      $set: { dueAt: nextDue },
+      $push: {
+        activity: makeActivity(me, "due_change", "", {
+          dueAt: nextDue?.toISOString() ?? null,
+        }),
+      },
+    },
+  );
+  await recordAudit({
+    category: "update",
+    action: "bug.report.due",
+    actor: me,
+    targetType: "BugReport",
+    targetId: parsed.data.id,
+    meta: { dueAt: nextDue?.toISOString() ?? null },
+  });
+  revalidatePath("/admin");
+  revalidatePath("/developer");
+  revalidatePath(bugLink(parsed.data.id));
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Bulk admin actions
+// ===========================================================================
+
+const BulkSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
+  op: z.enum([
+    "accept",
+    "reopen",
+    "assign",
+    "unassign",
+    "status",
+    "delete",
+    "due",
+  ]),
+  payload: z
+    .object({
+      userId: z.string().nullable().optional(),
+      status: z.enum(["open", "in_progress", "resolved", "wont_fix"]).optional(),
+      dueAt: z.string().datetime().nullable().optional(),
+      reason: z.string().max(500).optional(),
+      keepAssignee: z.boolean().optional(),
+    })
+    .optional()
+    .default({}),
+});
+
+/**
+ * Apply the same operation to multiple bugs at once. Each item runs through
+ * the matching single-bug action so audit / notifications stay consistent.
+ * Returns per-id success/failure for the toolbar.
+ */
+export async function bulkBugAction(payload: unknown) {
+  const parsed = BulkSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid bulk request." };
+  const { ids, op, payload: data } = parsed.data;
+  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+
+  for (const id of ids) {
+    try {
+      let r: { ok: boolean; error?: string } = { ok: false, error: "Unknown op" };
+      if (op === "accept") {
+        r = await acceptBugSubmissionAction(id);
+      } else if (op === "reopen") {
+        r = await reopenBugAction({
+          id,
+          reason: data.reason,
+          keepAssignee: data.keepAssignee ?? true,
+        });
+      } else if (op === "assign") {
+        r = await assignBugReportAction({ id, userId: data.userId ?? null });
+      } else if (op === "unassign") {
+        r = await assignBugReportAction({ id, userId: null });
+      } else if (op === "status") {
+        r = await updateBugReportAction({ id, status: data.status ?? "open" });
+      } else if (op === "delete") {
+        r = await deleteBugReportAction(id);
+      } else if (op === "due") {
+        r = await setBugDueAction({ id, dueAt: data.dueAt ?? null });
+      }
+      results.push({ id, ok: r.ok, error: r.ok ? undefined : (r as { error?: string }).error });
+    } catch (err) {
+      results.push({
+        id,
+        ok: false,
+        error: err instanceof Error ? err.message : "failed",
+      });
+    }
+  }
+  return { ok: true as const, results };
+}
+
+// ===========================================================================
+// CSV export
+// ===========================================================================
+
+function csvEscape(s: unknown): string {
+  const str = s == null ? "" : String(s);
+  if (/[",\n\r]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
+
+export async function exportBugsCsvAction() {
+  const _auth = await assertFeature("bugs.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  await connectDB();
+  const rows = await BugReport.find({})
+    .select(
+      "title severity status reporterName reporterHandle assignedToName assignedToHandle createdAt updatedAt resolvedAt dueAt needsAdminReview submission.kind pageUrl",
+    )
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const header = [
+    "id",
+    "title",
+    "severity",
+    "status",
+    "needsAdminReview",
+    "submissionKind",
+    "reporter",
+    "reporterHandle",
+    "assignee",
+    "assigneeHandle",
+    "createdAt",
+    "updatedAt",
+    "resolvedAt",
+    "dueAt",
+    "pageUrl",
+  ].join(",");
+  const lines = rows.map((r) =>
+    [
+      r._id,
+      csvEscape(r.title),
+      r.severity,
+      r.status,
+      r.needsAdminReview ? "1" : "0",
+      r.submission?.kind ?? "",
+      csvEscape(r.reporterName ?? ""),
+      r.reporterHandle ?? "",
+      csvEscape(r.assignedToName ?? ""),
+      r.assignedToHandle ?? "",
+      r.createdAt instanceof Date ? r.createdAt.toISOString() : "",
+      r.updatedAt instanceof Date ? r.updatedAt.toISOString() : "",
+      r.resolvedAt instanceof Date ? r.resolvedAt.toISOString() : "",
+      r.dueAt instanceof Date ? r.dueAt.toISOString() : "",
+      csvEscape(r.pageUrl ?? ""),
+    ].join(","),
+  );
+  return { ok: true as const, csv: [header, ...lines].join("\n") };
+}
+
+// ===========================================================================
+// Duplicate detection (fuzzy by title)
+// ===========================================================================
+
+/**
+ * Suggest up to 5 existing open/in-progress bugs whose title overlaps with the
+ * proposed title. Cheap token-overlap scoring — good enough for 13 reporters.
+ * Returns `[]` if input is too short or DB is empty.
+ */
+export async function findDuplicateBugsAction(rawTitle: string) {
+  await requireUser();
+  const q = (rawTitle ?? "").trim();
+  if (q.length < 6) return { ok: true as const, results: [] };
+  await connectDB();
+  const tokens = q
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3)
+    .slice(0, 6);
+  if (tokens.length === 0) return { ok: true as const, results: [] };
+  const regex = new RegExp(tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "i");
+  const rows = await BugReport.find({
+    status: { $in: ["open", "in_progress"] },
+    title: regex,
+  })
+    .select("title severity status assignedToName createdAt")
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .lean();
+  const score = (t: string) =>
+    tokens.reduce((acc, tok) => (t.toLowerCase().includes(tok) ? acc + 1 : acc), 0);
+  const ranked = rows
+    .map((r) => ({ ...r, _score: score(r.title) }))
+    .filter((r) => r._score > 0)
+    .sort((a, b) => b._score - a._score)
+    .slice(0, 5)
+    .map((r) => ({
+      id: String(r._id),
+      title: r.title,
+      severity: r.severity,
+      status: r.status,
+      assigneeName: r.assignedToName ?? null,
+      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
+      score: r._score / tokens.length,
+    }));
+  return { ok: true as const, results: ranked };
+}
+
+// ===========================================================================
+// Mention candidates (for @mention picker)
+// ===========================================================================
+
+/** Returns active users matching a fuzzy prefix on handle or name. */
+export async function searchMentionableUsersAction(q: string) {
+  await requireUser();
+  const trimmed = (q ?? "").trim().slice(0, 40);
+  await connectDB();
+  const filter = trimmed
+    ? {
+        $or: [
+          { userId: { $regex: trimmed, $options: "i" } },
+          { username: { $regex: trimmed, $options: "i" } },
+        ],
+      }
+    : {};
+  const rows = await User.find(filter).select("userId username").limit(8).lean();
+  return {
+    ok: true as const,
+    results: rows.map((u) => ({
+      id: String(u._id),
+      handle: u.userId,
+      name: u.username,
+    })),
+  };
 }

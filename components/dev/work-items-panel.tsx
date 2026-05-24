@@ -88,10 +88,12 @@ export function WorkItemsPanel({
   initial,
   canManage,
   assignees,
+  myUserId,
 }: {
   initial: WorkItemRow[];
   canManage: boolean;
   assignees: WorkItemAssignee[];
+  myUserId?: string;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(initial);
@@ -436,7 +438,12 @@ export function WorkItemsPanel({
                   </span>
                 </summary>
                 <div className="p-2.5 space-y-2.5 border-t border-border/40">
-                  <ActivityThread entries={r.activity ?? []} />
+                  <ActivityThread
+                    entries={r.activity ?? []}
+                    workItemId={r.id}
+                    myUserId={myUserId}
+                    canManage={canManage}
+                  />
                   {r.status !== "done" && (
                     <CommentComposer
                       id={r.id}

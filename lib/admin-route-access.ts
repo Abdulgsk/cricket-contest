@@ -14,6 +14,7 @@
 //    role assigned) so they land on a personalised "Your tools" view.
 
 import type { FeatureKey } from "@/lib/features";
+import { bitmapHas } from "@/lib/features";
 
 export type AdminRoute = {
   /** Route prefix. The longest matching prefix wins for nested routes. */
@@ -54,13 +55,20 @@ export const ADMIN_ROUTES: readonly AdminRoute[] = [
 type RbacUser = {
   role: "user" | "admin" | "superadmin";
   enabledFeatures?: string[] | null;
+  permissionBitmap?: string | null;
   customRoleId?: unknown;
 };
 
+function userHas(user: RbacUser, feature: FeatureKey): boolean {
+  if (user.permissionBitmap && user.permissionBitmap !== "0") {
+    return bitmapHas(user.permissionBitmap, feature);
+  }
+  return (user.enabledFeatures ?? []).includes(feature);
+}
+
 function hasAny(user: RbacUser, features: readonly FeatureKey[]): boolean {
   if (features.length === 0) return true;
-  const enabled = user.enabledFeatures ?? [];
-  return features.some((f) => enabled.includes(f));
+  return features.some((f) => userHas(user, f));
 }
 
 /** Does the user pass the gate on this specific admin route? */
@@ -104,10 +112,11 @@ export function getAccessibleAdminRoutes(user: RbacUser): AdminRoute[] {
  * appear as an admin in the top nav or in `requireAdminAccess`.
  */
 export const DEVELOPER_FEATURES: readonly FeatureKey[] = [
-  "bugs.view",
+  "dev.member",
+  "bugs.view", // retired but kept so legacy grants still classify as developer
   "bugs.manage",
   "audit.view",
-  "dev.workitems.view",
+  "dev.workitems.view", // retired but kept so legacy grants still classify as developer
   "dev.workitems.manage",
   "dev.diagnostics.view",
 ] as const;
@@ -118,11 +127,12 @@ export const DEVELOPER_FEATURES: readonly FeatureKey[] = [
  */
 export function hasAnyAdminRouteAccess(user: RbacUser): boolean {
   if (user.role === "superadmin") return true;
-  const enabled = (user.enabledFeatures ?? []) as FeatureKey[];
-  const adminFeatures = enabled.filter(
-    (f) => !DEVELOPER_FEATURES.includes(f),
-  );
-  if (adminFeatures.length > 0) return true;
+  // Any "admin" feature = anything in ADMIN_ROUTES.anyOf that the user holds.
+  for (const route of ADMIN_ROUTES) {
+    if (route.superadminOnly) continue;
+    if (route.anyOf.length === 0) continue;
+    if (hasAny(user, route.anyOf)) return true;
+  }
   if (user.customRoleId) return true;
   return false;
 }
@@ -130,8 +140,7 @@ export function hasAnyAdminRouteAccess(user: RbacUser): boolean {
 /** True if the user can see the standalone Developer Tools page. */
 export function hasDeveloperToolsAccess(user: RbacUser): boolean {
   if (user.role === "superadmin") return true;
-  const enabled = (user.enabledFeatures ?? []) as FeatureKey[];
-  return DEVELOPER_FEATURES.some((f) => enabled.includes(f));
+  return DEVELOPER_FEATURES.some((f) => userHas(user, f));
 }
 
 // ---- Back-compat shims (kept so older imports keep compiling) -----------

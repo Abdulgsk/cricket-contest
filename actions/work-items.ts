@@ -46,7 +46,7 @@ async function notify(opts: {
       kind: "bug",
       title: opts.title,
       body: opts.body,
-      link: opts.link ?? "/my-bugs",
+      link: opts.link ?? "/developer",
     });
   } catch {
     // best-effort
@@ -64,7 +64,7 @@ async function notifyWorkItemAssigned(opts: {
       kind: "bug",
       title: "New work item assigned to you",
       body: `\u201C${opts.title}\u201D \u2014 open My Queue to submit your update.`,
-      link: "/my-bugs",
+      link: "/developer",
     });
   } catch {
     // best-effort
@@ -82,7 +82,7 @@ async function notifyWorkItemAccepted(opts: {
       kind: "bug",
       title: "Work item closed \u2714",
       body: `Your update for \u201C${opts.title}\u201D was accepted. Nice work.`,
-      link: "/my-bugs",
+      link: "/developer",
     });
   } catch {
     // best-effort
@@ -148,7 +148,7 @@ export async function createWorkItemAction(payload: unknown) {
   });
 
   revalidatePath("/developer");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const, id: String(doc._id) };
 }
 
@@ -248,7 +248,7 @@ export async function updateWorkItemAction(payload: unknown) {
   }
 
   revalidatePath("/developer");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -269,7 +269,7 @@ export async function deleteWorkItemAction(id: string) {
     targetId: id,
   });
   revalidatePath("/developer");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -358,7 +358,7 @@ export async function submitWorkItemResolutionAction(payload: unknown) {
   });
 
   revalidatePath("/developer");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -406,7 +406,7 @@ export async function acceptWorkItemSubmissionAction(id: string) {
   });
 
   revalidatePath("/developer");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -450,7 +450,7 @@ export async function reopenWorkItemAction(id: string) {
   });
 
   revalidatePath("/developer");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -483,7 +483,8 @@ export async function addWorkItemCommentAction(payload: unknown) {
   const isCreator = String(item.createdById) === String(me._id);
   const canManageRes = await assertFeature("dev.workitems.manage");
   const canManage = canManageRes.ok;
-  if (!isAssignee && !isCreator && !canManage) {
+  const isDev = (await assertFeature("dev.member")).ok;
+  if (!isAssignee && !isCreator && !canManage && !isDev) {
     return { ok: false as const, error: "You can't comment here." };
   }
 
@@ -519,7 +520,7 @@ export async function addWorkItemCommentAction(payload: unknown) {
   });
 
   revalidatePath("/developer");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
   return { ok: true as const };
 }
 
@@ -582,6 +583,52 @@ export async function requestWorkItemChangesAction(payload: unknown) {
   });
 
   revalidatePath("/developer");
-  revalidatePath("/my-bugs");
+  revalidatePath("/developer");
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Delete a comment (chat) on a work item.
+// Author can delete own comment; managers can delete any.
+// ===========================================================================
+
+export async function deleteWorkItemCommentAction(payload: unknown) {
+  const me = await requireUser();
+  const schema = z.object({
+    id: z.string().min(1),
+    activityId: z.string().min(1),
+  });
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (!mongoose.Types.ObjectId.isValid(parsed.data.id)) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  const canManageRes = await assertFeature("dev.workitems.manage");
+  const item = await WorkItem.findById(parsed.data.id)
+    .select("activity._id activity.byId activity.kind")
+    .lean();
+  if (!item) return { ok: false as const, error: "Not found." };
+  const entry = (item.activity ?? []).find(
+    (a: { _id?: unknown }) => String(a._id) === String(parsed.data.activityId),
+  ) as { byId?: unknown; kind?: string } | undefined;
+  if (!entry) return { ok: false as const, error: "Comment not found." };
+  if (entry.kind !== "comment") return { ok: false as const, error: "Not deletable." };
+  const isAuthor = String(entry.byId) === String(me._id);
+  if (!isAuthor && !canManageRes.ok) {
+    return { ok: false as const, error: "Not allowed." };
+  }
+  await WorkItem.updateOne(
+    { _id: parsed.data.id },
+    { $pull: { activity: { _id: parsed.data.activityId } } },
+  );
+  await recordAudit({
+    category: "update",
+    action: "workitem.comment.delete",
+    targetType: "WorkItem",
+    targetId: parsed.data.id,
+  });
+  revalidatePath("/developer");
+  revalidatePath("/developer");
   return { ok: true as const };
 }

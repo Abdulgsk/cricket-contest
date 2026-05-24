@@ -12,7 +12,6 @@ import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
 import { BonusSettingsPanel } from "@/components/admin/bonus-settings-panel";
 import { CivilWarSettingsPanel } from "@/components/admin/civil-war-settings-panel";
 import { My11LiveSettingsPanel } from "@/components/admin/my11-live-settings-panel";
-import { type BugRow } from "@/components/admin/bug-reports-admin";
 import { BugReport } from "@/models/BugReport";
 import { CIVIL_WAR_DEFAULTS } from "@/services/civil-war";
 import { formatDate } from "@/lib/utils";
@@ -69,7 +68,10 @@ export default async function AdminHome() {
   const canManageResults = userHasFeature(me, "results.manage");
   const canRunAutomations = userHasFeature(me, "automation.run");
   const canRegenerateFacts = userHasFeature(me, "facts.regenerate");
-  const canViewBugs = userHasFeature(me, "bugs.view");
+  // Bug reports are part of Developer Tools now; the admin overview still
+  // surfaces them for managers and league members with the developer flag.
+  const canViewBugs =
+    userHasFeature(me, "dev.member") || userHasFeature(me, "bugs.manage");
   const canManageBugs = userHasFeature(me, "bugs.manage");
   const canSeeMatches =
     userHasFeature(me, "matches.manage") ||
@@ -80,48 +82,11 @@ export default async function AdminHome() {
   // Docs tabs that are meant for superadmins.
   const isAdminRole = me.role === "superadmin";
 
-  const bugRows: BugRow[] = canViewBugs
-    ? (await BugReport.find().sort({ createdAt: -1 }).limit(200).lean()).map((b) => ({
-        id: String(b._id),
-        title: b.title,
-        description: b.description,
-        severity: b.severity,
-        status: b.status,
-        reporterName: b.reporterName ?? "—",
-        reporterHandle: b.reporterHandle ?? "—",
-        pageUrl: b.pageUrl ?? null,
-        adminNotes: b.adminNotes ?? null,
-        assignedToId: b.assignedTo ? String(b.assignedTo) : null,
-        assignedToHandle: b.assignedToHandle ?? null,
-        assignedToName: b.assignedToName ?? null,
-        resolutionNote: b.resolutionNote ?? null,
-        submission: b.submission
-          ? {
-              kind: b.submission.kind,
-              note: b.submission.note,
-              submittedAt: new Date(b.submission.submittedAt).toISOString(),
-              submittedByHandle: b.submission.submittedByHandle,
-              submittedByName: b.submission.submittedByName,
-            }
-          : null,
-        needsAdminReview: Boolean(b.needsAdminReview),
-        activity: (b.activity ?? []).map((a) => ({
-          _id: a._id ? String(a._id) : undefined,
-          at: new Date(a.at).toISOString(),
-          byId: a.byId ? String(a.byId) : null,
-          byName: a.byName,
-          byHandle: a.byHandle,
-          kind: a.kind,
-          text: a.text ?? "",
-          meta: (a.meta ?? null) as Record<string, unknown> | null,
-        })),
-        screenshots: b.screenshots ?? [],
-        createdAt: new Date(b.createdAt).toISOString(),
-      }))
-    : [];
-  const openBugCount = bugRows.filter(
-    (b) => b.needsAdminReview || b.status === "open",
-  ).length;
+  const openBugCount = canViewBugs
+    ? await BugReport.countDocuments({
+        $or: [{ needsAdminReview: true }, { status: "open" }],
+      })
+    : 0;
 
   const bonusTab = (
     <BonusSettingsPanel
@@ -368,8 +333,8 @@ export default async function AdminHome() {
       "audit.view": "Audit log",
       "automation.run": "Automations",
       "facts.regenerate": "Storyline regeneration",
-      "bugs.view": "Bug reports",
       "bugs.manage": "Bug triage",
+      "dev.member": "Developer",
       "bonus.manage": "Bonus rules",
       "civilwar.points.manage": "Civil War scoring",
     };

@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+import { toast } from "sonner";
 import {
   CheckCircle2,
   AlertOctagon,
@@ -10,7 +12,11 @@ import {
   UserCog,
   ArrowRight,
   Megaphone,
+  MoreHorizontal,
+  Trash2,
 } from "lucide-react";
+import { useConfirm } from "@/components/ui/use-confirm";
+import { deleteWorkItemCommentAction } from "@/actions/work-items";
 
 export type ActivityKind =
   | "comment"
@@ -19,7 +25,9 @@ export type ActivityKind =
   | "accept"
   | "reopen"
   | "assignment_change"
-  | "status_change";
+  | "status_change"
+  | "due_change"
+  | "system";
 
 export type ActivityEntry = {
   _id?: string;
@@ -118,7 +126,18 @@ function SystemRow({
   );
 }
 
-export function ActivityThread({ entries }: { entries: ActivityEntry[] }) {
+export function ActivityThread({
+  entries,
+  workItemId,
+  myUserId,
+  canManage,
+}: {
+  entries: ActivityEntry[];
+  /** When set, comment rows get a delete menu (work-item context). */
+  workItemId?: string;
+  myUserId?: string;
+  canManage?: boolean;
+}) {
   if (!entries || entries.length === 0) {
     return (
       <div className="text-[11px] text-muted-foreground italic">
@@ -139,19 +158,14 @@ export function ActivityThread({ entries }: { entries: ActivityEntry[] }) {
 
         if (e.kind === "comment") {
           return (
-            <li key={key} className="flex items-start gap-2.5">
-              <Avatar name={e.byName} size={28} />
-              <div className="min-w-0 flex-1 rounded-2xl border border-border/60 bg-card/60 px-3 py-2">
-                <div className="flex items-center gap-2 text-[11px] mb-0.5">
-                  <span className="font-semibold text-foreground">{e.byName}</span>
-                  <span className="text-muted-foreground">@{e.byHandle}</span>
-                  <span className="text-muted-foreground">· {when}</span>
-                </div>
-                <div className="whitespace-pre-wrap text-sm text-foreground/90 break-words">
-                  {e.text}
-                </div>
-              </div>
-            </li>
+            <CommentRow
+              key={key}
+              entry={e}
+              when={when}
+              workItemId={workItemId}
+              myUserId={myUserId}
+              canManage={!!canManage}
+            />
           );
         }
 
@@ -294,5 +308,86 @@ export function ActivityThread({ entries }: { entries: ActivityEntry[] }) {
         );
       })}
     </ol>
+  );
+}
+
+function CommentRow({
+  entry,
+  when,
+  workItemId,
+  myUserId,
+  canManage,
+}: {
+  entry: ActivityEntry;
+  when: string;
+  workItemId?: string;
+  myUserId?: string;
+  canManage: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [pending, start] = React.useTransition();
+  const confirm = useConfirm();
+  const isMine = myUserId && entry.byId && String(entry.byId) === String(myUserId);
+  const canDelete = workItemId && entry._id && (isMine || canManage);
+
+  return (
+    <li className="group flex items-start gap-2.5">
+      <Avatar name={entry.byName} size={28} />
+      <div className="min-w-0 flex-1 rounded-2xl border border-border/60 bg-card/60 px-3 py-2">
+        <div className="flex items-center gap-2 text-[11px] mb-0.5">
+          <span className="font-semibold text-foreground">{entry.byName}</span>
+          <span className="text-muted-foreground">@{entry.byHandle}</span>
+          <span className="text-muted-foreground">· {when}</span>
+          {canDelete ? (
+            <div className="relative ml-auto opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+              <button
+                type="button"
+                onClick={() => setMenuOpen((o) => !o)}
+                className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="More"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+              {menuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-lg border border-border bg-popover text-[12px] shadow-xl"
+                  onMouseLeave={() => setMenuOpen(false)}
+                >
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-rose-700 hover:bg-rose-500/10 dark:text-rose-300 disabled:opacity-50"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      start(async () => {
+                        const ok = await confirm({
+                          title: "Delete this comment?",
+                          description: "It will disappear for everyone.",
+                          confirmLabel: "Delete",
+                          tone: "danger",
+                        });
+                        if (!ok) return;
+                        const r = await deleteWorkItemCommentAction({
+                          id: workItemId,
+                          activityId: entry._id!,
+                        });
+                        if (!r.ok) toast.error(r.error ?? "Failed to delete");
+                        else toast.success("Comment deleted");
+                      });
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <div className="whitespace-pre-wrap text-sm text-foreground/90 break-words">
+          {entry.text}
+        </div>
+      </div>
+    </li>
   );
 }

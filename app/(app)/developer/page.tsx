@@ -11,7 +11,10 @@ import { Rivalry } from "@/models/Rivalry";
 import { Card } from "@/components/ui/card";
 import { NoAccessCard } from "@/components/no-access-card";
 import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
-import { BugReportsAdmin, type BugRow, type BugAssignee } from "@/components/admin/bug-reports-admin";
+import { BugsInboxClient, type InboxBugRow } from "@/components/bug/bugs-inbox-client";
+import { getBugDetail } from "@/services/bug-detail";
+import { QueueSwitcher, type QueueOption } from "@/components/dev/queue-switcher";
+type BugAssignee = { id: string; handle: string; name: string };
 import { WorkItemsPanel, type WorkItemRow, type WorkItemAssignee } from "@/components/dev/work-items-panel";
 import { DiagnosticsPanel, type DiagnosticsData } from "@/components/dev/diagnostics-panel";
 import { requireUser, userHasFeature } from "@/lib/rbac";
@@ -27,51 +30,54 @@ const MONGO_STATES: Record<number, DiagnosticsData["mongo"]["state"]> = {
   99: "uninitialized",
 };
 
-async function loadBugData(): Promise<{ rows: BugRow[]; openCount: number }> {
-  const docs = await BugReport.find().sort({ createdAt: -1 }).limit(200).lean();
-  const rows: BugRow[] = docs.map((b) => ({
-    id: String(b._id),
-    title: b.title,
-    description: b.description,
-    severity: b.severity,
-    status: b.status,
-    reporterName: b.reporterName ?? "—",
-    reporterHandle: b.reporterHandle ?? "—",
-    pageUrl: b.pageUrl ?? null,
-    adminNotes: b.adminNotes ?? null,
-    assignedToId: b.assignedTo ? String(b.assignedTo) : null,
-    assignedToHandle: b.assignedToHandle ?? null,
-    assignedToName: b.assignedToName ?? null,
-    resolutionNote: b.resolutionNote ?? null,
-    submission: b.submission
-      ? {
-          kind: b.submission.kind,
-          note: b.submission.note,
-          submittedAt: new Date(b.submission.submittedAt).toISOString(),
-          submittedByHandle: b.submission.submittedByHandle,
-          submittedByName: b.submission.submittedByName,
-        }
-      : null,
-    needsAdminReview: Boolean(b.needsAdminReview),
-    activity: (b.activity ?? []).map((a) => ({
-      _id: a._id ? String(a._id) : undefined,
-      at: new Date(a.at).toISOString(),
-      byId: a.byId ? String(a.byId) : null,
-      byName: a.byName,
-      byHandle: a.byHandle,
-      kind: a.kind,
-      text: a.text ?? "",
-      meta: (a.meta ?? null) as Record<string, unknown> | null,
-    })),
-    screenshots: b.screenshots ?? [],
-    createdAt: new Date(b.createdAt).toISOString(),
-  }));
+async function loadBugData(
+  myUserId: string,
+  opts?: { assignedToMeOnly?: boolean },
+): Promise<{ rows: InboxBugRow[]; openCount: number }> {
+  const filter: Record<string, unknown> = {};
+  if (opts?.assignedToMeOnly) filter.assignedTo = myUserId;
+  const docs = await BugReport.find(filter)
+    .sort({ needsAdminReview: -1, status: 1, updatedAt: -1 })
+    .limit(200)
+    .lean();
+  const rows: InboxBugRow[] = await Promise.all(
+    docs.map(async (b) => {
+      const detail = await getBugDetail(String(b._id));
+      const commentCount = (b.activity ?? []).filter((a) => a.kind === "comment").length;
+      const lr = (b.viewerState as Map<string, { lastReadAt: Date }> | undefined)?.get?.(
+        myUserId,
+      );
+      const lastReadAt =
+        lr?.lastReadAt instanceof Date ? lr.lastReadAt.toISOString() : null;
+      return {
+        id: String(b._id),
+        title: b.title,
+        severity: b.severity,
+        status: b.status,
+        needsAdminReview: Boolean(b.needsAdminReview),
+        reporterName: b.reporterName ?? "—",
+        reporterHandle: b.reporterHandle ?? "—",
+        pageUrl: b.pageUrl ?? null,
+        createdAt:
+          b.createdAt instanceof Date ? b.createdAt.toISOString() : new Date().toISOString(),
+        updatedAt:
+          b.updatedAt instanceof Date ? b.updatedAt.toISOString() : new Date().toISOString(),
+        dueAt: b.dueAt instanceof Date ? b.dueAt.toISOString() : null,
+        hasScreenshots: Array.isArray(b.screenshots) && b.screenshots.length > 0,
+        commentCount,
+        lastReadAt,
+        submissionKind: (b.submission?.kind ?? null) as InboxBugRow["submissionKind"],
+        assigneeId: b.assignedTo ? String(b.assignedTo) : null,
+        assigneeName: b.assignedToName ?? null,
+        detail: detail!,
+      };
+    }),
+  );
   const openCount = rows.filter((b) => b.needsAdminReview || b.status === "open").length;
   return { rows, openCount };
 }
 
-async function loadAssignees(): Promise<BugAssignee[]> {
-  const users = await User.find().select("userId username").sort({ username: 1 }).lean();
+async function loadAssignees(): Promise<BugAssignee[]> {  const users = await User.find().select("userId username").sort({ username: 1 }).lean();
   return users.map((u) => ({
     id: String(u._id),
     handle: u.userId,
@@ -79,8 +85,15 @@ async function loadAssignees(): Promise<BugAssignee[]> {
   }));
 }
 
-async function loadWorkItems(): Promise<{ rows: WorkItemRow[]; openCount: number }> {
-  const docs = await WorkItem.find().sort({ needsReview: -1, createdAt: -1 }).limit(200).lean();
+async function loadWorkItems(opts?: {
+  assignedToMeId?: string;
+}): Promise<{ rows: WorkItemRow[]; openCount: number }> {
+  const filter: Record<string, unknown> = {};
+  if (opts?.assignedToMeId) filter.assignedToId = opts.assignedToMeId;
+  const docs = await WorkItem.find(filter)
+    .sort({ needsReview: -1, createdAt: -1 })
+    .limit(200)
+    .lean();
   const rows: WorkItemRow[] = docs.map((w) => ({
     id: String(w._id),
     title: w.title,
@@ -190,24 +203,43 @@ async function loadDiagnostics(): Promise<DiagnosticsData> {
 
 export default async function DeveloperToolsPage() {
   const me = await requireUser();
-  const canViewBugs = userHasFeature(me, "bugs.view");
   const canManageBugs = userHasFeature(me, "bugs.manage");
-  const canViewWorkItems = userHasFeature(me, "dev.workitems.view");
   const canManageWorkItems = userHasFeature(me, "dev.workitems.manage");
+  // The "Developer" flag grants view of ALL bugs + work items (and the
+  // ability to comment), but action buttons stay hidden until the item is
+  // assigned to them or they hold the matching .manage feature.
+  const isDeveloperMember = userHasFeature(me, "dev.member");
+  // Managers implicitly count as members (they can see everything anyway).
+  const canViewBugs = isDeveloperMember || canManageBugs;
+  const canViewWorkItems = isDeveloperMember || canManageWorkItems;
   const canViewAudit = userHasFeature(me, "audit.view");
   const canViewDiagnostics = userHasFeature(me, "dev.diagnostics.view");
+
+  await connectDB();
+
+  // Anyone with an assigned bug or work item can use the developer queue,
+  // even without the developer flag (they only see their own rows).
+  const [myBugCount, myWorkCount] = await Promise.all([
+    BugReport.countDocuments({ assignedTo: me._id }),
+    WorkItem.countDocuments({ assignedToId: me._id }),
+  ]);
+  const hasAssignedBugs = myBugCount > 0;
+  const hasAssignedWork = myWorkCount > 0;
 
   if (
     !canViewBugs &&
     !canViewWorkItems &&
     !canViewAudit &&
-    !canViewDiagnostics
+    !canViewDiagnostics &&
+    !hasAssignedBugs &&
+    !hasAssignedWork
   ) {
     return (
       <NoAccessCard
         anyOf={[
-          "bugs.view",
-          "dev.workitems.view",
+          "dev.member",
+          "bugs.manage",
+          "dev.workitems.manage",
           "audit.view",
           "dev.diagnostics.view",
         ]}
@@ -215,12 +247,23 @@ export default async function DeveloperToolsPage() {
     );
   }
 
-  await connectDB();
+  // Bugs: full view if user can see all, otherwise scoped to mine.
+  const bugLoader = canViewBugs
+    ? loadBugData(String(me._id))
+    : hasAssignedBugs
+      ? loadBugData(String(me._id), { assignedToMeOnly: true })
+      : Promise.resolve(null);
+  // Work items: same pattern.
+  const workLoader = canViewWorkItems
+    ? loadWorkItems()
+    : hasAssignedWork
+      ? loadWorkItems({ assignedToMeId: String(me._id) })
+      : Promise.resolve(null);
 
   const [bugData, assignees, workItems, diagnostics] = await Promise.all([
-    canViewBugs ? loadBugData() : Promise.resolve(null),
+    bugLoader,
     canManageBugs || canManageWorkItems ? loadAssignees() : Promise.resolve(null),
-    canViewWorkItems ? loadWorkItems() : Promise.resolve(null),
+    workLoader,
     canViewDiagnostics ? loadDiagnostics() : Promise.resolve(null),
   ]);
 
@@ -228,24 +271,30 @@ export default async function DeveloperToolsPage() {
 
   const tabs: { id: string; label: string; badge?: number; content: React.ReactNode }[] = [];
 
-  if (canViewBugs && bugData) {
-    tabs.push({
-      id: "bugs",
+  // Single "Queue" tab with a dropdown to switch between bugs and work items.
+  const queueOptions: QueueOption[] = [];
+
+  if (bugData) {
+    queueOptions.push({
+      kind: "bugs",
       label: "Bug reports",
       badge: bugData.openCount,
       content: (
-        <BugReportsAdmin
-          initial={bugData.rows}
+        <BugsInboxClient
+          rows={bugData.rows}
+          myUserId={String(me._id)}
           canManage={canManageBugs}
-          assignees={assignees ?? []}
+          assignables={assignees ?? []}
+          adminMode={canManageBugs}
+          emptyTitle="Inbox zero"
+          emptyHint="No bugs here right now."
         />
       ),
     });
   }
-
-  if (canViewWorkItems && workItems) {
-    tabs.push({
-      id: "workitems",
+  if (workItems) {
+    queueOptions.push({
+      kind: "workitems",
       label: "Work items",
       badge: workItems.openCount,
       content: (
@@ -253,8 +302,18 @@ export default async function DeveloperToolsPage() {
           initial={workItems.rows}
           canManage={canManageWorkItems}
           assignees={workItemAssignees}
+          myUserId={String(me._id)}
         />
       ),
+    });
+  }
+  if (queueOptions.length > 0) {
+    const totalBadge = queueOptions.reduce((s, o) => s + (o.badge ?? 0), 0);
+    tabs.push({
+      id: "queue",
+      label: "Queue",
+      badge: totalBadge,
+      content: <QueueSwitcher options={queueOptions} />,
     });
   }
 
