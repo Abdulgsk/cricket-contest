@@ -722,7 +722,7 @@ export async function getMyRivalryAndCivilWarRecord(
     }
 
     const matchIdStr = String(match._id);
-    const buildMember = (m: { userId: mongoose.Types.ObjectId; side: "A" | "B" }) => {
+    const buildMember = (m: { userId: mongoose.Types.ObjectId; side: "A" | "B"; rivalryId?: mongoose.Types.ObjectId }) => {
       const uid = String(m.userId);
       return {
         userId: uid,
@@ -731,16 +731,55 @@ export async function getMyRivalryAndCivilWarRecord(
         fantasyPoints: fpMap.get(fpKey(matchIdStr, uid)) ?? 0,
         isCaptain: uid === (m.side === "A" ? captainAId : captainBId),
         isMe: uid === userId,
+        rivalryId: m.rivalryId ? String(m.rivalryId) : null,
       };
     };
-    const teamAMembers = cw.members
+    
+    // Build members with rivalry pairing information
+    const allMembersA = cw.members
       .filter((m) => m.side === "A")
-      .map(buildMember)
-      .sort((a, b) => b.fantasyPoints - a.fantasyPoints);
-    const teamBMembers = cw.members
+      .map(buildMember);
+    const allMembersB = cw.members
       .filter((m) => m.side === "B")
-      .map(buildMember)
-      .sort((a, b) => b.fantasyPoints - a.fantasyPoints);
+      .map(buildMember);
+    
+    // Pair members by rivalryId, then sort pairs by combined FP
+    const paired: Array<{ a: typeof allMembersA[0] | null; b: typeof allMembersB[0] | null }> = [];
+    const usedA = new Set<string>();
+    const usedB = new Set<string>();
+    
+    // First, pair up rivals
+    for (const ma of allMembersA) {
+      if (!ma.rivalryId) continue;
+      const mb = allMembersB.find(m => m.rivalryId === ma.rivalryId);
+      if (mb) {
+        paired.push({ a: ma, b: mb });
+        usedA.add(ma.userId);
+        usedB.add(mb.userId);
+      }
+    }
+    
+    // Add unpaired members (captains without direct rivals)
+    const unpairedA = allMembersA.filter(m => !usedA.has(m.userId));
+    const unpairedB = allMembersB.filter(m => !usedB.has(m.userId));
+    const maxUnpaired = Math.max(unpairedA.length, unpairedB.length);
+    for (let i = 0; i < maxUnpaired; i++) {
+      paired.push({
+        a: unpairedA[i] || null,
+        b: unpairedB[i] || null,
+      });
+    }
+    
+    // Sort pairs by combined fantasy points (highest first)
+    paired.sort((p1, p2) => {
+      const fp1 = (p1.a?.fantasyPoints || 0) + (p1.b?.fantasyPoints || 0);
+      const fp2 = (p2.a?.fantasyPoints || 0) + (p2.b?.fantasyPoints || 0);
+      return fp2 - fp1;
+    });
+    
+    // Extract back to separate arrays for the component
+    const teamAMembers = paired.map(p => p.a).filter((m): m is NonNullable<typeof m> => m !== null);
+    const teamBMembers = paired.map(p => p.b).filter((m): m is NonNullable<typeof m> => m !== null);
 
     const leaderTopperId = cw.result.leaderTopperUserId
       ? String(cw.result.leaderTopperUserId)
@@ -779,7 +818,7 @@ export async function getMyRivalryAndCivilWarRecord(
   return {
     rivalry: rivalryRecord,
     civilWar: cwRecord,
-    recentRivalries: recentRivalries.slice(0, 50), // Increased from 10 to 50
-    recentCivilWars: recentCivilWars.slice(0, 50), // Increased from 10 to 50
+    recentRivalries: recentRivalries.slice(0, 50), 
+    recentCivilWars: recentCivilWars.slice(0, 50), 
   };
 }
