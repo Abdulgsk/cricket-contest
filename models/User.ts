@@ -42,6 +42,20 @@ export interface IUser {
   /** While `now < my11NameChangeGraceUntil` the user may run verify+save
    * directly without admin approval. Set after each successful verified save. */
   my11NameChangeGraceUntil?: Date | null;
+  /** Per-user UI preferences. Currently used by the work-items panel for
+   * persisting view mode, saved filters and the default landing view. */
+  preferences?: {
+    workItems?: {
+      view?: "list" | "board" | "table" | "calendar" | "mine";
+      defaultFilters?: Record<string, unknown> | null;
+      savedViews?: Array<{
+        id: string;
+        name: string;
+        view: "list" | "board" | "table" | "calendar" | "mine";
+        filters: Record<string, unknown>;
+      }>;
+    } | null;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -80,6 +94,46 @@ const UserSchema = new Schema<IUser>(
       default: null,
     },
     my11NameChangeGraceUntil: { type: Date, default: null },
+    preferences: {
+      type: new Schema(
+        {
+          workItems: {
+            type: new Schema(
+              {
+                view: {
+                  type: String,
+                  enum: ["list", "board", "table", "calendar", "mine"],
+                  default: "list",
+                },
+                defaultFilters: { type: Schema.Types.Mixed, default: null },
+                savedViews: {
+                  type: [
+                    new Schema(
+                      {
+                        id: { type: String, required: true },
+                        name: { type: String, required: true, maxlength: 60 },
+                        view: {
+                          type: String,
+                          enum: ["list", "board", "table", "calendar", "mine"],
+                          required: true,
+                        },
+                        filters: { type: Schema.Types.Mixed, default: {} },
+                      },
+                      { _id: false },
+                    ),
+                  ],
+                  default: [],
+                },
+              },
+              { _id: false },
+            ),
+            default: null,
+          },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { timestamps: true }
 );

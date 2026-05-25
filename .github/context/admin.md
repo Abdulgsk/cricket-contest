@@ -239,6 +239,22 @@ Model: see [data-model.md#bugreport](data-model.md#bugreport).
 - `updateBugReportAction({id, status?, adminNotes?})` — admin override (manual status / private notes).
 - `deleteBugReportAction(id)` — `bugs.manage`.
 
+### Reporter notifications on close (hard rule)
+
+Every terminal transition — both `resolved` **and** `wont_fix` — pings the
+reporter via `notifyBugClosed()` in [actions/bugs.ts](../../actions/bugs.ts).
+Resolved uses celebratory copy; wont_fix is matter-of-fact and includes the
+admin note / submission note as the reason. **Self-resolves still notify** —
+we intentionally ping the reporter even when they’re the one who fixed it,
+because the “I shipped it” dopamine hit is part of the loop. Both close paths
+must go through this helper:
+
+- `updateBugReportAction` (manual admin status change)
+- `acceptBugSubmissionAction` (accepting an assignee submission)
+
+`notify()` logs failures via `console.error` (no silent swallow) so a broken
+notification model surfaces in logs immediately.
+
 ### UI
 
 - **Assignee** view at `/my-bugs` ([components/my-bug-resolve-form.tsx](../../components/my-bug-resolve-form.tsx)): three outcome tiles (Fixed / Blocked / Won't fix) + textarea + single submit. Once submitted, the form is replaced with a locked "Awaiting admin review" card.

@@ -308,7 +308,7 @@ function SubmissionPanel({
           <Lock className="h-3 w-3" />
           {m.label}
         </span>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-[11px] text-muted-foreground" suppressHydrationWarning>
           submitted by <strong>{submission.submittedByName}</strong> · {relTimeLong(submission.submittedAt)}
         </span>
       </div>
@@ -395,7 +395,7 @@ export function BugDetailPanel({
                 {bug.id.slice(-6)}
               </span>
               <span>·</span>
-              <span>opened {relTimeLong(bug.createdAt)}</span>
+              <span suppressHydrationWarning>opened {relTimeLong(bug.createdAt)}</span>
               <span>by</span>
               <span className="font-medium text-foreground">{bug.reporter.name}</span>
             </div>

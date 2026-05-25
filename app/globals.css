@@ -143,26 +143,54 @@ html.dark, html.dark body, .dark {
    - color-scheme switches the picker popup chrome to dark.
    - invert() on the indicator forces the icon to white. We need it even
      with color-scheme:dark because Chromium keeps the black indicator
-     when the input has an explicit background. */
+     when the input has an explicit background.
+   Selector list intentionally redundant (`.dark`, `html.dark`, `.theme-ink`)
+   so the rule wins inside portaled popovers regardless of how the theme
+   class lands on <html>. */
 .dark input[type="date"],
 .dark input[type="time"],
 .dark input[type="datetime-local"],
 .dark input[type="month"],
-.dark input[type="week"] {
+.dark input[type="week"],
+html.dark input[type="date"],
+html.dark input[type="time"],
+html.dark input[type="datetime-local"],
+html.dark input[type="month"],
+html.dark input[type="week"],
+.theme-ink input[type="date"],
+.theme-ink input[type="time"],
+.theme-ink input[type="datetime-local"],
+.theme-ink input[type="month"],
+.theme-ink input[type="week"] {
   color-scheme: dark;
 }
+/* In dark themes color-scheme:dark already paints the indicator white —
+   do NOT apply filter:invert() (that would flip it back to black). Just
+   tweak opacity + cursor for affordance. */
 .dark input[type="date"]::-webkit-calendar-picker-indicator,
 .dark input[type="time"]::-webkit-calendar-picker-indicator,
 .dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
 .dark input[type="month"]::-webkit-calendar-picker-indicator,
-.dark input[type="week"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  opacity: 0.7;
+.dark input[type="week"]::-webkit-calendar-picker-indicator,
+html.dark input[type="date"]::-webkit-calendar-picker-indicator,
+html.dark input[type="time"]::-webkit-calendar-picker-indicator,
+html.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+html.dark input[type="month"]::-webkit-calendar-picker-indicator,
+html.dark input[type="week"]::-webkit-calendar-picker-indicator,
+.theme-ink input[type="date"]::-webkit-calendar-picker-indicator,
+.theme-ink input[type="time"]::-webkit-calendar-picker-indicator,
+.theme-ink input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.theme-ink input[type="month"]::-webkit-calendar-picker-indicator,
+.theme-ink input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: none;
+  opacity: 0.85;
   cursor: pointer;
 }
 .dark input[type="date"]::-webkit-calendar-picker-indicator:hover,
 .dark input[type="time"]::-webkit-calendar-picker-indicator:hover,
-.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+html.dark input[type="date"]::-webkit-calendar-picker-indicator:hover,
+.theme-ink input[type="date"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
 

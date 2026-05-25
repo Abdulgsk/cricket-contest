@@ -503,14 +503,38 @@ export async function addWorkItemCommentAction(payload: unknown) {
   for (const a of (item.activity ?? []) as Array<{ byId?: unknown; kind?: string }>) {
     if (a.kind === "comment" && a.byId) targets.add(String(a.byId));
   }
+  // @mention: anyone matched by @handle gets added as a watcher + notified.
+  const mentions = Array.from(
+    new Set(
+      (parsed.data.text.match(/@([a-z0-9._-]{2,40})/gi) ?? []).map((m) =>
+        m.slice(1).toLowerCase(),
+      ),
+    ),
+  ).slice(0, 10);
+  let mentionedUsers: Array<{ _id: mongoose.Types.ObjectId; username: string }> = [];
+  if (mentions.length > 0) {
+    mentionedUsers = await User.find({ userId: { $in: mentions } })
+      .select({ _id: 1, username: 1 })
+      .lean<Array<{ _id: mongoose.Types.ObjectId; username: string }>>();
+    for (const u of mentionedUsers) targets.add(String(u._id));
+    if (mentionedUsers.length > 0) {
+      await WorkItem.updateOne(
+        { _id: parsed.data.id },
+        { $addToSet: { watchers: { $each: mentionedUsers.map((u) => u._id) } } },
+      );
+    }
+  }
   targets.delete(String(me._id));
   // Work item "reporter" is the creator (manager). Stay silent until close.
   targets.delete(String(item.createdById));
+  const mentionedIdSet = new Set(mentionedUsers.map((u) => String(u._id)));
   await Promise.all(
     Array.from(targets).map((uid) =>
       notify({
         userId: uid,
-        title: `New comment on "${item.title}"`,
+        title: mentionedIdSet.has(uid)
+          ? `${me.username} mentioned you on "${item.title}"`
+          : `New comment on "${item.title}"`,
         body: `${me.username}: ${parsed.data.text.slice(0, 140)}`,
       }),
     ),
@@ -644,6 +668,571 @@ export async function deleteWorkItemCommentAction(payload: unknown) {
     targetId: parsed.data.id,
     meta: { activityId: parsed.data.activityId, byManager: false },
   });
+  revalidatePath("/developer");
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Tags
+// ===========================================================================
+
+export async function setWorkItemTagsAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      tags: z.array(z.string().trim().min(1).max(24)).max(12),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (!mongoose.Types.ObjectId.isValid(parsed.data.id)) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  const cleaned = Array.from(
+    new Set(parsed.data.tags.map((t) => t.toLowerCase())),
+  ).slice(0, 12);
+  const before = await WorkItem.findById(parsed.data.id).select("tags").lean();
+  if (!before) return { ok: false as const, error: "Not found." };
+  const prev = (before.tags ?? []) as string[];
+  if (
+    prev.length === cleaned.length &&
+    prev.every((t, i) => t === cleaned[i])
+  ) {
+    return { ok: true as const, tags: cleaned };
+  }
+  await WorkItem.updateOne(
+    { _id: parsed.data.id },
+    {
+      $set: { tags: cleaned },
+      $push: {
+        activity: makeActivity(me, "tag_change", "", {
+          from: prev,
+          to: cleaned,
+        }),
+      },
+    },
+  );
+  await recordAudit({
+    action: "workitem.tags",
+    category: "update",
+    targetType: "WorkItem",
+    targetId: parsed.data.id,
+    meta: { tags: cleaned },
+  });
+  revalidatePath("/developer");
+  return { ok: true as const, tags: cleaned };
+}
+
+// ===========================================================================
+// Story points
+// ===========================================================================
+
+export async function setWorkItemPointsAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      points: z.number().int().min(0).max(100).nullable(),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (!mongoose.Types.ObjectId.isValid(parsed.data.id)) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  const before = await WorkItem.findById(parsed.data.id).select("storyPoints").lean();
+  if (!before) return { ok: false as const, error: "Not found." };
+  if ((before.storyPoints ?? null) === parsed.data.points) {
+    return { ok: true as const };
+  }
+  await WorkItem.updateOne(
+    { _id: parsed.data.id },
+    {
+      $set: { storyPoints: parsed.data.points },
+      $push: {
+        activity: makeActivity(me, "points_change", "", {
+          from: before.storyPoints ?? null,
+          to: parsed.data.points,
+        }),
+      },
+    },
+  );
+  revalidatePath("/developer");
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Due date
+// ===========================================================================
+
+export async function setWorkItemDueAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      dueAt: z.string().trim().nullable(),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (!mongoose.Types.ObjectId.isValid(parsed.data.id)) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  let nextDue: Date | null = null;
+  if (parsed.data.dueAt) {
+    const d = new Date(parsed.data.dueAt);
+    if (Number.isNaN(d.getTime())) {
+      return { ok: false as const, error: "Invalid date." };
+    }
+    nextDue = d;
+  }
+  const before = await WorkItem.findById(parsed.data.id).select("dueAt").lean();
+  if (!before) return { ok: false as const, error: "Not found." };
+  await WorkItem.updateOne(
+    { _id: parsed.data.id },
+    {
+      $set: { dueAt: nextDue },
+      $push: {
+        activity: makeActivity(me, "due_change", "", {
+          from: before.dueAt ? new Date(before.dueAt).toISOString() : null,
+          to: nextDue ? nextDue.toISOString() : null,
+        }),
+      },
+    },
+  );
+  revalidatePath("/developer");
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Subtasks
+// ===========================================================================
+
+export async function addWorkItemSubtaskAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      text: z.string().trim().min(1).max(280),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (!mongoose.Types.ObjectId.isValid(parsed.data.id)) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  const subtask = {
+    _id: new mongoose.Types.ObjectId(),
+    text: parsed.data.text,
+    done: false,
+    addedAt: new Date(),
+    addedById: me._id,
+    addedByName: me.username,
+    doneAt: null,
+    doneById: null,
+    doneByName: null,
+  };
+  const res = await WorkItem.updateOne(
+    { _id: parsed.data.id, deletedAt: null },
+    {
+      $push: {
+        subtasks: subtask,
+        activity: makeActivity(me, "subtask_change", parsed.data.text, {
+          op: "add",
+        }),
+      },
+    },
+  );
+  if (res.matchedCount === 0) return { ok: false as const, error: "Not found." };
+  revalidatePath("/developer");
+  return { ok: true as const, subtaskId: String(subtask._id) };
+}
+
+export async function toggleWorkItemSubtaskAction(payload: unknown) {
+  const me = await requireUser();
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      subtaskId: z.string().trim().min(1),
+      done: z.boolean(),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (
+    !mongoose.Types.ObjectId.isValid(parsed.data.id) ||
+    !mongoose.Types.ObjectId.isValid(parsed.data.subtaskId)
+  ) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  // Only the assignee or a manager can toggle subtasks.
+  const item = await WorkItem.findById(parsed.data.id)
+    .select("assignedToId subtasks._id subtasks.text")
+    .lean();
+  if (!item) return { ok: false as const, error: "Not found." };
+  const canManageRes = await assertFeature("dev.workitems.manage");
+  const isAssignee = String(item.assignedToId) === String(me._id);
+  if (!isAssignee && !canManageRes.ok) {
+    return { ok: false as const, error: "Only the assignee can tick this." };
+  }
+  const subId = new mongoose.Types.ObjectId(parsed.data.subtaskId);
+  const sub = (item.subtasks ?? []).find(
+    (s: { _id?: unknown }) => String(s._id) === String(subId),
+  ) as { text?: string } | undefined;
+  await WorkItem.updateOne(
+    { _id: parsed.data.id, "subtasks._id": subId },
+    {
+      $set: {
+        "subtasks.$.done": parsed.data.done,
+        "subtasks.$.doneAt": parsed.data.done ? new Date() : null,
+        "subtasks.$.doneById": parsed.data.done ? me._id : null,
+        "subtasks.$.doneByName": parsed.data.done ? me.username : null,
+      },
+      $push: {
+        activity: makeActivity(me, "subtask_change", sub?.text ?? "", {
+          op: parsed.data.done ? "check" : "uncheck",
+        }),
+      },
+    },
+  );
+  revalidatePath("/developer");
+  return { ok: true as const };
+}
+
+export async function removeWorkItemSubtaskAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      subtaskId: z.string().trim().min(1),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (
+    !mongoose.Types.ObjectId.isValid(parsed.data.id) ||
+    !mongoose.Types.ObjectId.isValid(parsed.data.subtaskId)
+  ) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  await WorkItem.updateOne(
+    { _id: parsed.data.id },
+    {
+      $pull: { subtasks: { _id: new mongoose.Types.ObjectId(parsed.data.subtaskId) } },
+      $push: {
+        activity: makeActivity(me, "subtask_change", "", { op: "remove" }),
+      },
+    },
+  );
+  revalidatePath("/developer");
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Attachments (image data-URLs, ~700KB cap)
+// ===========================================================================
+
+const ATTACHMENT_MAX_BYTES = 800_000; // ~600KB compressed image budget + slack
+const ATTACHMENTS_MAX = 10;
+
+export async function addWorkItemAttachmentAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      name: z.string().trim().min(1).max(200),
+      dataUrl: z.string().min(20),
+      mime: z.string().default("image/jpeg"),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (!mongoose.Types.ObjectId.isValid(parsed.data.id)) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  if (!/^data:image\//.test(parsed.data.dataUrl)) {
+    return { ok: false as const, error: "Only image attachments are supported." };
+  }
+  if (parsed.data.dataUrl.length > ATTACHMENT_MAX_BYTES) {
+    return { ok: false as const, error: "Attachment too large — compress further." };
+  }
+  await connectDB();
+  const item = await WorkItem.findById(parsed.data.id).select("attachments._id").lean();
+  if (!item) return { ok: false as const, error: "Not found." };
+  if ((item.attachments?.length ?? 0) >= ATTACHMENTS_MAX) {
+    return { ok: false as const, error: `Maximum ${ATTACHMENTS_MAX} attachments per item.` };
+  }
+  const attachment = {
+    _id: new mongoose.Types.ObjectId(),
+    name: parsed.data.name,
+    dataUrl: parsed.data.dataUrl,
+    mime: parsed.data.mime,
+    bytes: parsed.data.dataUrl.length,
+    addedAt: new Date(),
+    addedById: me._id,
+    addedByName: me.username,
+  };
+  await WorkItem.updateOne(
+    { _id: parsed.data.id },
+    {
+      $push: {
+        attachments: attachment,
+        activity: makeActivity(me, "attachment_change", parsed.data.name, {
+          op: "add",
+        }),
+      },
+    },
+  );
+  revalidatePath("/developer");
+  return { ok: true as const, attachmentId: String(attachment._id) };
+}
+
+export async function removeWorkItemAttachmentAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      attachmentId: z.string().trim().min(1),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (
+    !mongoose.Types.ObjectId.isValid(parsed.data.id) ||
+    !mongoose.Types.ObjectId.isValid(parsed.data.attachmentId)
+  ) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  await WorkItem.updateOne(
+    { _id: parsed.data.id },
+    {
+      $pull: {
+        attachments: {
+          _id: new mongoose.Types.ObjectId(parsed.data.attachmentId),
+        },
+      },
+      $push: {
+        activity: makeActivity(me, "attachment_change", "", { op: "remove" }),
+      },
+    },
+  );
+  revalidatePath("/developer");
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Reorder (drag within / between status columns on the board view)
+// ===========================================================================
+
+export async function reorderWorkItemAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      id: z.string().trim().min(1),
+      status: z.enum(["open", "in_progress", "blocked", "done"]),
+      /** Ordered list of work-item ids in the destination column AFTER the move. */
+      siblings: z.array(z.string().trim().min(1)).max(500),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  if (!mongoose.Types.ObjectId.isValid(parsed.data.id)) {
+    return { ok: false as const, error: "Invalid id." };
+  }
+  await connectDB();
+  // Bulk write: update each sibling's order (1000-spaced for cheap inserts).
+  type ReorderOp = {
+    updateOne: {
+      filter: { _id: mongoose.Types.ObjectId };
+      update: { $set: Record<string, unknown> };
+    };
+  };
+  const ops: ReorderOp[] = parsed.data.siblings.map((sid, idx) => ({
+    updateOne: {
+      filter: { _id: new mongoose.Types.ObjectId(sid) },
+      update: { $set: { order: (idx + 1) * 1000 } },
+    },
+  }));
+  // Also force-set the moved item's status (in case it crossed columns).
+  ops.push({
+    updateOne: {
+      filter: { _id: new mongoose.Types.ObjectId(parsed.data.id) },
+      update: { $set: { status: parsed.data.status } },
+    },
+  });
+  if (ops.length === 0) return { ok: true as const };
+  await WorkItem.bulkWrite(ops);
+
+  // If status changed, append an activity row.
+  const moved = await WorkItem.findById(parsed.data.id).select("status").lean();
+  if (moved && moved.status === parsed.data.status) {
+    // Best-effort audit
+    await recordAudit({
+      action: "workitem.reorder",
+      category: "update",
+      targetType: "WorkItem",
+      targetId: parsed.data.id,
+      meta: { status: parsed.data.status, count: parsed.data.siblings.length },
+    });
+  }
+  void me;
+  revalidatePath("/developer");
+  return { ok: true as const };
+}
+
+// ===========================================================================
+// Bulk actions (multi-select)
+// ===========================================================================
+
+export async function bulkUpdateWorkItemsAction(payload: unknown) {
+  const me = await requireAdminFeature("dev.workitems.manage");
+  const parsed = z
+    .object({
+      ids: z.array(z.string().trim().min(1)).min(1).max(100),
+      action: z.enum(["status", "priority", "assign", "delete"]),
+      status: z.enum(["open", "in_progress", "blocked", "done"]).optional(),
+      priority: z.enum(["low", "medium", "high"]).optional(),
+      assignedToId: z.string().trim().optional(),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  for (const id of parsed.data.ids) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return { ok: false as const, error: "Invalid id in selection." };
+    }
+  }
+  await connectDB();
+  const ids = parsed.data.ids.map((s) => new mongoose.Types.ObjectId(s));
+
+  if (parsed.data.action === "delete") {
+    await WorkItem.updateMany(
+      { _id: { $in: ids }, deletedAt: null },
+      { $set: { deletedAt: new Date(), deletedById: me._id } },
+    );
+    await recordAudit({
+      action: "workitem.bulk.delete",
+      category: "delete",
+      targetType: "WorkItem",
+      targetId: ids.map(String).join(","),
+      meta: { count: ids.length },
+    });
+    revalidatePath("/developer");
+    return { ok: true as const, count: ids.length };
+  }
+
+  if (parsed.data.action === "status") {
+    if (!parsed.data.status) return { ok: false as const, error: "Pick a status." };
+    const $set: Record<string, unknown> = {
+      status: parsed.data.status,
+      closedAt: parsed.data.status === "done" ? new Date() : null,
+    };
+    await WorkItem.updateMany({ _id: { $in: ids } }, { $set });
+    await recordAudit({
+      action: "workitem.bulk.status",
+      category: "update",
+      targetType: "WorkItem",
+      targetId: ids.map(String).join(","),
+      meta: { status: parsed.data.status, count: ids.length },
+    });
+    revalidatePath("/developer");
+    return { ok: true as const, count: ids.length };
+  }
+
+  if (parsed.data.action === "priority") {
+    if (!parsed.data.priority) return { ok: false as const, error: "Pick a priority." };
+    await WorkItem.updateMany(
+      { _id: { $in: ids } },
+      { $set: { priority: parsed.data.priority } },
+    );
+    revalidatePath("/developer");
+    return { ok: true as const, count: ids.length };
+  }
+
+  if (parsed.data.action === "assign") {
+    if (!parsed.data.assignedToId || !mongoose.Types.ObjectId.isValid(parsed.data.assignedToId)) {
+      return { ok: false as const, error: "Pick a valid assignee." };
+    }
+    const u = await User.findById(parsed.data.assignedToId)
+      .select("username userId")
+      .lean<{ _id: mongoose.Types.ObjectId; username: string; userId: string } | null>();
+    if (!u) return { ok: false as const, error: "Assignee not found." };
+    await WorkItem.updateMany(
+      { _id: { $in: ids } },
+      {
+        $set: {
+          assignedToId: u._id,
+          assignedToName: u.username,
+          assignedToHandle: u.userId,
+          submission: null,
+          needsReview: false,
+        },
+      },
+    );
+    await Promise.all(
+      ids.map((wid) =>
+        notifyWorkItemAssigned({ assigneeId: u._id, title: String(wid) }),
+      ),
+    );
+    revalidatePath("/developer");
+    return { ok: true as const, count: ids.length };
+  }
+
+  return { ok: false as const, error: "Unsupported action." };
+}
+
+// ===========================================================================
+// Saved views (per-user UI preference)
+// ===========================================================================
+
+export async function saveWorkItemViewAction(payload: unknown) {
+  const me = await requireUser();
+  const parsed = z
+    .object({
+      view: z.enum(["list", "board", "table", "calendar", "mine"]).optional(),
+      saveAs: z
+        .object({
+          name: z.string().trim().min(1).max(60),
+          view: z.enum(["list", "board", "table", "calendar", "mine"]),
+          filters: z.record(z.string(), z.any()).default({}),
+        })
+        .optional(),
+      deleteId: z.string().trim().optional(),
+    })
+    .safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input." };
+  await connectDB();
+
+  if (parsed.data.view) {
+    await User.updateOne(
+      { _id: me._id },
+      { $set: { "preferences.workItems.view": parsed.data.view } },
+    );
+  }
+  if (parsed.data.saveAs) {
+    const id = new mongoose.Types.ObjectId().toString();
+    await User.updateOne(
+      { _id: me._id },
+      {
+        $push: {
+          "preferences.workItems.savedViews": {
+            id,
+            name: parsed.data.saveAs.name,
+            view: parsed.data.saveAs.view,
+            filters: parsed.data.saveAs.filters,
+          },
+        },
+      },
+    );
+  }
+  if (parsed.data.deleteId) {
+    await User.updateOne(
+      { _id: me._id },
+      {
+        $pull: {
+          "preferences.workItems.savedViews": { id: parsed.data.deleteId },
+        },
+      },
+    );
+  }
   revalidatePath("/developer");
   return { ok: true as const };
 }

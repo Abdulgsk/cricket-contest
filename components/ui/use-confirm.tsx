@@ -65,7 +65,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
       {children}
       {dialog && typeof window !== "undefined"
         ? createPortal(
-            <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center px-4">
               <div
                 className="absolute inset-0 bg-background/70 backdrop-blur-sm"
                 onClick={() => close(false)}

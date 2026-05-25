@@ -144,7 +144,7 @@ async function loadWorkItems(opts?: {
   const filter: Record<string, unknown> = { deletedAt: null };
   if (opts?.assignedToMeId) filter.assignedToId = opts.assignedToMeId;
   const docs = await WorkItem.find(filter)
-    .sort({ needsReview: -1, createdAt: -1 })
+    .sort({ needsReview: -1, order: 1, createdAt: -1 })
     .limit(200)
     .lean();
   const rows: WorkItemRow[] = docs.map((w) => ({
@@ -160,6 +160,22 @@ async function loadWorkItems(opts?: {
     assignedToHandle: w.assignedToHandle,
     dueAt: w.dueAt ? new Date(w.dueAt).toISOString() : null,
     createdAt: new Date(w.createdAt).toISOString(),
+    tags: Array.isArray(w.tags) ? (w.tags as string[]) : [],
+    order: typeof w.order === "number" ? w.order : 0,
+    storyPoints: typeof w.storyPoints === "number" ? w.storyPoints : null,
+    watcherCount: Array.isArray(w.watchers) ? w.watchers.length : 0,
+    subtasks: (w.subtasks ?? []).map((s) => ({
+      id: String(s._id),
+      text: s.text,
+      done: Boolean(s.done),
+    })),
+    attachments: (w.attachments ?? []).map((a) => ({
+      id: String(a._id),
+      name: a.name,
+      dataUrl: a.dataUrl,
+      mime: a.mime,
+      bytes: a.bytes,
+    })),
     submission: w.submission
       ? {
           kind: w.submission.kind,
@@ -298,6 +314,26 @@ export default async function DeveloperToolsPage({
 
   const workItemAssignees: WorkItemAssignee[] = assignees ?? [];
 
+  // Load this user's saved work-item view + saved filters.
+  const meDoc = workItems
+    ? await User.findById(me._id)
+        .select("preferences.workItems")
+        .lean<{ preferences?: { workItems?: unknown } } | null>()
+    : null;
+  const wiPrefs =
+    (meDoc?.preferences?.workItems as
+      | {
+          view?: "list" | "board" | "table" | "calendar" | "mine";
+          defaultFilters?: Record<string, unknown> | null;
+          savedViews?: Array<{
+            id: string;
+            name: string;
+            view: "list" | "board" | "table" | "calendar" | "mine";
+            filters: Record<string, unknown>;
+          }>;
+        }
+      | undefined) ?? null;
+
   // The sidebar already exposes Bug reports / Work items / Diagnostics / Audit
   // log as separate sub-items. Read ?tab=… and render the matching panel
   // directly — no in-page tab bar, no dropdown.
@@ -328,6 +364,8 @@ export default async function DeveloperToolsPage({
           canManage={canManageWorkItems}
           assignees={workItemAssignees}
           myUserId={String(me._id)}
+          initialView={wiPrefs?.view ?? "list"}
+          savedViews={wiPrefs?.savedViews ?? []}
         />
       ),
     };

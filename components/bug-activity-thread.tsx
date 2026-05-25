@@ -145,7 +145,7 @@ function CommentRow({
             <span className="font-semibold text-foreground">{e.byName}</span>
             <span className="text-muted-foreground">@{e.byHandle}</span>
             <span className="text-muted-foreground/70">·</span>
-            <span className="text-muted-foreground" title={atTitle}>
+            <span className="text-muted-foreground" title={atTitle} suppressHydrationWarning>
               {relTimeLong(e.at)}
             </span>
           </div>
@@ -170,7 +170,7 @@ function CommentRow({
           <span className="font-semibold text-foreground">{e.byName}</span>
           <span className="text-muted-foreground">@{e.byHandle}</span>
           <span className="text-muted-foreground/70">·</span>
-          <span className="text-muted-foreground" title={atTitle}>
+          <span className="text-muted-foreground" title={atTitle} suppressHydrationWarning>
             {relTimeLong(e.at)}
           </span>
           {e.editedAt ? (
@@ -251,7 +251,7 @@ function SystemRow({
         <Icon className="h-3 w-3" />
       </span>
       <span className="min-w-0 flex-1 text-foreground/85">{body}</span>
-      <span className="text-muted-foreground" title={when}>
+      <span className="text-muted-foreground" title={when} suppressHydrationWarning>
         {relTimeLong(when)}
       </span>
     </li>
@@ -512,7 +512,7 @@ export function BugActivityThread({
 function RelTimeText({ iso }: { iso: string }) {
   const title = useLocaleTitle(iso);
   return (
-    <span className="text-muted-foreground" title={title}>
+    <span className="text-muted-foreground" title={title} suppressHydrationWarning>
       {relTimeLong(iso)}
     </span>
   );

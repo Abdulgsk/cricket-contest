@@ -11,7 +11,36 @@ export type WorkItemActivityKind =
   | "accept"
   | "reopen"
   | "assignment_change"
-  | "status_change";
+  | "status_change"
+  | "due_change"
+  | "tag_change"
+  | "subtask_change"
+  | "attachment_change"
+  | "points_change";
+
+export interface IWorkItemSubtask {
+  _id: mongoose.Types.ObjectId;
+  text: string;
+  done: boolean;
+  addedAt: Date;
+  addedById: mongoose.Types.ObjectId | null;
+  addedByName: string;
+  doneAt?: Date | null;
+  doneById?: mongoose.Types.ObjectId | null;
+  doneByName?: string | null;
+}
+
+export interface IWorkItemAttachment {
+  _id: mongoose.Types.ObjectId;
+  name: string;
+  /** Compressed JPEG/PNG/etc data-URL. ~700KB cap, same pipeline as bug screenshots. */
+  dataUrl: string;
+  mime: string;
+  bytes: number;
+  addedAt: Date;
+  addedById: mongoose.Types.ObjectId | null;
+  addedByName: string;
+}
 
 export interface IWorkItemActivity {
   _id: mongoose.Types.ObjectId;
@@ -55,6 +84,19 @@ export interface IWorkItem {
   bugReportId: mongoose.Types.ObjectId | null;
   dueAt: Date | null;
   closedAt: Date | null;
+  /** Lowercase tag strings; UI assigns deterministic colors from a palette. */
+  tags: string[];
+  /** Sortable position within a (status) column. Lower = first. */
+  order: number;
+  /** Optional effort estimate (Fibonacci-ish, 1/2/3/5/8/13). null = unestimated. */
+  storyPoints: number | null;
+  /** Checklist sub-tasks rendered inside the detail drawer. */
+  subtasks: IWorkItemSubtask[];
+  /** Image attachments (data URLs, capped client-side). */
+  attachments: IWorkItemAttachment[];
+  /** Users who get notified on every comment / status change. Auto-populated
+   * from @mentions and explicit follows. */
+  watchers: mongoose.Types.ObjectId[];
   /** Write-once outcome from the assignee. Cleared when manager reopens. */
   submission?: IWorkItemSubmission | null;
   /** True after assignee submits anything, until a manager accepts or reopens. */
@@ -80,6 +122,33 @@ const WorkItemSubmissionSchema = new Schema<IWorkItemSubmission>(
   { _id: false },
 );
 
+const WorkItemSubtaskSchema = new Schema<IWorkItemSubtask>(
+  {
+    text: { type: String, required: true, trim: true, maxlength: 280 },
+    done: { type: Boolean, default: false },
+    addedAt: { type: Date, required: true, default: () => new Date() },
+    addedById: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    addedByName: { type: String, required: true },
+    doneAt: { type: Date, default: null },
+    doneById: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    doneByName: { type: String, default: null },
+  },
+  { _id: true, timestamps: false },
+);
+
+const WorkItemAttachmentSchema = new Schema<IWorkItemAttachment>(
+  {
+    name: { type: String, required: true, trim: true, maxlength: 200 },
+    dataUrl: { type: String, required: true },
+    mime: { type: String, default: "image/jpeg" },
+    bytes: { type: Number, default: 0 },
+    addedAt: { type: Date, required: true, default: () => new Date() },
+    addedById: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    addedByName: { type: String, required: true },
+  },
+  { _id: true, timestamps: false },
+);
+
 const WorkItemActivitySchema = new Schema<IWorkItemActivity>(
   {
     at: { type: Date, required: true, default: () => new Date() },
@@ -96,6 +165,11 @@ const WorkItemActivitySchema = new Schema<IWorkItemActivity>(
         "reopen",
         "assignment_change",
         "status_change",
+        "due_change",
+        "tag_change",
+        "subtask_change",
+        "attachment_change",
+        "points_change",
       ],
       required: true,
     },
@@ -133,6 +207,23 @@ const WorkItemSchema = new Schema<IWorkItem>(
     bugReportId: { type: Schema.Types.ObjectId, ref: "BugReport", default: null },
     dueAt: { type: Date, default: null },
     closedAt: { type: Date, default: null },
+    tags: {
+      type: [String],
+      default: [],
+      set: (arr: string[]) =>
+        Array.from(
+          new Set(
+            (arr ?? [])
+              .map((t) => String(t ?? "").trim().toLowerCase())
+              .filter((t) => t.length > 0 && t.length <= 24),
+          ),
+        ).slice(0, 12),
+    },
+    order: { type: Number, default: 0, index: true },
+    storyPoints: { type: Number, default: null, min: 0, max: 100 },
+    subtasks: { type: [WorkItemSubtaskSchema], default: [] },
+    attachments: { type: [WorkItemAttachmentSchema], default: [] },
+    watchers: { type: [Schema.Types.ObjectId], ref: "User", default: [] },
     submission: { type: WorkItemSubmissionSchema, default: null },
     needsReview: { type: Boolean, default: false, index: true },
     activity: { type: [WorkItemActivitySchema], default: [] },

@@ -2,13 +2,32 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { submitBugReportAction } from "@/actions/bugs";
 
 type Severity = "low" | "medium" | "high";
 
 const MAX_SHOTS = 3;
+
+/** Pages the reporter can pick from in the dropdown. Free-form "other" reveals
+ * a text field so they can paste an exact URL or describe the screen. */
+const PAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: "/dashboard", label: "Home / Dashboard" },
+  { value: "/leaderboard", label: "Leaderboard" },
+  { value: "/analytics", label: "Analytics" },
+  { value: "/matches", label: "Matches" },
+  { value: "/predictions", label: "Predictions" },
+  { value: "/rivalry", label: "Challenges (Rivalry / Civil War)" },
+  { value: "/contests", label: "Contests" },
+  { value: "/players", label: "Players / Profile" },
+  { value: "/rules", label: "Rules" },
+  { value: "/profile", label: "My profile" },
+  { value: "/notifications", label: "Notifications" },
+  { value: "/my-bugs", label: "My bug reports" },
+  { value: "/my-work-items", label: "My work items" },
+  { value: "/admin", label: "Admin area" },
+  { value: "/developer", label: "Developer tools" },
+];
 
 /** Downscale + JPEG-compress an image File to a data URL under ~600KB. */
 async function compressImage(file: File): Promise<string> {
@@ -59,7 +78,10 @@ export function BugReportButton({
   const [compressing, setCompressing] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [pending, start] = useTransition();
-  const pathname = usePathname();
+  /** Selected page from the dropdown. Empty string = "not specified", literal
+   * "__other__" reveals a free-form input the user fills with a URL/description. */
+  const [pageChoice, setPageChoice] = useState<string>("");
+  const [pageCustom, setPageCustom] = useState("");
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
@@ -81,6 +103,8 @@ export function BugReportButton({
     setDescription("");
     setSeverity("medium");
     setShots([]);
+    setPageChoice("");
+    setPageCustom("");
   };
 
   const handleFiles = async (files: FileList | null) => {
@@ -118,12 +142,16 @@ export function BugReportButton({
       toast.error("Add a few words describing the problem.");
       return;
     }
+    const resolvedPageUrl =
+      pageChoice === "__other__"
+        ? pageCustom.trim()
+        : pageChoice.trim();
     start(async () => {
       const res = await submitBugReportAction({
         title: title.trim(),
         description: description.trim(),
         severity,
-        pageUrl: pathname || "",
+        pageUrl: resolvedPageUrl,
         screenshots: shots,
       });
       if (!res.ok) {
@@ -242,6 +270,36 @@ export function BugReportButton({
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              Which page? <span className="normal-case text-muted-foreground/70">(optional)</span>
+            </label>
+            <select
+              value={pageChoice}
+              onChange={(e) => setPageChoice(e.target.value)}
+              disabled={pending}
+              className="mt-1 w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              <option value="">— Select a page —</option>
+              {PAGE_OPTIONS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+              <option value="__other__">Other (paste URL or describe)</option>
+            </select>
+            {pageChoice === "__other__" && (
+              <input
+                type="text"
+                value={pageCustom}
+                onChange={(e) => setPageCustom(e.target.value)}
+                placeholder="Paste URL or describe where (e.g. /matches/abc123 or 'leaderboard filter')"
+                maxLength={500}
+                disabled={pending}
+                className="mt-2 w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+              />
+            )}
           </div>
           <div>
             <div className="flex items-center justify-between">

@@ -7,6 +7,7 @@ import { User } from "@/models/User";
 import { setSessionCookie, clearSessionCookie, getCurrentUser } from "@/lib/session";
 import { env } from "@/lib/env";
 import { recordAudit } from "@/lib/audit";
+import { getRequestContext, formatGeo } from "@/lib/request-context";
 import { revalidatePath } from "next/cache";
 
 const SignupSchema = z.object({
@@ -81,13 +82,24 @@ export async function loginAction(formData: FormData): Promise<ActionResult> {
   });
   if (!parsed.success) return { ok: false, error: "Invalid input" };
   await connectDB();
+  const ctx = await getRequestContext();
+  const auditMeta = {
+    device: ctx.device.label,
+    browser: ctx.device.browser,
+    os: ctx.device.os,
+    ip: ctx.ip,
+    country: ctx.geo.country,
+    region: ctx.geo.region,
+    city: ctx.geo.city,
+    location: formatGeo(ctx.geo),
+  };
   const u = await User.findOne({ userId: parsed.data.userId.toLowerCase().trim() });
   if (!u || u.password !== parsed.data.password) {
     await recordAudit({
       category: "auth",
       action: "auth.login.failed",
       actorHandle: parsed.data.userId.toLowerCase().trim(),
-      meta: { reason: "invalid_credentials" },
+      meta: { reason: "invalid_credentials", ...auditMeta },
     });
     return { ok: false, error: "Invalid credentials" };
   }
@@ -96,6 +108,7 @@ export async function loginAction(formData: FormData): Promise<ActionResult> {
     category: "auth",
     action: "auth.login",
     actor: u,
+    meta: auditMeta,
   });
   redirect("/dashboard");
 }

@@ -42,7 +42,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col">
         <ThemeInit />
         {children}
-        <Toaster theme="system" position="top-right" richColors />
+        <Toaster
+          theme="system"
+          position="top-right"
+          richColors
+          // Pin above any modal backdrop (the bug-report dialog uses the max
+          // safe z-index for its blur layer — toasts must sit on top so they
+          // don't get blurred out from behind it).
+          style={{ zIndex: 2147483647 }}
+        />
         <Analytics />
         <SpeedInsights />
       </body>

@@ -50,8 +50,10 @@ async function notify(opts: {
       body: opts.body,
       link: opts.link ?? "/developer",
     });
-  } catch {
-    // best-effort
+  } catch (err) {
+    // Surface the failure so silent breakage stops slipping past us.
+    // eslint-disable-next-line no-console
+    console.error("[bugs.notify] failed", opts.title, err);
   }
 }
 
@@ -60,18 +62,35 @@ function bugLink(id: unknown) {
 }
 
 /**
- * Send a "your bug was fixed" notification to the reporter. Best-effort:
- * notifications never block the admin's close action.
+ * Send a close notification to the bug reporter. Both "resolved" and
+ * "wont_fix" trigger a ping (with different copy) so reporters always learn
+ * the outcome of their report — including when they fix their own bug (the
+ * "I shipped it" dopamine hit is part of the experience).
  */
-async function notifyBugResolved(opts: {
+async function notifyBugClosed(opts: {
   reporterId: unknown;
+  resolvedById: unknown;
+  kind: "resolved" | "wont_fix";
   bugId: string;
   title: string;
+  reason?: string | null;
 }) {
+  if (!opts.reporterId) return;
+  if (opts.kind === "resolved") {
+    await notify({
+      userId: opts.reporterId,
+      title: "Your bug report was fixed\u00a0\u{1F389}",
+      body: `Thanks for reporting \u201C${opts.title}\u201D \u2014 it\u2019s been resolved. Appreciate you keeping the app sharp!`,
+      link: bugLink(opts.bugId),
+    });
+    return;
+  }
   await notify({
     userId: opts.reporterId,
-    title: "Your bug report was fixed\u00a0\u{1F389}",
-    body: `Thanks for reporting \u201C${opts.title}\u201D \u2014 it\u2019s been resolved. Appreciate you keeping the app sharp!`,
+    title: "Your bug report was closed",
+    body: opts.reason
+      ? `\u201C${opts.title}\u201D was closed as won\u2019t fix \u2014 ${opts.reason}`
+      : `\u201C${opts.title}\u201D was closed as won\u2019t fix. Open it for context.`,
     link: bugLink(opts.bugId),
   });
 }
@@ -211,13 +230,19 @@ export async function updateBugReportAction(payload: unknown) {
       },
     },
   );
-  // Notify only when transitioning into "resolved" (the actual fix);
-  // wont_fix is silent so we don't ping users about declined reports.
-  if (parsed.data.status === "resolved" && prev.status !== "resolved") {
-    await notifyBugResolved({
+  // Notify the reporter whenever the bug enters a terminal state, regardless
+  // of which close reason was picked. Skip self-notify if the admin is also
+  // the reporter.
+  const becameTerminal =
+    isResolved && prev.status !== parsed.data.status;
+  if (becameTerminal) {
+    await notifyBugClosed({
       reporterId: prev.reporterId,
+      resolvedById: me._id,
+      kind: parsed.data.status === "resolved" ? "resolved" : "wont_fix",
       bugId: parsed.data.id,
       title: prev.title,
+      reason: parsed.data.adminNotes ?? null,
     });
   }
   await recordAudit({
@@ -488,11 +513,17 @@ export async function acceptBugSubmissionAction(id: string) {
       },
     },
   );
-  if (closedStatus === "resolved" && bug.status !== "resolved") {
-    await notifyBugResolved({
+  if (
+    (closedStatus === "resolved" || closedStatus === "wont_fix") &&
+    bug.status !== closedStatus
+  ) {
+    await notifyBugClosed({
       reporterId: bug.reporterId,
+      resolvedById: me._id,
+      kind: closedStatus,
       bugId: id,
       title: bug.title,
+      reason: bug.submission?.note ?? null,
     });
   }
   // Also tell the assignee their work was accepted.
