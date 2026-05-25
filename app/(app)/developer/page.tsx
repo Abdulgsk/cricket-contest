@@ -207,12 +207,70 @@ async function loadWorkItems(opts?: {
 async function loadDiagnostics(): Promise<DiagnosticsData> {
   const mem = process.memoryUsage();
   const mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
+  const mbPrecise = (n: number) => Math.round((n / 1024 / 1024) * 100) / 100;
 
   const state = (MONGO_STATES[mongoose.connection.readyState] ??
     "uninitialized") as DiagnosticsData["mongo"]["state"];
   const host = mongoose.connection.host
     ? `${mongoose.connection.host}/${mongoose.connection.name ?? ""}`
     : null;
+
+  // Storage breakdown — only attempt when the connection is live.
+  let storage: DiagnosticsData["mongo"]["storage"] = null;
+  if (state === "connected" && mongoose.connection.db) {
+    try {
+      const db = mongoose.connection.db;
+      const stats = (await db.command({ dbStats: 1, scale: 1 })) as {
+        dataSize?: number;
+        indexSize?: number;
+        storageSize?: number;
+        objects?: number;
+        collections?: number;
+        avgObjSize?: number;
+      };
+      const cols = await db.listCollections({}, { nameOnly: true }).toArray();
+      const perColl = await Promise.all(
+        cols.map(async (c) => {
+          try {
+            const r = await db
+              .command({ collStats: c.name, scale: 1 })
+              .catch(() => null);
+            if (!r) return null;
+            const data = Number(r.size ?? 0);
+            const idx = Number(r.totalIndexSize ?? 0);
+            return {
+              name: c.name,
+              count: Number(r.count ?? 0),
+              dataMb: mbPrecise(data),
+              indexMb: mbPrecise(idx),
+              totalMb: mbPrecise(data + idx),
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const top = perColl
+        .filter((r): r is NonNullable<typeof r> => r !== null)
+        .sort((a, b) => b.totalMb - a.totalMb)
+        .slice(0, 12);
+      const dataMb = mbPrecise(stats.dataSize ?? 0);
+      const indexMb = mbPrecise(stats.indexSize ?? 0);
+      storage = {
+        dataMb,
+        indexMb,
+        storageMb: mbPrecise(stats.storageSize ?? 0),
+        totalMb: mbPrecise((stats.dataSize ?? 0) + (stats.indexSize ?? 0)),
+        objects: Number(stats.objects ?? 0),
+        collections: Number(stats.collections ?? cols.length),
+        avgObjSizeKb: Math.round(((stats.avgObjSize ?? 0) / 1024) * 100) / 100,
+        top,
+      };
+    } catch {
+      // Atlas free tier or restricted users may not have `dbStats` permission.
+      storage = null;
+    }
+  }
 
   return {
     uptimeSec: Math.round(process.uptime()),
@@ -223,7 +281,7 @@ async function loadDiagnostics(): Promise<DiagnosticsData> {
       heapTotalMb: mb(mem.heapTotal),
       externalMb: mb(mem.external),
     },
-    mongo: { state, host },
+    mongo: { state, host, storage },
     generatedAt: new Date().toISOString(),
   };
 }
