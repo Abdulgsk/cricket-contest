@@ -1,4 +1,3 @@
-import Link from "next/link";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { BugReport } from "@/models/BugReport";
@@ -17,10 +16,70 @@ import { QueueSwitcher, type QueueOption } from "@/components/dev/queue-switcher
 type BugAssignee = { id: string; handle: string; name: string };
 import { WorkItemsPanel, type WorkItemRow, type WorkItemAssignee } from "@/components/dev/work-items-panel";
 import { DiagnosticsPanel, type DiagnosticsData } from "@/components/dev/diagnostics-panel";
+import {
+  AuditLogPanel,
+  type AuditFilter,
+  type AuditRow,
+} from "@/components/dev/audit-log-panel";
 import { requireUser, userHasFeature } from "@/lib/rbac";
 
 export const metadata = { title: "Developer Tools" };
 export const dynamic = "force-dynamic";
+
+const AUDIT_PAGE_SIZE = 50;
+
+async function loadAuditData(filter: AuditFilter): Promise<{
+  rows: AuditRow[];
+  total: number;
+  page: number;
+  totalPages: number;
+  distinctActions: string[];
+}> {
+  const page = Math.max(1, Number(filter.page) || 1);
+  const q: Record<string, unknown> = {};
+  if (filter.category && ["create", "update", "delete", "auth", "action"].includes(filter.category)) {
+    q.category = filter.category;
+  }
+  if (filter.action) q.action = filter.action;
+  if (filter.actor) {
+    q.$or = [
+      { actorHandle: filter.actor.toLowerCase() },
+      { actorUsername: new RegExp(`^${escapeRegex(filter.actor)}$`, "i") },
+    ];
+  }
+  const [docs, total, distinctActions] = await Promise.all([
+    AuditLog.find(q)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * AUDIT_PAGE_SIZE)
+      .limit(AUDIT_PAGE_SIZE)
+      .lean(),
+    AuditLog.countDocuments(q),
+    AuditLog.distinct("action"),
+  ]);
+  const rows: AuditRow[] = docs.map((r) => ({
+    _id: String(r._id),
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : new Date().toISOString(),
+    category: r.category,
+    action: r.action,
+    actorHandle: r.actorHandle ?? null,
+    actorUsername: r.actorUsername ?? null,
+    targetType: r.targetType ?? null,
+    targetId: r.targetId ?? null,
+    meta: (r.meta as Record<string, unknown> | null | undefined) ?? null,
+    ip: r.ip ?? null,
+  }));
+  return {
+    rows,
+    total,
+    page,
+    totalPages: Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE)),
+    distinctActions: (distinctActions as string[]) ?? [],
+  };
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 const MONGO_STATES: Record<number, DiagnosticsData["mongo"]["state"]> = {
   0: "disconnected",
@@ -204,7 +263,17 @@ async function loadDiagnostics(): Promise<DiagnosticsData> {
   };
 }
 
-export default async function DeveloperToolsPage() {
+export default async function DeveloperToolsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = (await searchParams) ?? {};
+  const pick = (k: string): string | undefined => {
+    const v = sp[k];
+    if (Array.isArray(v)) return v[0];
+    return typeof v === "string" ? v : undefined;
+  };
   const me = await requireUser();
   const canManageBugs = userHasFeature(me, "dev.bug.manage");
   const canManageWorkItems = userHasFeature(me, "dev.workitems.manage");
@@ -263,11 +332,19 @@ export default async function DeveloperToolsPage() {
       ? loadWorkItems({ assignedToMeId: String(me._id) })
       : Promise.resolve(null);
 
-  const [bugData, assignees, workItems, diagnostics] = await Promise.all([
+  const [bugData, assignees, workItems, diagnostics, auditData] = await Promise.all([
     bugLoader,
     canManageBugs || canManageWorkItems ? loadAssignees() : Promise.resolve(null),
     workLoader,
     canViewDiagnostics ? loadDiagnostics() : Promise.resolve(null),
+    canViewAudit
+      ? loadAuditData({
+          category: pick("category"),
+          action: pick("action"),
+          actor: pick("actor"),
+          page: pick("page"),
+        })
+      : Promise.resolve(null),
   ]);
 
   const workItemAssignees: WorkItemAssignee[] = assignees ?? [];
@@ -320,23 +397,24 @@ export default async function DeveloperToolsPage() {
     });
   }
 
-  if (canViewAudit) {
+  if (canViewAudit && auditData) {
     tabs.push({
       id: "audit",
       label: "Audit log",
       content: (
-        <Card className="border-border/70">
-          <h3 className="text-sm font-semibold">Audit log</h3>
-          <p className="text-xs text-muted-foreground mt-1">
-            Full action history with filters, search and pagination.
-          </p>
-          <Link
-            href="/developer/audit-logs"
-            className="mt-3 inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
-          >
-            Open audit log →
-          </Link>
-        </Card>
+        <AuditLogPanel
+          rows={auditData.rows}
+          total={auditData.total}
+          page={auditData.page}
+          totalPages={auditData.totalPages}
+          distinctActions={auditData.distinctActions}
+          filter={{
+            category: pick("category"),
+            action: pick("action"),
+            actor: pick("actor"),
+            page: pick("page"),
+          }}
+        />
       ),
     });
   }

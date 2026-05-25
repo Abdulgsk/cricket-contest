@@ -395,16 +395,6 @@ export default async function AdminHome() {
         actions: [{ label: "Open Developer Tools", href: "/developer", primary: true }],
       });
     }
-    if (userHasFeature(me, "audit.view")) {
-      workspaces.push({
-        key: "audit",
-        title: "Audit log",
-        subtitle: "Full history of admin actions across the league.",
-        href: "/developer/audit-logs",
-        actions: [{ label: "Open audit log", href: "/developer/audit-logs", primary: true }],
-      });
-    }
-
     const nonAdminTabs = [
       {
         id: "workspace",

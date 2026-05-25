@@ -82,7 +82,7 @@ export default async function AdminPermissionsPage() {
             </p>
           </div>
           <a
-            href="/developer/audit-logs"
+            href="/developer?tab=audit"
             className="text-xs text-muted-foreground underline self-start"
           >
             View audit trail →
