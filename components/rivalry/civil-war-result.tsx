@@ -247,6 +247,7 @@ export function CivilWarResult({
                       <UserAvatar
                         src={m.avatar}
                         name={m.username}
+                        profileId={m.userId}
                         size={20}
                         className="ring-1 ring-border/60"
                       />

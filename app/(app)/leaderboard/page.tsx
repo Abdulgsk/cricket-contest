@@ -3,10 +3,20 @@ import { computeLeaderboard } from "@/services/scoring";
 import { Card, Badge } from "@/components/ui/card";
 import { ClickableUserAvatar } from "@/components/user-avatar";
 import Link from "next/link";
+import { connectDB } from "@/lib/db";
+import { User } from "@/models/User";
+
+const ONLINE_WINDOW_MS = 60_000;
 
 export default async function LeaderboardPage() {
   const me = await requireUser();
   const lb = await computeLeaderboard();
+  await connectDB();
+  const since = new Date(Date.now() - ONLINE_WINDOW_MS);
+  const onlineDocs = await User.find({ lastSeenAt: { $gte: since } })
+    .select({ _id: 1 })
+    .lean();
+  const onlineSet = new Set(onlineDocs.map((u) => String(u._id)));
 
   return (
     <div className="space-y-4">
@@ -54,7 +64,9 @@ export default async function LeaderboardPage() {
                       <ClickableUserAvatar
                         src={r.avatar}
                         name={r.username}
+                        profileId={String(r.userId)}
                         size={28}
+                        online={onlineSet.has(String(r.userId))}
                       />
                       <Link
                         href={`/players/${String(r.userId)}`}

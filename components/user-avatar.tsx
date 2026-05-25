@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useIsOnline } from "@/components/presence-provider";
 
 function getInitials(name: string): string {
   return (
@@ -22,45 +24,98 @@ function gradientFor(seed: string): string {
   return `linear-gradient(135deg, hsl(${hue1} 70% 55%) 0%, hsl(${hue2} 70% 40%) 100%)`;
 }
 
-/** Read-only circular avatar with initial fallback. */
+/** Read-only circular avatar with initial fallback.
+ *
+ * When `profileId` is supplied, the avatar becomes a `<Link>` to
+ * `/players/{profileId}` so clicking it navigates to that user's profile.
+ * Presence dot lights up automatically via `useIsOnline` when the user is
+ * active in the last 60s.
+ */
 export function UserAvatar({
   src,
   name,
+  userId,
+  profileId,
   size = 32,
   className = "",
+  online,
 }: {
   src?: string | null;
   name: string;
+  /** my11 / userId handle — when supplied, presence is auto-detected. */
+  userId?: string | null;
+  /** Mongo user id — when supplied, the avatar links to /players/{profileId}. */
+  profileId?: string | null;
   size?: number;
   className?: string;
+  /** Force the presence dot on/off. When omitted, looks up live presence. */
+  online?: boolean;
 }) {
+  const livePresence = useIsOnline(userId, name);
+  const showOnline = online ?? livePresence;
   const initials = getInitials(name);
   const style = src
     ? {}
     : { background: gradientFor(name), width: size, height: size };
+  // Dot scales with avatar size, clamped for readability.
+  const dot = Math.max(8, Math.round(size * 0.28));
+  const inner = (
+    <>
+      <span
+        className="inline-flex items-center justify-center rounded-full overflow-hidden text-white font-semibold select-none"
+        style={{ width: size, height: size, ...style }}
+      >
+        {src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt={name}
+            width={size}
+            height={size}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <span style={{ fontSize: Math.max(10, Math.floor(size * 0.4)) }}>
+            {initials}
+          </span>
+        )}
+      </span>
+      {showOnline && (
+        <span
+          aria-label="Online"
+          title="Online now"
+          className="absolute bottom-0 right-0 rounded-full bg-success ring-2 ring-card"
+          style={{ width: dot, height: dot }}
+        />
+      )}
+    </>
+  );
+  if (profileId) {
+    return (
+      <Link
+        href={`/players/${profileId}`}
+        title={`View ${name}'s profile`}
+        className={
+          "relative inline-flex items-center justify-center shrink-0 rounded-full ring-1 ring-border hover:ring-primary/60 transition focus:outline-none focus:ring-2 focus:ring-ring " +
+          className
+        }
+        style={{ width: size, height: size }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {inner}
+      </Link>
+    );
+  }
   return (
     <span
       className={
-        "inline-flex items-center justify-center rounded-full overflow-hidden text-white font-semibold select-none shrink-0 " +
+        "relative inline-flex items-center justify-center shrink-0 rounded-full " +
         className
       }
-      style={{ width: size, height: size, ...style }}
+      style={{ width: size, height: size }}
     >
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={name}
-          width={size}
-          height={size}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <span style={{ fontSize: Math.max(10, Math.floor(size * 0.4)) }}>
-          {initials}
-        </span>
-      )}
+      {inner}
     </span>
   );
 }
@@ -69,15 +124,38 @@ export function UserAvatar({
 export function ClickableUserAvatar({
   src,
   name,
+  userId,
+  profileId,
   size = 36,
   className = "",
+  online,
 }: {
   src?: string | null;
   name: string;
+  userId?: string | null;
+  /** Mongo user id — when supplied, the avatar links to the profile page
+   *  instead of opening the image-zoom modal. */
+  profileId?: string | null;
   size?: number;
   className?: string;
+  online?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+
+  // When we know whose profile this is, prefer navigation over the modal.
+  if (profileId) {
+    return (
+      <UserAvatar
+        src={src}
+        name={name}
+        userId={userId}
+        profileId={profileId}
+        size={size}
+        online={online}
+        className={className}
+      />
+    );
+  }
 
   return (
     <>
@@ -89,12 +167,12 @@ export function ClickableUserAvatar({
           setOpen(true);
         }}
         className={
-          "inline-flex items-center justify-center align-middle p-0 border-0 bg-transparent leading-none rounded-full overflow-hidden ring-1 ring-border hover:ring-primary/50 transition focus:outline-none focus:ring-2 focus:ring-ring " +
+          "inline-flex items-center justify-center align-middle p-0 border-0 bg-transparent leading-none rounded-full overflow-visible focus:outline-none focus:ring-2 focus:ring-ring " +
           className
         }
         aria-label={`Show ${name}'s avatar`}
       >
-        <UserAvatar src={src} name={name} size={size} />
+        <UserAvatar src={src} name={name} userId={userId} size={size} online={online} className="ring-1 ring-border hover:ring-primary/50 transition rounded-full" />
       </button>
 
       {open && (

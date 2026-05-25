@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, Bug, Wrench } from "lucide-react";
+import { ChevronDown, Bug, Wrench, Activity, ScrollText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type QueueKind = "bugs" | "workitems";
+export type QueueKind = "bugs" | "workitems" | "diagnostics" | "audit";
 
 export type QueueOption = {
   kind: QueueKind;
@@ -17,6 +17,8 @@ export type QueueOption = {
 const KIND_ICON: Record<QueueKind, typeof Bug> = {
   bugs: Bug,
   workitems: Wrench,
+  diagnostics: Activity,
+  audit: ScrollText,
 };
 
 /**
@@ -119,7 +121,7 @@ export function QueueSwitcher({ options }: { options: QueueOption[] }) {
           ) : null}
         </div>
         <span className="text-[11px] text-muted-foreground">
-          Switch between bugs and work items.
+          Switch between developer tools.
         </span>
       </div>
       <div>{current?.content}</div>

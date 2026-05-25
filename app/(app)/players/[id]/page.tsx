@@ -10,11 +10,26 @@ import { Card, Badge } from "@/components/ui/card";
 import { TeamLogo } from "@/components/team-logo";
 import { ClickableUserAvatar } from "@/components/user-avatar";
 import { PlayerCharts, type PlayerChartRow } from "@/components/player-charts";
+import { BackButton } from "@/components/back-button";
 import { formatDate } from "@/lib/utils";
 import { PREDICTION_POINTS } from "@/lib/constants";
 import { loadCivilWarBreakdowns } from "@/lib/civil-war-breakdown";
 import { getPointsBreakdown } from "@/services/points-breakdown";
 import { PointsBreakdownCard } from "@/components/points-breakdown-card";
+
+function formatLastSeen(d: Date | string | null | undefined): string {
+  if (!d) return "Never seen";
+  const ts = new Date(d).getTime();
+  const diffMs = Date.now() - ts;
+  if (diffMs < 60_000) return "Online now";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `Last seen ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `Last seen ${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `Last seen ${days}d ago`;
+  return `Last seen on ${new Date(ts).toLocaleDateString()}`;
+}
 
 export default async function PlayerDetailPage({
   params,
@@ -230,10 +245,18 @@ export default async function PlayerDetailPage({
     <div className="space-y-4">
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0 flex items-start gap-3">
-          <ClickableUserAvatar src={user.avatar} name={user.username} size={56} />
+          <ClickableUserAvatar
+            src={user.avatar}
+            name={user.username}
+            profileId={String(user._id)}
+            size={56}
+          />
           <div className="min-w-0">
             <h1 className="text-2xl md:text-3xl font-bold truncate">{user.username}</h1>
             <p className="text-muted-foreground text-sm truncate">@{user.userId}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5" suppressHydrationWarning>
+              {formatLastSeen(user.lastSeenAt)}
+            </p>
             {user.bio && (
               <div className="mt-2 rounded-xl border border-border bg-muted/20 px-3 py-2 max-w-2xl">
                 <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
@@ -243,9 +266,7 @@ export default async function PlayerDetailPage({
             )}
           </div>
         </div>
-        <Link href="/leaderboard" className="text-sm text-muted-foreground hover:text-foreground shrink-0">
-          ← Leaderboard
-        </Link>
+        <BackButton fallbackHref="/leaderboard" />
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-7 gap-3">

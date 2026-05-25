@@ -390,7 +390,7 @@ export function CompareView({
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
           {/* Me */}
           <div className="flex flex-col items-center text-center">
-            <UserAvatar src={meAvatar} name={meUsername} size={56} />
+            <UserAvatar src={meAvatar} name={meUsername} profileId={meId} size={56} />
             <div className="mt-2 truncate max-w-full text-sm font-bold">{meUsername}</div>
             <div className="text-3xl font-extrabold tabular-nums text-primary">
               {fmt(meTeam?.score)}
@@ -407,7 +407,7 @@ export function CompareView({
           <div className="text-2xl font-black text-muted-foreground">VS</div>
           {/* Other */}
           <div className="flex flex-col items-center text-center">
-            <UserAvatar src={otherAvatar} name={otherUsername} size={56} />
+            <UserAvatar src={otherAvatar} name={otherUsername} profileId={otherId} size={56} />
             <div className="mt-2 truncate max-w-full text-sm font-bold">{otherUsername}</div>
             <div className="text-3xl font-extrabold tabular-nums text-secondary-foreground">
               {fmt(otherTeam?.score)}

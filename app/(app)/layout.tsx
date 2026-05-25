@@ -11,6 +11,7 @@ import { BONUSES } from "@/lib/constants";
 import { getUnseenRivalryCount } from "@/actions/rivalry";
 import { headers } from "next/headers";
 import { ConfirmProvider } from "@/components/ui/use-confirm";
+import { PresenceProvider } from "@/components/presence-provider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const me = await requireUser();
@@ -51,6 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const bountyReward = settings.bonusConfig?.bounty ?? BONUSES.BOUNTY;
   return (
     <ConfirmProvider>
+      <PresenceProvider>
       <div className="flex flex-1 min-h-screen">
       <Nav role={me.role} hasAdminAccess={userHasAdminAccess(me)} hasDeveloperAccess={hasDeveloperToolsAccess(me)} rivalryUnseen={rivalryUnseen} assignedBugs={assignedBugs + assignedWorkItems} />
       <div className="flex-1 flex flex-col min-w-0">
@@ -72,6 +74,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main className="flex-1 p-3 sm:p-4 md:p-8 max-w-7xl w-full mx-auto">{children}</main>
       </div>
     </div>
+      </PresenceProvider>
     </ConfirmProvider>
   );
 }

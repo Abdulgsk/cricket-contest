@@ -1,8 +1,9 @@
-import { getRivalryView } from "@/actions/rivalry";
+import { getRivalryView, getLiveRivalries } from "@/actions/rivalry";
 import {
   getCivilWarView,
   getMyRivalryAndCivilWarRecord,
 } from "@/actions/civil-war";
+import { requireUser } from "@/lib/rbac";
 import { Card } from "@/components/ui/card";
 import { TeamLogo } from "@/components/team-logo";
 import { formatDate } from "@/lib/utils";
@@ -11,12 +12,21 @@ import { CivilWarTab } from "@/components/rivalry/civil-war-tab";
 import { RivalryPageTabs } from "@/components/rivalry/rivalry-page-tabs";
 import { CivilWarResult } from "@/components/rivalry/civil-war-result";
 import { RivalryResult } from "@/components/rivalry/rivalry-result";
+import { LiveRivalryPanel } from "@/components/rivalry/live-rivalry-panel";
 
 export default async function RivalryPage() {
-  const [view, civilWar, record] = await Promise.all([
+  const meUser = await requireUser();
+  const me = {
+    userId: String(meUser._id),
+    username: meUser.username,
+    avatar: meUser.avatar ?? null,
+  };
+
+  const [view, civilWar, record, liveRivalries] = await Promise.all([
     getRivalryView(),
     getCivilWarView(),
     getMyRivalryAndCivilWarRecord(),
+    getLiveRivalries(),
   ]);
 
   const settledRivalries = record.recentRivalries.filter(
@@ -25,8 +35,43 @@ export default async function RivalryPage() {
 
   const rivalryTab = (
     <div className="space-y-6">
+      {/* Live rivalries — real-time fantasy points head-to-head */}
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold">Live</h2>
+          <span className="text-[11px] text-muted-foreground">
+            {liveRivalries.length} in progress
+          </span>
+        </div>
+        {liveRivalries.length === 0 ? (
+          <Card>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              No live rivalries right now. Accepted challenges on live matches
+              show up here with real-time fantasy points.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {liveRivalries.map((r) => (
+              <LiveRivalryPanel
+                key={r.rivalryId}
+                me={me}
+                opponent={r.opponent}
+                match={{
+                  id: r.matchId,
+                  label: r.matchLabel,
+                  startTime: r.startTime,
+                  teamA: r.teamA,
+                  teamB: r.teamB,
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* New / pending challenges */}
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold">⚔️ Challenges</h2>
         <p className="text-xs sm:text-sm text-muted-foreground">
           Challenge another player for a specific match. <strong>+3</strong> for
           a win, <strong>−2</strong> for your own withdrawal — admin-approved
@@ -56,10 +101,10 @@ export default async function RivalryPage() {
                   {formatDate(m.startTime)} · {m.status}
                   {m.rivalryLocked &&
                     (m.rivalryLockReason === "waiting_prior"
-                      ? " · ⏳ waiting for earlier match"
+                      ? " · waiting for earlier match"
                       : m.rivalryLockReason === "accepted"
-                        ? " · 🔒 accepted rivalry lock"
-                        : " · 🔒 locked")}
+                        ? " · accepted rivalry lock"
+                        : " · locked")}
                 </p>
               </div>
             </div>
@@ -76,9 +121,10 @@ export default async function RivalryPage() {
         ))}
       </section>
 
+      {/* Past results */}
       <section className="space-y-3">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold">📜 Results</h2>
+          <h2 className="text-lg font-semibold">Results</h2>
           <span className="text-[11px] text-muted-foreground">
             {settledRivalries.length} settled
           </span>
@@ -92,7 +138,7 @@ export default async function RivalryPage() {
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             {settledRivalries.map((r) => (
-              <RivalryResult key={r.rivalryId} entry={r} />
+              <RivalryResult key={r.rivalryId} entry={r} me={me} />
             ))}
           </div>
         )}
@@ -103,13 +149,17 @@ export default async function RivalryPage() {
   const civilWarTab = (
     <div className="space-y-6">
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">🛡️ Upcoming Civil Wars</h2>
-        <CivilWarTab matches={civilWar.filter((m) => !m.settled)} />
+        <h2 className="text-lg font-semibold">Upcoming Civil Wars</h2>
+        <CivilWarTab
+          matches={civilWar.filter(
+            (m) => !m.settled && m.status !== "live"
+          )}
+        />
       </section>
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold">📜 Results</h2>
+          <h2 className="text-lg font-semibold">Results</h2>
           <span className="text-[11px] text-muted-foreground">
             {record.recentCivilWars.length} settled
           </span>
@@ -134,14 +184,6 @@ export default async function RivalryPage() {
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-2xl md:text-3xl font-bold">⚔️ Rivalry</h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Active challenges and past results, in one place. Switch tabs for 1v1
-          rivalries or team-vs-team Civil Wars.
-        </p>
-      </header>
-
       <RivalryPageTabs
         tabs={[
           { id: "rivalry", label: "Rivalry", icon: "⚔️", content: rivalryTab },

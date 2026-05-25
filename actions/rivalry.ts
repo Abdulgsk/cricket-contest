@@ -746,3 +746,89 @@ export async function getUnseenRivalryCount(userId: string): Promise<number> {
     updatedAt: { $gt: since },
   });
 }
+
+export type LiveRivalryEntry = {
+  rivalryId: string;
+  matchId: string;
+  matchLabel: string;
+  startTime: string;
+  status: string;
+  teamA: string;
+  teamB: string;
+  opponent: {
+    userId: string;
+    username: string;
+    avatar: string | null;
+  };
+};
+
+/**
+ * Accepted rivalries on currently-live matches that haven't had results
+ * entered yet. These benefit from a real-time fantasy-points view.
+ */
+export async function getLiveRivalries(): Promise<LiveRivalryEntry[]> {
+  const me = await requireUser();
+  await connectDB();
+
+  const liveMatches = await Match.find({
+    status: "live",
+    resultsEntered: { $ne: true },
+  })
+    .select("teamA teamB startTime status")
+    .lean();
+  if (liveMatches.length === 0) return [];
+  const matchIds = liveMatches.map(
+    (m) => new mongoose.Types.ObjectId(String(m._id))
+  );
+
+  const rivalries = await Rivalry.find({
+    matchId: { $in: matchIds },
+    status: "accepted",
+    $or: [{ challengerId: me._id }, { opponentId: me._id }],
+  }).lean();
+  if (rivalries.length === 0) return [];
+
+  const opponentIds = rivalries
+    .map((r) =>
+      String(r.challengerId) === String(me._id)
+        ? String(r.opponentId)
+        : String(r.challengerId)
+    )
+    .filter(Boolean);
+  const opponents = await User.find({ _id: { $in: opponentIds } })
+    .select("username avatar")
+    .lean();
+  const oppMap = new Map(
+    opponents.map((u) => [String(u._id), u] as const)
+  );
+  const matchMap = new Map(
+    liveMatches.map((m) => [String(m._id), m] as const)
+  );
+
+  return rivalries
+    .map((r): LiveRivalryEntry | null => {
+      const match = matchMap.get(String(r.matchId));
+      if (!match) return null;
+      const isChallenger = String(r.challengerId) === String(me._id);
+      const oppId = isChallenger
+        ? String(r.opponentId)
+        : String(r.challengerId);
+      const opp = oppMap.get(oppId);
+      if (!opp) return null;
+      return {
+        rivalryId: String(r._id),
+        matchId: String(match._id),
+        matchLabel: `${match.teamA} vs ${match.teamB}`,
+        startTime: new Date(match.startTime).toISOString(),
+        status: String(match.status),
+        teamA: match.teamA,
+        teamB: match.teamB,
+        opponent: {
+          userId: oppId,
+          username: opp.username,
+          avatar: opp.avatar ?? null,
+        },
+      };
+    })
+    .filter((x): x is LiveRivalryEntry => x !== null);
+}

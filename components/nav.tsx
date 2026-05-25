@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ChevronDown, Bug, Wrench } from "lucide-react";
+import { ChevronDown, Bug, Wrench, Activity, ScrollText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";
@@ -14,7 +14,7 @@ const NAV = [
   { href: "/analytics", label: "Analytics" },
   { href: "/matches", label: "Matches" },
   { href: "/predictions", label: "Predictions" },
-  { href: "/rivalry", label: "Rivalry" },
+  { href: "/rivalry", label: "Challenges" },
   { href: "/contests", label: "Contests" },
   { href: "/rules", label: "Rules" },
   { href: "/profile", label: "Profile" },
@@ -57,6 +57,8 @@ export function Nav({
             children: [
               { href: "/developer?tab=bugs", label: "Bug reports", icon: Bug },
               { href: "/developer?tab=workitems", label: "Work items", icon: Wrench },
+              { href: "/developer?tab=diagnostics", label: "Diagnostics", icon: Activity },
+              { href: "/developer?tab=audit", label: "Audit log", icon: ScrollText },
             ],
           },
         ]

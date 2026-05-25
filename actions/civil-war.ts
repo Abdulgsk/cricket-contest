@@ -407,6 +407,7 @@ export type RivalryHistoryEntry = {
   startTime: string;
   status: string;
   myRole: "challenger" | "opponent";
+  opponentUserId: string;
   opponentUsername: string;
   outcome: "win" | "loss" | "tie" | "pending" | "cancelled";
   pointsAwarded: number;
@@ -596,6 +597,11 @@ export async function getMyRivalryAndCivilWarRecord(
       startTime: new Date(match.startTime).toISOString(),
       status: r.status,
       myRole: isChallenger ? "challenger" : "opponent",
+      opponentUserId: String(
+        isChallenger
+          ? (r.opponentId as { _id?: unknown } | null)?._id ?? r.opponentId
+          : (r.challengerId as { _id?: unknown } | null)?._id ?? r.challengerId
+      ),
       opponentUsername: opponentDoc?.username ?? "Unknown",
       outcome,
       pointsAwarded: outcome === "win" ? r.pointsAwarded ?? 0 : 0,

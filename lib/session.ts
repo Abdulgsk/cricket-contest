@@ -56,6 +56,23 @@ export async function getCurrentUser(): Promise<IUser | null> {
   return _getCurrentUserCached();
 }
 
+// Per-warm-lambda throttle for lastSeenAt writes. We update at most once
+// every 30s per user, fire-and-forget, so navigation stays snappy.
+const LAST_SEEN_THROTTLE_MS = 30_000;
+const _lastSeenG = global as unknown as { _lastSeenWrites?: Map<string, number> };
+const _lastSeenWrites = (_lastSeenG._lastSeenWrites ??= new Map());
+
+function maybeUpdateLastSeen(uid: string) {
+  const now = Date.now();
+  const prev = _lastSeenWrites.get(uid) ?? 0;
+  if (now - prev < LAST_SEEN_THROTTLE_MS) return;
+  _lastSeenWrites.set(uid, now);
+  // Fire-and-forget. Errors are swallowed \u2014 this is a UX signal, not auth.
+  User.updateOne({ _id: uid }, { $set: { lastSeenAt: new Date(now) } }).catch(
+    () => {},
+  );
+}
+
 // Per-request memoized variant. React.cache dedupes calls within a single
 // server render, so `requireUser()` / `requireAdminAccess()` / layouts that
 // each call `getCurrentUser()` only hit Mongo once.
@@ -65,6 +82,7 @@ const _getCurrentUserCached = cache(async (): Promise<IUser | null> => {
   await connectDB();
   const u = await User.findById(s.uid).lean<IUser>();
   if (!u) return null;
+  maybeUpdateLastSeen(s.uid);
 
   // Start from the user's own bitmap (preferred) or legacy array fallback.
   let mask = u.permissionBitmap && u.permissionBitmap !== "0"

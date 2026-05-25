@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   CheckCircle2,
@@ -141,16 +142,12 @@ export function BugActionBar({
 
         {/* Admin: more menu (always) */}
         {canManage ? (
-          <div className="relative ml-auto">
-            <Button size="sm" variant="ghost" onClick={() => setMoreOpen((o) => !o)}>
-              <Settings2 className="h-3.5 w-3.5" />
-              More
-              <ChevronDown className={cn("h-3 w-3 transition", moreOpen && "rotate-180")} />
-            </Button>
-            {moreOpen ? (
-              <MoreMenu bug={bug} onClose={() => setMoreOpen(false)} />
-            ) : null}
-          </div>
+          <MoreMenuTrigger
+            open={moreOpen}
+            onToggle={() => setMoreOpen((o) => !o)}
+            onClose={() => setMoreOpen(false)}
+            bug={bug}
+          />
         ) : null}
       </div>
 
@@ -223,23 +220,83 @@ export function BugActionBar({
   );
 }
 
+function MoreMenuTrigger({
+  open,
+  onToggle,
+  onClose,
+  bug,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  bug: BugDetail;
+}) {
+  const btnRef = React.useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = React.useState<{ top: number; right: number } | null>(null);
+
+  // Recompute position when opening + on scroll/resize while open.
+  React.useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setCoords({
+        top: r.bottom + 4,
+        right: window.innerWidth - r.right,
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
+
+  // Click-outside to close.
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t)) return;
+      // The menu is portaled, mark with data attribute.
+      const menu = document.querySelector("[data-bug-more-menu]");
+      if (menu && menu.contains(t)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open, onClose]);
+
+  return (
+    <div ref={btnRef} className="ml-auto">
+      <Button size="sm" variant="ghost" onClick={onToggle}>
+        <Settings2 className="h-3.5 w-3.5" />
+        More
+        <ChevronDown className={cn("h-3 w-3 transition", open && "rotate-180")} />
+      </Button>
+      {open && coords && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              data-bug-more-menu
+              role="menu"
+              className="fixed z-[200] w-60 overflow-hidden rounded-xl border border-border bg-popover text-[12.5px] shadow-2xl"
+              style={{ top: coords.top, right: coords.right }}
+            >
+              <MoreMenu bug={bug} onClose={onClose} />
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
 function MoreMenu({ bug, onClose }: { bug: BugDetail; onClose: () => void }) {
   const confirm = useConfirm();
-  const wrap = (
-    cb: () => Promise<{ ok: boolean; error?: string }>,
-    successMsg: string,
-  ) => async () => {
-    onClose();
-    const r = await cb();
-    if (r.ok) toast.success(successMsg);
-    else toast.error(r.error ?? "Failed");
-  };
   return (
-    <div
-      role="menu"
-      className="absolute right-0 top-full z-30 mt-1 w-60 overflow-hidden rounded-xl border border-border bg-popover text-[12.5px] shadow-2xl"
-      onMouseLeave={onClose}
-    >
+    <div>
       <DueDateRow bug={bug} onDone={onClose} />
       <StatusOverrideRow bug={bug} onDone={onClose} />
       {bug.assignee ? (

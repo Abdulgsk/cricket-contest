@@ -6,10 +6,23 @@ import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 const PROTECTED = ["/dashboard", "/leaderboard", "/matches", "/predictions", "/profile", "/analytics", "/admin", "/rivalry", "/rules", "/players"];
 const AUTH_PAGES = ["/login", "/signup", "/forgot-password"];
 
+// Per-warm-lambda sliding window of request timestamps (last 60s). Exposed
+// to /api/dev/diagnostics-tick as `requestsPerMin`. The matcher below excludes
+// /api and _next assets so this counts page navigations, not the diag poll
+// itself.
+const _reqG = global as unknown as { _reqStamps?: number[] };
+
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? verifySessionToken(token) : null;
+
+  // Tick the rolling request counter (cheap, no DB).
+  const _now = Date.now();
+  const _stamps = (_reqG._reqStamps ??= []);
+  _stamps.push(_now);
+  // Trim anything older than 60s.
+  while (_stamps.length && _stamps[0] < _now - 60_000) _stamps.shift();
 
   // Redirect logged-in users away from auth pages
   if (session && AUTH_PAGES.some((p) => pathname.startsWith(p))) {

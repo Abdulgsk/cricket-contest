@@ -31,10 +31,9 @@ const GROUP_BLURB: Record<FeatureGroup, string> = {
   Bonuses: "Tune bonus point values and rules.",
   "Civil War": "Battle settings and overrides.",
   Users: "Account, role and approval workflows.",
-  Audit: "Read-only access to history.",
   Tools: "Maintenance and automations.",
   Content: "Narratives and AI-generated content.",
-  Developer: "Dev workspace: bugs, work items, diagnostics.",
+  Developer: "Dev workspace: bugs, work items, diagnostics, audit log.",
 };
 
 export function PermissionEditor({

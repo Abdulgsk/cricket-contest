@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { LiveDiagnosticsChart } from "@/components/dev/live-diagnostics-chart";
 
 export type DiagnosticsData = {
   uptimeSec: number;
@@ -13,16 +14,6 @@ export type DiagnosticsData = {
     state: "connected" | "connecting" | "disconnected" | "uninitialized";
     host: string | null;
   };
-  counts: {
-    users: number;
-    matches: number;
-    predictions: number;
-    rivalries: number;
-    workItems: number;
-    bugReports: number;
-    auditEvents: number;
-  };
-  activity: { day: string; count: number }[];
   generatedAt: string;
 };
 
@@ -41,7 +32,6 @@ export function DiagnosticsPanel({ data }: { data: DiagnosticsData }) {
   const memPct = Math.round(
     (data.memory.heapUsedMb / Math.max(1, data.memory.heapTotalMb)) * 100,
   );
-  const maxActivity = Math.max(1, ...data.activity.map((a) => a.count));
 
   return (
     <div className="space-y-4">
@@ -54,7 +44,7 @@ export function DiagnosticsPanel({ data }: { data: DiagnosticsData }) {
               reset between cold starts.
             </p>
           </div>
-          <div className="text-[10px] text-muted-foreground">
+          <div className="text-[10px] text-muted-foreground" suppressHydrationWarning>
             {new Date(data.generatedAt).toLocaleTimeString()}
           </div>
         </div>
@@ -108,47 +98,9 @@ export function DiagnosticsPanel({ data }: { data: DiagnosticsData }) {
             {data.mongo.host}
           </div>
         )}
-        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-          <Mini label="Users" value={data.counts.users} />
-          <Mini label="Matches" value={data.counts.matches} />
-          <Mini label="Predictions" value={data.counts.predictions} />
-          <Mini label="Rivalries" value={data.counts.rivalries} />
-          <Mini label="Work items" value={data.counts.workItems} />
-          <Mini label="Bug reports" value={data.counts.bugReports} />
-          <Mini label="Audit events" value={data.counts.auditEvents} />
-        </div>
       </Card>
 
-      <Card className="border-border/70">
-        <h3 className="text-sm font-semibold">Admin activity (last 14 days)</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Audit events per day. Spikes usually mean result entry or a fixture sync.
-        </p>
-        <div className="mt-4 flex items-end gap-1 h-32">
-          {data.activity.map((a) => {
-            const h = Math.round((a.count / maxActivity) * 100);
-            return (
-              <div
-                key={a.day}
-                className="flex-1 flex flex-col items-center gap-1 group relative"
-              >
-                <div className="text-[9px] text-muted-foreground opacity-0 group-hover:opacity-100 absolute -top-4">
-                  {a.count}
-                </div>
-                <div
-                  className="w-full rounded-t bg-primary/60 group-hover:bg-primary transition-all"
-                  style={{ height: `${Math.max(2, h)}%` }}
-                  title={`${a.day}: ${a.count}`}
-                />
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-1 flex justify-between text-[9px] text-muted-foreground">
-          <span>{data.activity[0]?.day.slice(5) ?? ""}</span>
-          <span>{data.activity[data.activity.length - 1]?.day.slice(5) ?? ""}</span>
-        </div>
-      </Card>
+      <LiveDiagnosticsChart />
     </div>
   );
 }
@@ -162,16 +114,5 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       <div className="text-xl sm:text-2xl font-bold mt-1">{value}</div>
       {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
     </Card>
-  );
-}
-
-function Mini({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg bg-muted/30 px-2 py-1.5">
-      <div className="text-[10px] uppercase text-muted-foreground tracking-wider">
-        {label}
-      </div>
-      <div className="text-sm font-semibold">{value.toLocaleString()}</div>
-    </div>
   );
 }

@@ -25,6 +25,10 @@ export interface IUser {
   /** Short user bio shown on profile / player page. */
   bio?: string | null;
   lastSeenRivalryAt?: Date;
+  /** Updated (throttled to ~30s) whenever a logged-in user touches a server
+   * route. Used to compute concurrent/active user counts and “online now”
+   * indicators. Never trust this for security — it’s a UX signal. */
+  lastSeenAt?: Date | null;
   /** Pending or recently-decided request to change my11circleName. While
    * `status === "approved"` and within the verify window the user can run
    * the verification + save flow once. */
@@ -57,6 +61,7 @@ const UserSchema = new Schema<IUser>(
     avatar: { type: String, default: null },
     bio: { type: String, default: null, maxlength: 280 },
     lastSeenRivalryAt: { type: Date, default: null },
+    lastSeenAt: { type: Date, default: null, index: true },
     my11NameRequest: {
       type: new Schema(
         {

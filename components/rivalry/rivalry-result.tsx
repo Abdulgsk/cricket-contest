@@ -1,4 +1,5 @@
 import type { RivalryHistoryEntry } from "@/actions/civil-war";
+import { UserAvatar } from "@/components/user-avatar";
 
 type Tone = "win" | "loss" | "tie" | "cancelled";
 
@@ -42,23 +43,18 @@ const TONE: Record<
   },
 };
 
-function initials(name: string): string {
-  return (
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() ?? "")
-      .join("") || "?"
-  );
-}
-
 function formatDateShort(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
 }
 
-export function RivalryResult({ entry }: { entry: RivalryHistoryEntry }) {
+export function RivalryResult({
+  entry,
+  me,
+}: {
+  entry: RivalryHistoryEntry;
+  me: { userId: string; username: string; avatar: string | null };
+}) {
   const tone: Tone = (["win", "loss", "tie", "cancelled"] as const).includes(
     entry.outcome as Tone
   )
@@ -102,15 +98,17 @@ export function RivalryResult({ entry }: { entry: RivalryHistoryEntry }) {
         <div className="flex items-center gap-3">
           {/* You side */}
           <div className="flex-1 min-w-0 flex items-center gap-2">
-            <div
-              className={`h-9 w-9 rounded-md flex items-center justify-center text-[10px] font-bold tracking-wider shrink-0 ${
+            <UserAvatar
+              src={me.avatar}
+              name={me.username}
+              profileId={me.userId}
+              size={36}
+              className={
                 iWon
-                  ? "bg-success/15 text-success ring-1 ring-success/30"
-                  : "bg-primary/10 text-primary ring-1 ring-primary/25"
-              }`}
-            >
-              YOU
-            </div>
+                  ? "ring-1 ring-success/40"
+                  : "ring-1 ring-primary/30"
+              }
+            />
             <div className="min-w-0">
               <div className="text-xs font-semibold truncate">You</div>
               {iWon && (
@@ -146,15 +144,16 @@ export function RivalryResult({ entry }: { entry: RivalryHistoryEntry }) {
                 </div>
               )}
             </div>
-            <div
-              className={`h-9 w-9 rounded-md flex items-center justify-center text-[10px] font-bold tracking-wider shrink-0 ${
+            <UserAvatar
+              name={entry.opponentUsername}
+              profileId={entry.opponentUserId}
+              size={36}
+              className={
                 oppWon
-                  ? "bg-destructive/15 text-destructive ring-1 ring-destructive/30"
-                  : "bg-muted text-muted-foreground ring-1 ring-border"
-              }`}
-            >
-              {initials(entry.opponentUsername)}
-            </div>
+                  ? "ring-1 ring-destructive/30"
+                  : "ring-1 ring-border"
+              }
+            />
           </div>
         </div>
 

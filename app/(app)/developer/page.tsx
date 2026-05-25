@@ -4,15 +4,9 @@ import { BugReport } from "@/models/BugReport";
 import { User } from "@/models/User";
 import { WorkItem } from "@/models/WorkItem";
 import { AuditLog } from "@/models/AuditLog";
-import { Match } from "@/models/Match";
-import { Prediction } from "@/models/Prediction";
-import { Rivalry } from "@/models/Rivalry";
-import { Card } from "@/components/ui/card";
 import { NoAccessCard } from "@/components/no-access-card";
-import { AdminOverviewTabs } from "@/components/admin/admin-overview-tabs";
 import { BugsInboxClient, type InboxBugRow } from "@/components/bug/bugs-inbox-client";
 import { getBugDetail } from "@/services/bug-detail";
-import { QueueSwitcher, type QueueOption } from "@/components/dev/queue-switcher";
 type BugAssignee = { id: string; handle: string; name: string };
 import { WorkItemsPanel, type WorkItemRow, type WorkItemAssignee } from "@/components/dev/work-items-panel";
 import { DiagnosticsPanel, type DiagnosticsData } from "@/components/dev/diagnostics-panel";
@@ -204,41 +198,6 @@ async function loadDiagnostics(): Promise<DiagnosticsData> {
     ? `${mongoose.connection.host}/${mongoose.connection.name ?? ""}`
     : null;
 
-  const since = new Date();
-  since.setDate(since.getDate() - 13);
-  since.setHours(0, 0, 0, 0);
-
-  const [users, matches, predictions, rivalries, workItems, bugReports, auditEvents, recentAudit] =
-    await Promise.all([
-      User.estimatedDocumentCount(),
-      Match.estimatedDocumentCount(),
-      Prediction.estimatedDocumentCount(),
-      Rivalry.estimatedDocumentCount(),
-      WorkItem.estimatedDocumentCount(),
-      BugReport.estimatedDocumentCount(),
-      AuditLog.estimatedDocumentCount(),
-      AuditLog.aggregate<{ _id: string; count: number }>([
-        { $match: { createdAt: { $gte: since } } },
-        {
-          $group: {
-            _id: {
-              $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "UTC" },
-            },
-            count: { $sum: 1 },
-          },
-        },
-      ]),
-    ]);
-
-  const byDay = new Map(recentAudit.map((r) => [r._id, r.count]));
-  const activity: { day: string; count: number }[] = [];
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() - i);
-    const key = d.toISOString().slice(0, 10);
-    activity.push({ day: key, count: byDay.get(key) ?? 0 });
-  }
-
   return {
     uptimeSec: Math.round(process.uptime()),
     nodeVersion: process.version,
@@ -249,16 +208,6 @@ async function loadDiagnostics(): Promise<DiagnosticsData> {
       externalMb: mb(mem.external),
     },
     mongo: { state, host },
-    counts: {
-      users,
-      matches,
-      predictions,
-      rivalries,
-      workItems,
-      bugReports,
-      auditEvents,
-    },
-    activity,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -349,17 +298,15 @@ export default async function DeveloperToolsPage({
 
   const workItemAssignees: WorkItemAssignee[] = assignees ?? [];
 
-  const tabs: { id: string; label: string; badge?: number; content: React.ReactNode }[] = [];
-
-  // Single "Queue" tab with a dropdown to switch between bugs and work items.
-  const queueOptions: QueueOption[] = [];
+  // The sidebar already exposes Bug reports / Work items / Diagnostics / Audit
+  // log as separate sub-items. Read ?tab=… and render the matching panel
+  // directly — no in-page tab bar, no dropdown.
+  const panels: Record<string, { label: string; node: React.ReactNode }> = {};
 
   if (bugData) {
-    queueOptions.push({
-      kind: "bugs",
+    panels.bugs = {
       label: "Bug reports",
-      badge: bugData.openCount,
-      content: (
+      node: (
         <BugsInboxClient
           rows={bugData.rows}
           myUserId={String(me._id)}
@@ -370,14 +317,12 @@ export default async function DeveloperToolsPage({
           emptyHint="No bugs here right now."
         />
       ),
-    });
+    };
   }
   if (workItems) {
-    queueOptions.push({
-      kind: "workitems",
+    panels.workitems = {
       label: "Work items",
-      badge: workItems.openCount,
-      content: (
+      node: (
         <WorkItemsPanel
           initial={workItems.rows}
           canManage={canManageWorkItems}
@@ -385,23 +330,12 @@ export default async function DeveloperToolsPage({
           myUserId={String(me._id)}
         />
       ),
-    });
+    };
   }
-  if (queueOptions.length > 0) {
-    const totalBadge = queueOptions.reduce((s, o) => s + (o.badge ?? 0), 0);
-    tabs.push({
-      id: "queue",
-      label: "Queue",
-      badge: totalBadge,
-      content: <QueueSwitcher options={queueOptions} />,
-    });
-  }
-
   if (canViewAudit && auditData) {
-    tabs.push({
-      id: "audit",
+    panels.audit = {
       label: "Audit log",
-      content: (
+      node: (
         <AuditLogPanel
           rows={auditData.rows}
           total={auditData.total}
@@ -416,33 +350,24 @@ export default async function DeveloperToolsPage({
           }}
         />
       ),
-    });
+    };
+  }
+  if (canViewDiagnostics && diagnostics) {
+    panels.diagnostics = {
+      label: "Diagnostics",
+      node: <DiagnosticsPanel data={diagnostics} />,
+    };
   }
 
-  if (canViewDiagnostics && diagnostics) {
-    tabs.push({
-      id: "diagnostics",
-      label: "Diagnostics",
-      content: <DiagnosticsPanel data={diagnostics} />,
-    });
-  }
+  const requestedTab = pick("tab");
+  const fallbackKey = Object.keys(panels)[0];
+  const activeKey =
+    requestedTab && panels[requestedTab] ? requestedTab : fallbackKey;
+  const activePanel = activeKey ? panels[activeKey] : null;
 
   return (
     <div className="space-y-4">
-      <Card className="relative overflow-hidden border-border/70 bg-gradient-to-br from-primary/8 via-card to-card">
-        <div className="inline-flex items-center gap-2 rounded-full bg-primary/12 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
-          <span className="size-1.5 rounded-full bg-primary" /> Developer
-        </div>
-        <h1 className="mt-1.5 text-lg sm:text-2xl font-semibold tracking-tight">
-          Developer Tools
-        </h1>
-        <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
-          Bug triage, work items, audit history and runtime diagnostics. Each section
-          is an independent feature toggle — enabling one does not grant the others.
-        </p>
-      </Card>
-
-      <AdminOverviewTabs tabs={tabs} />
+      {activePanel ? activePanel.node : null}
     </div>
   );
 }

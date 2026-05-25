@@ -36,6 +36,38 @@ Live in `components/ui/`:
 - `Button` — variants `default | outline | glow | destructive`; sizes `sm | md`
 - `Input`, `Label`, `Badge`, `Spinner`
 
+## Theme (HARD RULE — no hardcoded colors)
+
+Themes are class-based on `<html>`: `theme-sand | theme-paper | theme-mist | theme-halo | theme-ink`. Only `ink` also carries `.dark`. The active theme is bootstrapped in `app/layout.tsx` via an inline script reading `localStorage.theme`.
+
+Tokens live in `app/globals.css` as space-separated RGB triples under each `.theme-*` block: `--background --foreground --card --card-foreground --primary --primary-foreground --accent --muted --muted-foreground --border --ring --success --warning --danger`. Tailwind maps them via `@theme inline` so use the utility classes — never hex / rgb / hsl literals:
+
+- Surfaces: `bg-background`, `bg-card`, `bg-muted`, `bg-popover`, `bg-primary`
+- Text: `text-foreground`, `text-muted-foreground`, `text-primary`, `text-success`, `text-warning`, `text-danger`
+- Borders / focus: `border-border`, `ring-ring`, `focus-visible:ring-ring`
+- Opacity ramps: `bg-primary/15`, `border-border/60` — always vary the token, not the color
+
+For inline SVG `stroke` / `fill`, canvas, or anywhere a string is required, use `rgb(var(--primary))` etc. **Do not** use `hsl(var(--primary))` (tokens are RGB triples, not HSL). **Do not** add fallback hex colors (`#22c55e`) — let the token resolve.
+
+When introducing a new theme, every existing token must be defined for it; missing tokens fall back to `:root` (sand) which silently breaks dark themes.
+
+Native form controls (`<input type="date">`, `<select>`, scrollbars) follow the theme via `color-scheme: dark` on `.dark` (set globally in `globals.css`). The webkit calendar indicator is force-inverted there too — don't override per-input.
+
+Hydration: any `Date.toLocale*()` rendering must add `suppressHydrationWarning` on the wrapping element — the server renders UTC, the client renders local.
+
+## Responsive (HARD RULE — every screen mobile-first)
+
+Breakpoints (Tailwind defaults): `sm: 640px`, `md: 768px`, `lg: 1024px`, `xl: 1280px`. Design **mobile-first**: base classes target mobile, then add `sm:` / `md:` / `lg:` overrides for wider viewports.
+
+- **Layout**: `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3` — never assume horizontal real-estate. Tables get a wrapping `overflow-x-auto` or a stacked `md:hidden` card fallback for mobile (see audit log panel for the pattern).
+- **Typography**: `text-base sm:text-lg` etc. — never lock to a fixed pixel size that's too small for phones (`text-xs` is the floor; for hint text use `text-[11px]` sparingly).
+- **Spacing**: `p-3 sm:p-4` / `gap-2 sm:gap-4`. Padding should shrink on mobile.
+- **Modals**: bottom-sheet on phones, centered on desktop — `items-end sm:items-center`, `rounded-t-2xl sm:rounded-2xl`, `slide-in-from-bottom-4 sm:slide-in-from-top-1`.
+- **Tabs / pills**: wrap with `overflow-x-auto scrollbar-thin` so they don't blow out the viewport. Buttons keep `whitespace-nowrap`.
+- **Touch targets**: minimum `h-9` (36px) for tappable controls. Avoid icon-only buttons under `h-8`.
+- **Images / charts**: use `viewBox + preserveAspectRatio="none"` for sparklines and `w-full` containers — never set fixed pixel widths.
+- **Navigation**: the sidebar collapses to a sheet under `md`. New top-level routes must be added to `NAV` in `components/nav.tsx` (auto-responsive).
+
 ## Premium UI patterns
 
 - Card surfaces: `rounded-xl`, `border border-border/60`, sometimes `bg-gradient-to-br from-X/15 to-X/5`

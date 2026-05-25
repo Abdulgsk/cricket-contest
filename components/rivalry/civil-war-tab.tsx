@@ -16,13 +16,10 @@ const REVEAL_KEY = (matchId: string) => `civilwar:revealed:${matchId}`;
 export function CivilWarTab({ matches }: { matches: CivilWarMatchView[] }) {
   return (
     <div className="space-y-3">
-      <Card>
-        <h2 className="font-bold mb-1">🛡️ Civil War</h2>
-        <p className="text-[11px] sm:text-xs text-muted-foreground">
-          Every accepted rivalry slots both players onto opposite sides — Team A
-          vs Team B. Mates and teams stay hidden until the match starts.
-        </p>
-      </Card>
+      <p className="text-[11px] sm:text-xs text-muted-foreground">
+        Every accepted rivalry slots both players onto opposite sides — Team A
+        vs Team B. Mates and teams stay hidden until the match starts.
+      </p>
 
       {matches.length === 0 ? (
         <Card>

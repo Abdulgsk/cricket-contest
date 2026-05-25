@@ -10,7 +10,6 @@ export type FeatureGroup =
   | "Bonuses"
   | "Civil War"
   | "Users"
-  | "Audit"
   | "Tools"
   | "Content"
   | "Developer";
@@ -97,7 +96,7 @@ export const FEATURE_DEFS = [
     key: "audit.view",
     label: "View audit log",
     description: "Read-only access to the full action history.",
-    group: "Audit",
+    group: "Developer",
   },
   {
     key: "automation.run",
@@ -193,7 +192,6 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
   "Bonuses",
   "Civil War",
   "Users",
-  "Audit",
   "Tools",
   "Content",
   "Developer",

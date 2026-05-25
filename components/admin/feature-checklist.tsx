@@ -14,7 +14,6 @@ const GROUPS_ORDER: FeatureGroup[] = [
   "Bonuses",
   "Civil War",
   "Users",
-  "Audit",
   "Tools",
   "Content",
   "Developer",
@@ -26,10 +25,9 @@ const GROUP_HINTS: Record<FeatureGroup, string> = {
   Bonuses: "Custom & system bonus rules",
   "Civil War": "Team-battle scoring",
   Users: "Role assignment, deletion, approvals",
-  Audit: "History of every admin action",
   Tools: "Automations & backfills",
   Content: "AI storylines & narrative",
-  Developer: "Bug triage, work items, diagnostics",
+  Developer: "Bugs, work items, audit log, diagnostics",
 };
 
 export function FeatureChecklist({
