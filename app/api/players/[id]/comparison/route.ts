@@ -35,16 +35,18 @@ async function getPlayerStats(userId: string) {
     if (!r.missed) {
       matches++;
     }
-    const matchTotal = (r.finalPoints || r.basePoints || 0);
-    
-    leaguePoints += matchTotal;
+    const finalPts = r.finalPoints || 0;
+    const basePts = r.basePoints || 0;
+
+    leaguePoints += basePts;
     bonusPoints += r.bonusPoints || 0;
     bountyPoints += r.bountyPoints || 0;
     rivalryPoints += r.rivalryPoints || 0;
     penaltyPoints += r.penaltyPoints || 0;
+    totalPoints += finalPts;
 
-    maxPoints = Math.max(maxPoints, matchTotal);
-    minPoints = Math.min(minPoints, matchTotal);
+    maxPoints = Math.max(maxPoints, finalPts);
+    minPoints = Math.min(minPoints, finalPts);
 
     if (r.rank === 1) wins++;
     if (r.rank === 2) silver++;
@@ -53,7 +55,7 @@ async function getPlayerStats(userId: string) {
 
     // Store recent results for trend analysis
     recentResults.push({
-      matchPoints: matchTotal,
+      matchPoints: finalPts,
       rank: r.rank,
       date: r.createdAt || new Date(),
     });
@@ -63,20 +65,15 @@ async function getPlayerStats(userId: string) {
     predictionPoints += p.pointsAwarded || 0;
   }
 
-  totalPoints =
-    leaguePoints +
-    predictionPoints +
-    bonusPoints +
-    bountyPoints +
-    rivalryPoints -
-    penaltyPoints;
+  // Add prediction points to the season total (not included in MatchResult.finalPoints)
+  totalPoints += predictionPoints;
 
   const top3 = wins + silver + bronze;
   const top5 = ranks.filter((r) => r <= 5).length;
   const averageFinish =
     ranks.length > 0 ? ranks.reduce((a, b) => a + b, 0) / ranks.length : 0;
   const averagePointsPerMatch =
-    matches > 0 ? leaguePoints / matches : 0;
+    matches > 0 ? (totalPoints - predictionPoints) / matches : 0;
   const winRate = matches > 0 ? ((wins / matches) * 100).toFixed(1) : "0";
   const podiumRate = matches > 0 ? ((top3 / matches) * 100).toFixed(1) : "0";
 

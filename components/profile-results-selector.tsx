@@ -21,15 +21,13 @@ const OUTCOME_LABEL: Record<string, string> = {
   win: "Win",
   loss: "Loss",
   tie: "Tie",
-  cancelled: "Withdrawn",
   pending: "Pending",
 };
 
 const OUTCOME_TONE: Record<string, string> = {
   win: "text-success",
-  loss: "text-destructive",
+  loss: "text-danger",
   tie: "text-muted-foreground",
-  cancelled: "text-muted-foreground",
   pending: "text-muted-foreground",
 };
 
@@ -67,7 +65,9 @@ export function ProfileResultsSelector({
 }) {
   const [mode, setMode] = useState<Mode>("rivalry");
 
-  const settledRivalries = rivalries.filter((r) => r.outcome !== "pending");
+  const settledRivalries = rivalries.filter(
+    (r) => r.outcome === "win" || r.outcome === "loss" || r.outcome === "tie"
+  );
 
   return (
     <div className="space-y-3">
