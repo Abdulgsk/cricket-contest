@@ -4,7 +4,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Card, Badge } from "@/components/ui/card";
-import { createCustomPoolAction, deleteCustomPoolAction } from "@/actions/custom-pools";
+import {
+  createCustomPoolAction,
+  deleteCustomPoolAction,
+  extendCustomPoolDeadlineAction,
+} from "@/actions/custom-pools";
 
 interface Pool {
   id: string;
@@ -57,48 +61,11 @@ export function CustomPoolEditor({
       {initial.length > 0 && (
         <div className="space-y-2 mb-4">
           {initial.map((p) => (
-            <div key={p.id} className="rounded-xl bg-muted/30 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="font-medium text-sm truncate">{p.question}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5" suppressHydrationWarning>
-                    {p.options.length} options · {p.pointsValue} pts
-                    {p.closesAt
-                      ? <> · closes {new Date(p.closesAt).toLocaleString()}</>
-                      : null}
-                    {p.scored && p.correctOption && (
-                      <> · ✅ correct: <span className="text-success">{p.correctOption}</span></>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {p.scored && <Badge tone="success">scored</Badge>}
-                  {!p.scored && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      loading={pending}
-                      disabled={pending}
-                      onClick={() =>
-                        start(async () => {
-                          await deleteCustomPoolAction(p.id);
-                          toast.success("Pool removed");
-                        })
-                      }
-                    >
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {p.options.map((o) => (
-                  <span key={o} className="text-xs rounded-full bg-background/60 px-2 py-0.5">
-                    {o}
-                  </span>
-                ))}
-              </div>
-            </div>
+            <PoolRow
+              key={p.id}
+              pool={p}
+              matchStart={matchStartDate}
+            />
           ))}
         </div>
       )}
@@ -171,5 +138,130 @@ export function CustomPoolEditor({
         </Button>
       </div>
     </Card>
+  );
+}
+
+function PoolRow({
+  pool,
+  matchStart,
+}: {
+  pool: Pool;
+  matchStart: Date | null;
+}) {
+  const [pending, start] = useTransition();
+  const [editingDeadline, setEditingDeadline] = useState(false);
+  const [closesAt, setClosesAt] = useState<string>(
+    pool.closesAt ? toLocalInput(new Date(pool.closesAt)) : "",
+  );
+
+  const saveDeadline = () => {
+    if (!closesAt) {
+      toast.error("Pick a new deadline");
+      return;
+    }
+    const next = new Date(closesAt);
+    if (Number.isNaN(next.getTime())) {
+      toast.error("Invalid deadline");
+      return;
+    }
+    if (next.getTime() <= Date.now()) {
+      toast.error("Deadline must be in the future");
+      return;
+    }
+    start(async () => {
+      const r = await extendCustomPoolDeadlineAction({
+        poolId: pool.id,
+        closesAt: next.toISOString(),
+      });
+      if (r.ok) {
+        toast.success("Deadline updated");
+        setEditingDeadline(false);
+      } else {
+        toast.error(r.error);
+      }
+    });
+  };
+
+  return (
+    <div className="rounded-xl bg-muted/30 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="font-medium text-sm">{pool.question}</div>
+          <div className="text-xs text-muted-foreground mt-0.5" suppressHydrationWarning>
+            {pool.options.length} options · {pool.pointsValue} pts
+            {pool.closesAt && (
+              <> · closes {new Date(pool.closesAt).toLocaleString()}</>
+            )}
+            {pool.scored && pool.correctOption && (
+              <> · ✅ correct: <span className="text-success">{pool.correctOption}</span></>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {pool.scored && <Badge tone="success">scored</Badge>}
+          {!pool.scored && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() => setEditingDeadline((v) => !v)}
+              >
+                {editingDeadline ? "Cancel" : "Extend"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                loading={pending}
+                disabled={pending}
+                onClick={() => {
+                  if (!window.confirm("Delete this pool and all its picks?")) return;
+                  start(async () => {
+                    const r = await deleteCustomPoolAction(pool.id);
+                    if (r && "ok" in r && !r.ok) toast.error(r.error);
+                    else toast.success("Pool removed");
+                  });
+                }}
+              >
+                Delete
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {editingDeadline && !pool.scored && (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1 space-y-1">
+            <Label className="text-xs">
+              New deadline {matchStart ? "(≤ match start)" : ""}
+            </Label>
+            <Input
+              type="datetime-local"
+              value={closesAt}
+              max={matchStart ? toLocalInput(matchStart) : undefined}
+              onChange={(e) => setClosesAt(e.target.value)}
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="glow"
+            loading={pending}
+            disabled={pending}
+            onClick={saveDeadline}
+          >
+            Save
+          </Button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-1 mt-2">
+        {pool.options.map((o) => (
+          <span key={o} className="text-xs rounded-full bg-background/60 px-2 py-0.5">
+            {o}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }

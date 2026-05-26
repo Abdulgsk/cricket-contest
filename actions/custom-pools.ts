@@ -75,6 +75,63 @@ export async function createCustomPoolAction(payload: unknown) {
   return { ok: true as const };
 }
 
+const ExtendPoolSchema = z.object({
+  poolId: z.string().min(1),
+  closesAt: z.string().datetime(),
+});
+
+/**
+ * Extend (or shorten, before deadline) a custom pool's closing time. Mirrors
+ * the rivalry/prediction lock-extension flow: stamps a fresh `closesAt`,
+ * resets the `deadlineNotifiedAt` flag so a closing-soon ping can fire again
+ * for the new window. Capped at the parent match's start time so pools never
+ * extend past their match.
+ */
+export async function extendCustomPoolDeadlineAction(payload: unknown) {
+  const _auth = await assertFeature("matches.manage");
+  if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
+  const parsed = ExtendPoolSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false as const, error: "Invalid input" };
+  await connectDB();
+  const pool = await CustomPool.findById(parsed.data.poolId);
+  if (!pool) return { ok: false as const, error: "Pool not found" };
+  if (pool.scored) {
+    return { ok: false as const, error: "Pool is already scored" };
+  }
+  const match = await Match.findById(pool.matchId);
+  if (!match) return { ok: false as const, error: "Match not found" };
+  const matchStart = new Date(match.startTime).getTime();
+  const requested = new Date(parsed.data.closesAt).getTime();
+  if (Number.isNaN(requested)) {
+    return { ok: false as const, error: "Invalid deadline" };
+  }
+  if (requested <= Date.now()) {
+    return { ok: false as const, error: "Deadline must be in the future" };
+  }
+  const previousClosesAt = pool.closesAt;
+  const newClosesAt = new Date(Math.min(requested, matchStart));
+  pool.closesAt = newClosesAt;
+  // Re-arm the closing-soon notifier for the new window.
+  pool.deadlineNotifiedAt = null;
+  await pool.save();
+  await recordAudit({
+    category: "update",
+    action: "custom-pool.deadline.extend",
+    actor: me,
+    targetType: "CustomPool",
+    targetId: String(pool._id),
+    meta: {
+      matchId: String(pool.matchId),
+      previousClosesAt: previousClosesAt ? new Date(previousClosesAt).toISOString() : null,
+      closesAt: newClosesAt.toISOString(),
+    },
+  });
+  revalidatePath(`/matches/${String(pool.matchId)}`);
+  revalidatePath(`/admin/matches/${String(pool.matchId)}/result`);
+  return { ok: true as const, closesAt: newClosesAt.toISOString() };
+}
+
 export async function deleteCustomPoolAction(poolId: string) {
   const _auth = await assertFeature("matches.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
