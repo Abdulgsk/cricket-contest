@@ -149,12 +149,11 @@ export default async function RivalryPage() {
   const civilWarTab = (
     <div className="space-y-6">
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Upcoming Civil Wars</h2>
-        <CivilWarTab
-          matches={civilWar.filter(
-            (m) => !m.settled && m.status !== "live"
-          )}
-        />
+        <h2 className="text-lg font-semibold">Upcoming &amp; Live Civil Wars</h2>
+        {/* Show every unsettled CW — both upcoming and live. Filtering out
+            "live" earlier made a Civil War vanish from the page while the
+            match was being played (not yet settled, not yet historical). */}
+        <CivilWarTab matches={civilWar.filter((m) => !m.settled)} />
       </section>
 
       <section className="space-y-3">

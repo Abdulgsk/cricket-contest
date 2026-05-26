@@ -145,6 +145,7 @@ export function RivalryResult({
               )}
             </div>
             <UserAvatar
+              src={entry.opponentAvatar ?? null}
               name={entry.opponentUsername}
               profileId={entry.opponentUserId}
               size={36}

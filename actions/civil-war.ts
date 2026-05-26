@@ -409,6 +409,7 @@ export type RivalryHistoryEntry = {
   myRole: "challenger" | "opponent";
   opponentUserId: string;
   opponentUsername: string;
+  opponentAvatar: string | null;
   outcome: "win" | "loss" | "tie" | "pending" | "cancelled";
   pointsAwarded: number;
   penalty: number;
@@ -498,8 +499,8 @@ export async function getMyRivalryAndCivilWarRecord(
     $or: [{ challengerId: userId }, { opponentId: userId }],
   })
     .populate({ path: "matchId", model: Match, select: "teamA teamB startTime status" })
-    .populate({ path: "challengerId", model: User, select: "username" })
-    .populate({ path: "opponentId", model: User, select: "username" })
+    .populate({ path: "challengerId", model: User, select: "username avatar" })
+    .populate({ path: "opponentId", model: User, select: "username avatar" })
     .sort({ createdAt: -1 })
     .lean();
 
@@ -552,8 +553,8 @@ export async function getMyRivalryAndCivilWarRecord(
     if (!match) continue;
     const isChallenger = String(r.challengerId._id ?? r.challengerId) === userId;
     const opponentDoc = isChallenger
-      ? (r.opponentId as unknown as { username?: string })
-      : (r.challengerId as unknown as { username?: string });
+      ? (r.opponentId as unknown as { username?: string; avatar?: string | null })
+      : (r.challengerId as unknown as { username?: string; avatar?: string | null });
 
     // Admin-approved withdrawals are wiped from the summary entirely: no
     // penalty, no win/loss/tie/cancel bucket — they simply never happened.
@@ -603,6 +604,7 @@ export async function getMyRivalryAndCivilWarRecord(
           : (r.challengerId as { _id?: unknown } | null)?._id ?? r.challengerId
       ),
       opponentUsername: opponentDoc?.username ?? "Unknown",
+      opponentAvatar: opponentDoc?.avatar ?? null,
       outcome,
       pointsAwarded: outcome === "win" ? r.pointsAwarded ?? 0 : 0,
       penalty:
