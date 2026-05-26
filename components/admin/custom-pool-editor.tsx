@@ -13,13 +13,33 @@ interface Pool {
   pointsValue: number;
   scored: boolean;
   correctOption?: string;
+  closesAt?: string;
 }
 
-export function CustomPoolEditor({ matchId, initial }: { matchId: string; initial: Pool[] }) {
+/** Format a date as "YYYY-MM-DDTHH:mm" for a datetime-local input. */
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function CustomPoolEditor({
+  matchId,
+  initial,
+  matchStart,
+}: {
+  matchId: string;
+  initial: Pool[];
+  /** ISO match start time — used as default + max for the deadline picker. */
+  matchStart?: string | null;
+}) {
   const [pending, start] = useTransition();
   const [q, setQ] = useState("");
   const [opts, setOpts] = useState<string[]>(["", ""]);
   const [pts, setPts] = useState(5);
+  const matchStartDate = matchStart ? new Date(matchStart) : null;
+  const [closesAt, setClosesAt] = useState<string>(
+    matchStartDate ? toLocalInput(matchStartDate) : "",
+  );
 
   const setOpt = (i: number, v: string) => setOpts((arr) => arr.map((x, j) => (j === i ? v : x)));
   const addOpt = () => setOpts((arr) => (arr.length < 13 ? [...arr, ""] : arr));
@@ -29,8 +49,9 @@ export function CustomPoolEditor({ matchId, initial }: { matchId: string; initia
     <Card>
       <h2 className="font-semibold mb-3">🎯 Custom Prediction Pools</h2>
       <p className="text-xs text-muted-foreground mb-4">
-        Add extra prediction questions for this match (e.g. &ldquo;Will there be a super over?&rdquo;,
-        &ldquo;Who will be impact player?&rdquo;). Hidden from users until the match starts.
+        Add extra prediction questions for this match. Pools are strictly
+        per-match — picks close at the deadline you set (capped at match
+        start) and never carry to another match.
       </p>
 
       {initial.length > 0 && (
@@ -38,16 +59,19 @@ export function CustomPoolEditor({ matchId, initial }: { matchId: string; initia
           {initial.map((p) => (
             <div key={p.id} className="rounded-xl bg-muted/30 p-3">
               <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="font-medium text-sm">{p.question}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
+                <div className="min-w-0">
+                  <div className="font-medium text-sm truncate">{p.question}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5" suppressHydrationWarning>
                     {p.options.length} options · {p.pointsValue} pts
+                    {p.closesAt
+                      ? <> · closes {new Date(p.closesAt).toLocaleString()}</>
+                      : null}
                     {p.scored && p.correctOption && (
                       <> · ✅ correct: <span className="text-success">{p.correctOption}</span></>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {p.scored && <Badge tone="success">scored</Badge>}
                   {!p.scored && (
                     <Button
@@ -100,9 +124,26 @@ export function CustomPoolEditor({ matchId, initial }: { matchId: string; initia
             )}
           </div>
         </div>
-        <div className="space-y-1.5">
-          <Label>Points (correct pick)</Label>
-          <Input type="number" min={1} max={50} value={pts} onChange={(e) => setPts(Number(e.target.value))} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Points (correct pick)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={50}
+              value={pts}
+              onChange={(e) => setPts(Number(e.target.value))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Closes at {matchStartDate ? "(≤ match start)" : ""}</Label>
+            <Input
+              type="datetime-local"
+              value={closesAt}
+              max={matchStartDate ? toLocalInput(matchStartDate) : undefined}
+              onChange={(e) => setClosesAt(e.target.value)}
+            />
+          </div>
         </div>
         <Button
           variant="glow"
@@ -115,6 +156,7 @@ export function CustomPoolEditor({ matchId, initial }: { matchId: string; initia
                 question: q.trim(),
                 options: opts.map((o) => o.trim()).filter(Boolean),
                 pointsValue: pts,
+                closesAt: closesAt ? new Date(closesAt).toISOString() : undefined,
               });
               if (r.ok) {
                 toast.success("Pool created");

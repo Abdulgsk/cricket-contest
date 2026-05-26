@@ -111,10 +111,14 @@ export async function scrapeCricbuzzListings(_season: string): Promise<CricbuzzL
   const out: CricbuzzListing[] = [];
   const seen = new Set<string>();
 
-  // 1) Series page: <a title="Team A vs Team B, NNth Match - state" href="/live-cricket-scores/<id>/<slug>">
+  // 1) Series page: <a title="Team A vs Team B, <stage>[ - state]" href="/live-cricket-scores/<id>/<slug>">
+  //    Stage is either "NNth Match" (group stage) or one of the playoff
+  //    labels: "Qualifier 1", "Eliminator", "Qualifier 2", "Final". Without
+  //    the playoff branch, knockout squads (Qualifier 1, etc.) never get
+  //    a Cricbuzz id and "Refresh squad" silently no-ops.
   if (seriesHtml) {
     const re =
-      /title="([^"]+) vs ([^"]+), \d+(?:st|nd|rd|th) Match[^"]*"\s+href="\/live-cricket-scores\/(\d+)\/([a-z0-9-]+(?:ipl|indian-premier-league)-2026)"/g;
+      /title="([^"]+) vs ([^"]+), (?:\d+(?:st|nd|rd|th) Match|Qualifier \d+|Eliminator|Final)[^"]*"\s+href="\/live-cricket-scores\/(\d+)\/([a-z0-9-]+(?:ipl|indian-premier-league)-2026)"/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(seriesHtml))) {
       if (seen.has(m[3])) continue;
@@ -136,8 +140,11 @@ export async function scrapeCricbuzzListings(_season: string): Promise<CricbuzzL
   if (liveHtml) {
     const dec = decodeFlight(liveHtml);
     if (dec) {
+      // Previously this referenced an undefined `${season}` template var which
+      // made the regex either throw or never match. Pinned to the same season
+      // suffix as the series-page regex.
       const re =
-        /"state":"([^"]+)","status":"([^"]+)","team1":\{"teamId":\d+,"teamName":"([^"]+)","teamSName":"([^"]+)"[^}]*\},"team2":\{"teamId":\d+,"teamName":"([^"]+)","teamSName":"([^"]+)"[^}]*\}[\s\S]{0,800}?"matchUrl":"\/live-cricket-scores\/(\d+)\/([a-z0-9-]+indian-premier-league-${season})"/g;
+        /"state":"([^"]+)","status":"([^"]+)","team1":\{"teamId":\d+,"teamName":"([^"]+)","teamSName":"([^"]+)"[^}]*\},"team2":\{"teamId":\d+,"teamName":"([^"]+)","teamSName":"([^"]+)"[^}]*\}[\s\S]{0,800}?"matchUrl":"\/live-cricket-scores\/(\d+)\/([a-z0-9-]+(?:ipl|indian-premier-league)-2026)"/g;
       let m: RegExpExecArray | null;
       while ((m = re.exec(dec))) {
         if (seen.has(m[7])) continue;

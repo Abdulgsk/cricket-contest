@@ -172,9 +172,45 @@ export function ResultEntryForm({
       toast.error("Fill match prediction results first");
       return;
     }
+    // Force the admin to either pick a correct option for every unscored pool,
+    // or explicitly confirm they want to publish without scoring it. Empty
+    // answers used to be silently skipped, which left members hanging.
+    const missingPools = pools.filter(
+      (p) => !p.scored && !poolAnswers[p.id]?.trim(),
+    );
+    if (missingPools.length) {
+      const names = missingPools.map((p) => `\u2022 ${p.question}`).join("\n");
+      const proceed = window.confirm(
+        `These custom pools have no correct option selected:\n\n${names}\n\n` +
+          `Click OK to publish results WITHOUT scoring them (you can edit and ` +
+          `score later), or Cancel to go back and pick an answer.`,
+      );
+      if (!proceed) {
+        toast.error("Pick a correct option for each pool before submitting");
+        return;
+      }
+    }
+    // Validate that every chosen answer is one of the pool's actual options.
+    const invalidPool = pools.find((p) => {
+      const ans = poolAnswers[p.id]?.trim();
+      return ans && !p.options.includes(ans);
+    });
+    if (invalidPool) {
+      toast.error(
+        `Pool "${invalidPool.question}": pick one of the configured options`,
+      );
+      return;
+    }
+    if (resultsEntered) {
+      const ok = window.confirm(
+        "Re-publishing recomputes scoring, bonuses, rivalries and Civil War " +
+          "points for this match. Continue?",
+      );
+      if (!ok) return;
+    }
     const customPoolResults = pools
-      .filter((p) => poolAnswers[p.id])
-      .map((p) => ({ poolId: p.id, correctOption: poolAnswers[p.id] }));
+      .filter((p) => poolAnswers[p.id]?.trim())
+      .map((p) => ({ poolId: p.id, correctOption: poolAnswers[p.id].trim() }));
     start(async () => {
       const r = await submitResultsAction({
         matchId,
@@ -411,7 +447,7 @@ export function ResultEntryForm({
               🔒 Results locked
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              This match has been scored. Edits are restricted to superadmins.
+              This match has been scored. Editing will recompute the full leaderboard.
             </p>
           </div>
           {isSuperadmin && (
@@ -421,6 +457,15 @@ export function ResultEntryForm({
               onClick={() => setEditing(true)}
             >
               Enable edit mode
+            </Button>
+          )}
+          {!isSuperadmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              Edit results
             </Button>
           )}
         </div>

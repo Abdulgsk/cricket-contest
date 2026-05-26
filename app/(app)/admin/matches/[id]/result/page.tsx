@@ -150,6 +150,7 @@ export default async function AdminMatchResultPage({
       {canManageMatch && (
         <CustomPoolEditor
           matchId={id}
+          matchStart={match.startTime ? new Date(match.startTime).toISOString() : null}
           initial={pools.map((p) => ({
             id: String(p._id),
             question: p.question,
@@ -157,6 +158,7 @@ export default async function AdminMatchResultPage({
             pointsValue: p.pointsValue,
             scored: p.scored,
             correctOption: p.correctOption,
+            closesAt: p.closesAt ? new Date(p.closesAt).toISOString() : undefined,
           }))}
         />
       )}

@@ -20,7 +20,7 @@ import { Role } from "@/models/Role";
 import { processMatchResults } from "@/services/scoring";
 import { adminResetPrediction } from "@/services/prediction-engine";
 import { syncIplMatches, refreshSquads, refreshMatchPlayers } from "@/services/ipl-sync";
-import { scoreCustomPools } from "@/actions/custom-pools";
+import { scoreCustomPools, validateCustomPoolResults } from "@/actions/custom-pools";
 import { assertFeature, assertSuperadmin, requireAdminFeature, requireRole, requireUser } from "@/lib/rbac";
 import { env } from "@/lib/env";
 import { normalizeMy11circleName } from "@/lib/my11circle";
@@ -208,6 +208,17 @@ export async function submitResultsAction(payload: unknown) {
   const me = _auth.user;
   const parsed = ResultSchema.safeParse(payload);
   if (!parsed.success) return { ok: false, error: "Invalid payload" };
+  // Validate custom pool results up-front so we don't half-score the match
+  // when the admin types an answer that doesn't match any option.
+  if (parsed.data.customPoolResults?.length) {
+    const errs = await validateCustomPoolResults(
+      parsed.data.matchId,
+      parsed.data.customPoolResults,
+    );
+    if (errs.length) {
+      return { ok: false as const, error: errs.join(" \u00b7 ") };
+    }
+  }
   await processMatchResults(
     parsed.data.matchId,
     parsed.data.entries,
@@ -256,7 +267,15 @@ export async function submitResultsAction(payload: unknown) {
   await AuditLog.create({
     actorId: me._id,
     action: "match.results",
-    meta: { matchId: parsed.data.matchId },
+    meta: {
+      matchId: parsed.data.matchId,
+      poolsScored: parsed.data.customPoolResults?.length ?? 0,
+      pools: parsed.data.customPoolResults ?? [],
+      entries: parsed.data.entries.length,
+      winner: parsed.data.predictionWinner,
+      topBatter: parsed.data.predictionTopBatter,
+      topBowler: parsed.data.predictionTopBowler,
+    },
   });
   revalidatePath("/leaderboard");
   revalidatePath("/rivalry");
@@ -935,11 +954,22 @@ export async function syncIplMatchesAction() {
 export async function refreshSquadsAction(matchId: string) {
   const _auth = await assertFeature("matches.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   try {
     const r = await refreshSquads(matchId);
+    await AuditLog.create({
+      actorId: me._id,
+      action: "match.squads.refresh",
+      meta: { matchId, ...r },
+    });
     revalidatePath(`/matches/${matchId}`);
     return { ok: true as const, ...r };
   } catch (e) {
+    await AuditLog.create({
+      actorId: me._id,
+      action: "match.squads.refresh.failed",
+      meta: { matchId, error: (e as Error).message },
+    });
     return { ok: false as const, error: (e as Error).message };
   }
 }
@@ -962,11 +992,22 @@ export async function syncPlayoffsAction() {
 export async function refreshMatchPlayersAction(matchId: string) {
   const _auth = await assertFeature("matches.manage");
   if (!_auth.ok) return { ok: false as const, error: _auth.error };
+  const me = _auth.user;
   try {
     const r = await refreshMatchPlayers(matchId);
+    await AuditLog.create({
+      actorId: me._id,
+      action: "match.players.refresh",
+      meta: { matchId, count: r?.players ?? null },
+    });
     revalidatePath(`/matches/${matchId}`);
     return { ok: true as const, ...r };
   } catch (e) {
+    await AuditLog.create({
+      actorId: me._id,
+      action: "match.players.refresh.failed",
+      meta: { matchId, error: (e as Error).message },
+    });
     return { ok: false as const, error: (e as Error).message };
   }
 }
