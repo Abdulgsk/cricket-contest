@@ -21,20 +21,15 @@ Goal: post-match storyline blurbs for the dashboard (e.g., "Mithun captained Roh
   - If `f.username` is set, it must exist in `allowedNames`.
 - Facts that fail validation are **dropped** (not retried). This is the design — better to ship fewer facts than wrong ones.
 
-## Provider chain
+## Provider
 
-`generateAiFacts()` tries providers in this preference order:
+`generateAiFacts()` calls **Hugging Face Router** only (OpenAI-compatible API at `https://router.huggingface.co/v1`). Requires `HF_TOKEN`; `HF_MODEL` is a comma-separated fallback list (default `deepseek-ai/DeepSeek-R1:novita,meta-llama/Llama-3.3-70B-Instruct:novita`). DeepSeek-R1 emits `<think>` reasoning which is stripped before parsing.
 
-1. **HF Router** (if `HF_TOKEN`) — DeepSeek-R1 by default; strips `<think>` reasoning tags.
-2. **OpenRouter** (if `OPENROUTER_API_KEY`) — comma-separated `OPENROUTER_MODEL` list.
-3. **Gemini** (if `GEMINI_API_KEY`) — `GEMINI_MODEL` (default `gemini-2.0-flash`).
-
-For each provider:
 - Iterate the comma-separated model list.
 - Per model: 2 attempts. On HTTP 429 honour the server's `retryDelay` (capped at 30s) before retry. On any other error fall through to the next model.
-- Per-call timeout: 60s for HF, 20s for others.
+- Per-call timeout: 60s.
 
-Empty response or unparseable JSON → return `[]` and the previous facts stay on screen.
+Empty response or unparseable JSON → `generateFactsForMatch` returns `{written:0, error}` and the previous batch stays on the dashboard. The admin "Regenerate" toast surfaces the reason.
 
 ## System prompt rules (highlights)
 

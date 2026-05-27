@@ -17,13 +17,11 @@ export const env = {
   MY11CIRCLE_USER_AGENT:
     process.env.MY11CIRCLE_USER_AGENT ??
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
-  // Hugging Face Inference Router (OpenAI-compatible) — sole provider for
-  // services/facts-ai.ts. Comma-separated model list, tried in order on
-  // failure / 429.
-  HF_TOKEN: process.env.HF_TOKEN ?? "",
-  HF_MODEL:
-    process.env.HF_MODEL ??
-    "deepseek-ai/DeepSeek-R1:novita,meta-llama/Llama-3.3-70B-Instruct:novita",
+  // Groq (OpenAI-compatible) — sole provider for services/facts-ai.ts.
+  // Comma-separated model list, tried in order on failure / 429.
+  GROQ_API_KEY: process.env.GROQ_API_KEY ?? "",
+  GROQ_MODEL: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
+  GROQ_REASONING_EFFORT: process.env.GROQ_REASONING_EFFORT ?? "medium",
 };
 
 export function requireEnv(key: keyof typeof env): string {

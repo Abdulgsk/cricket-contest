@@ -1,7 +1,7 @@
 /**
- * Tiny single-sentence narrator for in-app notifications. Uses Hugging Face
- * Inference Router (OpenAI-compatible) only. Falls back to a deterministic
- * sentence if HF_TOKEN isn't set or the call fails. Never throws.
+ * Tiny single-sentence narrator for in-app notifications. Uses Groq
+ * (OpenAI-compatible) only. Falls back to a deterministic sentence if
+ * GROQ_API_KEY isn't set or the call fails. Never throws.
  */
 import OpenAI from "openai";
 import { env } from "@/lib/env";
@@ -26,15 +26,15 @@ function buildPrompt(ctx: AiContext): string {
   return `Occasion: ${ctx.occasion}\nFacts:\n${factLines}\n\nWrite the one-sentence notification body.`;
 }
 
-let hfClient: OpenAI | null = null;
-function getHf(): OpenAI {
-  if (!hfClient) {
-    hfClient = new OpenAI({
-      baseURL: "https://router.huggingface.co/v1",
-      apiKey: env.HF_TOKEN,
+let groqClient: OpenAI | null = null;
+function getGroq(): OpenAI {
+  if (!groqClient) {
+    groqClient = new OpenAI({
+      baseURL: "https://api.groq.com/openai/v1",
+      apiKey: env.GROQ_API_KEY,
     });
   }
-  return hfClient;
+  return groqClient;
 }
 
 function sanitize(text: string, max = 200): string {
@@ -52,21 +52,21 @@ export async function generateNotificationLine(
   ctx: AiContext,
   fallback: string,
 ): Promise<string> {
-  if (!env.HF_TOKEN) return fallback;
+  if (!env.GROQ_API_KEY) return fallback;
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 6000);
   try {
-    const models = (env.HF_MODEL || "")
+    const models = (env.GROQ_MODEL || "")
       .split(",")
       .map((m) => m.trim())
       .filter(Boolean);
-    if (!models.length) models.push("meta-llama/Llama-3.1-8B-Instruct");
+    if (!models.length) models.push("openai/gpt-oss-120b");
     const prompt = buildPrompt(ctx);
 
     for (const model of models) {
       try {
-        const completion = await getHf().chat.completions.create(
+        const completion = await getGroq().chat.completions.create(
           {
             model,
             messages: [
@@ -74,7 +74,10 @@ export async function generateNotificationLine(
               { role: "user", content: prompt },
             ],
             temperature: 0.8,
-            max_tokens: 120,
+            ...({
+              max_completion_tokens: 200,
+              reasoning_effort: "low",
+            } as Record<string, unknown>),
           },
           { signal: controller.signal },
         );

@@ -4,7 +4,7 @@
  * Hybrid design:
  *  - We compute verified per-user stats in services/facts-analyzer.ts and the
  *    deterministic facts in services/facts.ts.
- *  - This file sends ONLY those verified numbers to a Hugging Face model and
+ *  - This file sends ONLY those verified numbers to a Groq-hosted model and
  *    asks it to write 3-5 short narrative facts using nothing else.
  *  - Every number in the LLM output is validated against the input payload.
  *    Any fact that introduces a number we didn't supply is dropped — that
@@ -570,25 +570,25 @@ function parseRetryDelaySeconds(body: string): number | null {
   return null;
 }
 
-// Lazily-initialised OpenAI client pointed at Hugging Face Router.
-let hfClient: OpenAI | null = null;
-function getHfRouter(): OpenAI {
-  if (!hfClient) {
-    hfClient = new OpenAI({
-      baseURL: "https://router.huggingface.co/v1",
-      apiKey: env.HF_TOKEN,
+// Lazily-initialised OpenAI client pointed at Groq.
+let groqClient: OpenAI | null = null;
+function getGroq(): OpenAI {
+  if (!groqClient) {
+    groqClient = new OpenAI({
+      baseURL: "https://api.groq.com/openai/v1",
+      apiKey: env.GROQ_API_KEY,
     });
   }
-  return hfClient;
+  return groqClient;
 }
 
-async function callHfRouterOnce(
+async function callGroqOnce(
   model: string,
   userPayloadText: string,
   signal: AbortSignal
 ): Promise<{ ok: true; raw: string } | { ok: false; status: number; text: string }> {
   try {
-    const completion = await getHfRouter().chat.completions.create(
+    const completion = await getGroq().chat.completions.create(
       {
         model,
         messages: [
@@ -598,18 +598,19 @@ async function callHfRouterOnce(
             content: `${userPayloadText}\n\nReturn ONLY the JSON object described in the system prompt. No prose, no markdown fences, no <think> blocks.`,
           },
         ],
-        temperature: 0.6,
-        top_p: 0.9,
-        // R1 emits <think> reasoning that counts against max_tokens. Give it
-        // enough headroom to both think and write the full JSON.
-        max_tokens: 4000,
+        temperature: 1,
+        top_p: 1,
+        // gpt-oss reasoning models use max_completion_tokens (not max_tokens).
+        // Pass via cast since OpenAI SDK types don't expose Groq extras.
+        ...({
+          max_completion_tokens: 8192,
+          reasoning_effort: env.GROQ_REASONING_EFFORT,
+        } as Record<string, unknown>),
       },
       { signal }
     );
     let raw = completion.choices?.[0]?.message?.content ?? "";
-    // DeepSeek-R1 emits <think>...</think> reasoning before the answer.
-    // Strip closed pairs first, then any unclosed/leftover opening tag
-    // (can happen when output is truncated by max_tokens or timeout).
+    // Defensive: strip any <think>...</think> reasoning some models still emit.
     raw = raw
       .replace(/<think>[\s\S]*?<\/think>/gi, "")
       .replace(/<think>[\s\S]*$/i, "")
@@ -629,17 +630,17 @@ async function callHfRouterOnce(
 
 /** Calls the configured LLM. Returns [] on any failure (network, quota, parse).
  *
- * Provider: HF Router only. `HF_TOKEN` must be set; `HF_MODEL` is a
+ * Provider: Groq only. `GROQ_API_KEY` must be set; `GROQ_MODEL` is a
  * comma-separated fallback list. On HTTP 429 we honour the server's
  * retryDelay (capped at 30s) and retry once before falling through to the
  * next model in the list. */
 export async function generateAiFacts(input: AiFactInput): Promise<AiFact[]> {
-  if (!env.HF_TOKEN) {
-    console.warn("[facts-ai] HF_TOKEN not set — skipping AI generation");
+  if (!env.GROQ_API_KEY) {
+    console.warn("[facts-ai] GROQ_API_KEY not set — skipping AI generation");
     return [];
   }
 
-  const models = env.HF_MODEL
+  const models = env.GROQ_MODEL
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
@@ -652,8 +653,8 @@ export async function generateAiFacts(input: AiFactInput): Promise<AiFact[]> {
 
   // Per-call timeout so one slow model can't burn the whole budget.
   // Total wall time is bounded by (perCall * models * attempts).
-  // HF DeepSeek-R1 needs more time because reasoning happens server-side
-  // before any JSON is emitted.
+  // Reasoning models (gpt-oss with medium effort) need headroom before any
+  // JSON is emitted.
   const PER_CALL_MS = 60_000;
 
   let raw = "";
@@ -661,7 +662,7 @@ export async function generateAiFacts(input: AiFactInput): Promise<AiFact[]> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const perCall = AbortSignal.timeout(PER_CALL_MS);
       try {
-        const r = await callHfRouterOnce(model, userPayloadText, perCall);
+        const r = await callGroqOnce(model, userPayloadText, perCall);
         if (r.ok) {
           raw = r.raw;
           if (raw) break outer;
