@@ -4,15 +4,14 @@
  * Hybrid design:
  *  - We compute verified per-user stats in services/facts-analyzer.ts and the
  *    deterministic facts in services/facts.ts.
- *  - This file sends ONLY those verified numbers to a Groq-hosted model and
- *    asks it to write 3-5 short narrative facts using nothing else.
+ *  - This file sends ONLY those verified numbers to Google Gemini and asks
+ *    it to write 3-5 short narrative facts using nothing else.
  *  - Every number in the LLM output is validated against the input payload.
  *    Any fact that introduces a number we didn't supply is dropped — that
  *    eliminates hallucinated stats by construction.
  */
 
 import { env } from "@/lib/env";
-import OpenAI from "openai";
 import type { UserMetrics, AnalyzerSnapshot } from "@/services/facts-analyzer";
 import type { LeaderboardRow } from "@/services/scoring";
 
@@ -516,18 +515,6 @@ function parseRetryDelaySeconds(body: string): number | null {
   return null;
 }
 
-// Lazily-initialised OpenAI client pointed at Groq.
-let groqClient: OpenAI | null = null;
-function getGroq(): OpenAI {
-  if (!groqClient) {
-    groqClient = new OpenAI({
-      baseURL: "https://api.groq.com/openai/v1",
-      apiKey: env.GROQ_API_KEY,
-    });
-  }
-  return groqClient;
-}
-
 /**
  * Squeeze the verified AiFactInput into the compact-key shape declared in
  * the system prompt's PAYLOAD LEGEND. Drops zero numeric fields, empty
@@ -690,65 +677,77 @@ function compactPayload(input: AiFactInput): Record<string, unknown> {
   });
 }
 
-async function callGroqOnce(
+// Direct call to Google Gemini's generateContent REST endpoint. No SDK so we
+// stay dependency-free; auth via X-goog-api-key header.
+async function callGeminiOnce(
   model: string,
   userPayloadText: string,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<{ ok: true; raw: string } | { ok: false; status: number; text: string }> {
-  try {
-    const completion = await getGroq().chat.completions.create(
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model,
+  )}:generateContent`;
+  const body = {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [
       {
-        model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+        role: "user",
+        parts: [
           {
-            role: "user",
-            content: `${userPayloadText}\n\nReturn ONLY the JSON object described in the system prompt. No prose, no markdown fences, no <think> blocks.`,
+            text: `${userPayloadText}\n\nReturn ONLY the JSON object described in the system prompt. No prose, no markdown fences.`,
           },
         ],
-        temperature: 1,
-        top_p: 1,
-        // gpt-oss reasoning models use max_completion_tokens (not max_tokens).
-        // Pass via cast since OpenAI SDK types don't expose Groq extras.
-        ...({
-          max_completion_tokens: 8192,
-          reasoning_effort: env.GROQ_REASONING_EFFORT,
-        } as Record<string, unknown>),
       },
-      { signal }
-    );
-    let raw = completion.choices?.[0]?.message?.content ?? "";
-    // Defensive: strip any <think>...</think> reasoning some models still emit.
-    raw = raw
-      .replace(/<think>[\s\S]*?<\/think>/gi, "")
-      .replace(/<think>[\s\S]*$/i, "")
-      .replace(/^[\s\S]*?<\/think>/i, "")
-      .trim();
+    ],
+    generationConfig: {
+      temperature: 0.8,
+      topP: 0.95,
+      maxOutputTokens: 4096,
+      responseMimeType: "application/json",
+    },
+  };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-goog-api-key": env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, status: res.status, text };
+    }
+    const data = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const raw =
+      data.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text ?? "")
+        .join("")
+        .trim() ?? "";
     return { ok: true, raw };
   } catch (err) {
-    const e = err as { status?: number; message?: string; error?: unknown };
-    const status = typeof e.status === "number" ? e.status : 0;
-    const text =
-      typeof e.message === "string"
-        ? e.message
-        : JSON.stringify(e.error ?? err);
-    return { ok: false, status, text };
+    const e = err as { message?: string };
+    return { ok: false, status: 0, text: e.message ?? String(err) };
   }
 }
 
 /** Calls the configured LLM. Returns [] on any failure (network, quota, parse).
  *
- * Provider: Groq only. `GROQ_API_KEY` must be set; `GROQ_MODEL` is a
- * comma-separated fallback list. On HTTP 429 we honour the server's
+ * Provider: Google Gemini only. `GEMINI_API_KEY` must be set; `GEMINI_MODEL`
+ * is a comma-separated fallback list. On HTTP 429 we honour the server's
  * retryDelay (capped at 30s) and retry once before falling through to the
  * next model in the list. */
 export async function generateAiFacts(input: AiFactInput): Promise<AiFact[]> {
-  if (!env.GROQ_API_KEY) {
-    console.warn("[facts-ai] GROQ_API_KEY not set — skipping AI generation");
+  if (!env.GEMINI_API_KEY) {
+    console.warn("[facts-ai] GEMINI_API_KEY not set — skipping AI generation");
     return [];
   }
 
-  const models = env.GROQ_MODEL
+  const models = env.GEMINI_MODEL
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
@@ -768,7 +767,7 @@ export async function generateAiFacts(input: AiFactInput): Promise<AiFact[]> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const perCall = AbortSignal.timeout(PER_CALL_MS);
       try {
-        const r = await callGroqOnce(model, userPayloadText, perCall);
+        const r = await callGeminiOnce(model, userPayloadText, perCall);
         if (r.ok) {
           raw = r.raw;
           if (raw) break outer;

@@ -1,9 +1,8 @@
 /**
- * Tiny single-sentence narrator for in-app notifications. Uses Groq
- * (OpenAI-compatible) only. Falls back to a deterministic sentence if
- * GROQ_API_KEY isn't set or the call fails. Never throws.
+ * Tiny single-sentence narrator for in-app notifications. Uses Google Gemini
+ * REST. Falls back to a deterministic sentence if GEMINI_API_KEY isn't set or
+ * the call fails. Never throws.
  */
-import OpenAI from "openai";
 import { env } from "@/lib/env";
 
 type AiContext = {
@@ -26,17 +25,6 @@ function buildPrompt(ctx: AiContext): string {
   return `Occasion: ${ctx.occasion}\nFacts:\n${factLines}\n\nWrite the one-sentence notification body.`;
 }
 
-let groqClient: OpenAI | null = null;
-function getGroq(): OpenAI {
-  if (!groqClient) {
-    groqClient = new OpenAI({
-      baseURL: "https://api.groq.com/openai/v1",
-      apiKey: env.GROQ_API_KEY,
-    });
-  }
-  return groqClient;
-}
-
 function sanitize(text: string, max = 200): string {
   return text
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
@@ -52,36 +40,47 @@ export async function generateNotificationLine(
   ctx: AiContext,
   fallback: string,
 ): Promise<string> {
-  if (!env.GROQ_API_KEY) return fallback;
+  if (!env.GEMINI_API_KEY) return fallback;
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 6000);
   try {
-    const models = (env.GROQ_MODEL || "")
+    const models = (env.GEMINI_MODEL || "")
       .split(",")
       .map((m) => m.trim())
       .filter(Boolean);
-    if (!models.length) models.push("openai/gpt-oss-120b");
+    if (!models.length) models.push("gemini-flash-latest");
     const prompt = buildPrompt(ctx);
 
     for (const model of models) {
       try {
-        const completion = await getGroq().chat.completions.create(
-          {
-            model,
-            messages: [
-              { role: "system", content: SYSTEM_PROMPT },
-              { role: "user", content: prompt },
-            ],
-            temperature: 0.8,
-            ...({
-              max_completion_tokens: 200,
-              reasoning_effort: "low",
-            } as Record<string, unknown>),
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          model,
+        )}:generateContent`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-goog-api-key": env.GEMINI_API_KEY,
           },
-          { signal: controller.signal },
-        );
-        const raw = completion.choices?.[0]?.message?.content ?? "";
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.8,
+              maxOutputTokens: 200,
+            },
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) continue;
+        const data = (await res.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        const raw =
+          data.candidates?.[0]?.content?.parts
+            ?.map((p) => p.text ?? "")
+            .join("") ?? "";
         const cleaned = sanitize(raw);
         if (cleaned.length >= 5) return cleaned;
       } catch {
