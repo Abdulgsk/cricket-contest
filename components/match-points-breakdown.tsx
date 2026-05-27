@@ -27,6 +27,16 @@ export function MatchPointsBreakdownCard({
   // Group lines for the side-by-side mini panels.
   const groups = groupLines(lines);
 
+  // Per-group subtotals — mirrored as quick-glance chips at the top, so the
+  // breakdown of the headline `total` is visible without scrolling through
+  // every panel.
+  const groupSubtotals = GROUP_PANELS.map((panel) => {
+    const panelLines = panel.groups.flatMap((g) => groups[g]);
+    const visible = panelLines.filter((l) => l.points !== 0 || l.alwaysShow);
+    const subtotal = visible.reduce((s, l) => s + l.points, 0);
+    return { key: panel.key, label: panel.label, subtotal, visible };
+  }).filter((p) => p.visible.length > 0);
+
   return (
     <Card className="space-y-3">
       {/* Header */}
@@ -79,6 +89,34 @@ export function MatchPointsBreakdownCard({
           {total}
         </Badge>
       </div>
+
+      {/* Per-group subtotal chips — quick-glance breakdown of the headline
+          Total without scrolling to each panel. */}
+      {groupSubtotals.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 text-[11px]">
+          {groupSubtotals.map((g) => {
+            const tone =
+              g.subtotal > 0
+                ? "border-success/40 bg-success/10 text-success"
+                : g.subtotal < 0
+                  ? "border-danger/40 bg-danger/10 text-danger"
+                  : "border-border bg-muted/30 text-muted-foreground";
+            return (
+              <span
+                key={g.key}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-medium ${tone}`}
+                title={`${g.label} subtotal`}
+              >
+                <span>{g.label}</span>
+                <span className="tabular-nums font-semibold">
+                  {g.subtotal > 0 ? "+" : ""}
+                  {g.subtotal}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {/* Group panels — only render groups that actually contributed */}
       <div className="grid sm:grid-cols-2 gap-2 text-xs">

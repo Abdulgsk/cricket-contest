@@ -4,8 +4,8 @@
  * Hybrid design:
  *  - We compute verified per-user stats in services/facts-analyzer.ts and the
  *    deterministic facts in services/facts.ts.
- *  - This file sends ONLY those verified numbers to Gemini Flash and asks it to
- *    write 3-5 short narrative facts using nothing else.
+ *  - This file sends ONLY those verified numbers to a Hugging Face model and
+ *    asks it to write 3-5 short narrative facts using nothing else.
  *  - Every number in the LLM output is validated against the input payload.
  *    Any fact that introduces a number we didn't supply is dropped — that
  *    eliminates hallucinated stats by construction.
@@ -117,12 +117,6 @@ export interface AiFact {
   type: string;
   score: number;
   username?: string;
-}
-
-interface GeminiResponse {
-  candidates?: Array<{
-    content?: { parts?: Array<{ text?: string }> };
-  }>;
 }
 
 /** Round to 1 dp so the LLM and our validator compare apples-to-apples. */
@@ -567,51 +561,13 @@ function validateFacts(facts: AiFact[], input: AiFactInput): AiFact[] {
 
 /** Extracts the server's suggested retry delay (seconds) from a 429 body, if any. */
 function parseRetryDelaySeconds(body: string): number | null {
-  // Gemini puts a RetryInfo block with retryDelay: "8s" in the JSON.
+  // Some providers return a RetryInfo block with retryDelay: "8s" in the JSON.
   const m = body.match(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/);
   if (m) return Math.min(30, Math.ceil(Number(m[1])));
   // Fallback: free-text "Please retry in 8.86s."
   const m2 = body.match(/retry in\s+(\d+(?:\.\d+)?)s/i);
   if (m2) return Math.min(30, Math.ceil(Number(m2[1])));
   return null;
-}
-
-async function callGeminiOnce(
-  model: string,
-  body: unknown,
-  signal: AbortSignal
-): Promise<{ ok: true; raw: string } | { ok: false; status: number; text: string }> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    model
-  )}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok) {
-    return { ok: false, status: res.status, text: await res.text() };
-  }
-  const data = (await res.json()) as GeminiResponse;
-  return { ok: true, raw: data.candidates?.[0]?.content?.parts?.[0]?.text ?? "" };
-}
-
-// Lazily-initialised OpenAI client pointed at OpenRouter.
-let openrouterClient: OpenAI | null = null;
-function getOpenRouter(): OpenAI {
-  if (!openrouterClient) {
-    openrouterClient = new OpenAI({
-      baseURL: "https://openrouter.ai/api/v1",
-      apiKey: env.OPENROUTER_API_KEY,
-      defaultHeaders: {
-        // Recommended by OpenRouter for analytics / rate-limit tiering.
-        "HTTP-Referer": env.APP_URL,
-        "X-Title": "Cricket Contest",
-      },
-    });
-  }
-  return openrouterClient;
 }
 
 // Lazily-initialised OpenAI client pointed at Hugging Face Router.
@@ -671,62 +627,19 @@ async function callHfRouterOnce(
   }
 }
 
-async function callOpenRouterOnce(
-  model: string,
-  userPayloadText: string,
-  signal: AbortSignal
-): Promise<{ ok: true; raw: string } | { ok: false; status: number; text: string }> {
-  try {
-    // Note: we do NOT request response_format json_object or reasoning here.
-    // Many free OpenRouter models don't support either properly and return
-    // empty content. We instead append a JSON-only instruction to the user
-    // turn and rely on parseModelJson() to tolerate stray fences/commentary.
-    const completion = await getOpenRouter().chat.completions.create(
-      {
-        model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `${userPayloadText}\n\nReturn ONLY the JSON object described in the system prompt. No prose, no markdown fences.`,
-          },
-        ],
-        temperature: 0.6,
-        top_p: 0.9,
-        max_tokens: 1500,
-      },
-      { signal }
-    );
-    const raw = completion.choices?.[0]?.message?.content ?? "";
-    return { ok: true, raw };
-  } catch (err) {
-    const e = err as { status?: number; message?: string; error?: unknown };
-    const status = typeof e.status === "number" ? e.status : 0;
-    const text =
-      typeof e.message === "string"
-        ? e.message
-        : JSON.stringify(e.error ?? err);
-    return { ok: false, status, text };
-  }
-}
-
 /** Calls the configured LLM. Returns [] on any failure (network, quota, parse).
  *
- * Provider preference: HF Router (if HF_TOKEN) > OpenRouter (if OPENROUTER_API_KEY)
- * > Gemini. Each provider has its own comma-separated model list used as
- * fallbacks. On HTTP 429 we honour the server's retryDelay (capped at 30s)
- * and retry once before falling through to the next model in the list. */
+ * Provider: HF Router only. `HF_TOKEN` must be set; `HF_MODEL` is a
+ * comma-separated fallback list. On HTTP 429 we honour the server's
+ * retryDelay (capped at 30s) and retry once before falling through to the
+ * next model in the list. */
 export async function generateAiFacts(input: AiFactInput): Promise<AiFact[]> {
-  const useHf = !!env.HF_TOKEN;
-  const useOpenRouter = !useHf && !!env.OPENROUTER_API_KEY;
-  if (!useHf && !useOpenRouter && !env.GEMINI_API_KEY) return [];
+  if (!env.HF_TOKEN) {
+    console.warn("[facts-ai] HF_TOKEN not set — skipping AI generation");
+    return [];
+  }
 
-  const modelEnv = useHf
-    ? env.HF_MODEL
-    : useOpenRouter
-    ? env.OPENROUTER_MODEL
-    : env.GEMINI_MODEL;
-  const models = modelEnv
+  const models = env.HF_MODEL
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
@@ -737,33 +650,18 @@ export async function generateAiFacts(input: AiFactInput): Promise<AiFact[]> {
     2
   )}`;
 
-  const geminiBody = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: "user", parts: [{ text: userPayloadText }] }],
-    generationConfig: {
-      temperature: 0.6,
-      topP: 0.9,
-      maxOutputTokens: 1500,
-      responseMimeType: "application/json",
-    },
-  };
-
   // Per-call timeout so one slow model can't burn the whole budget.
   // Total wall time is bounded by (perCall * models * attempts).
   // HF DeepSeek-R1 needs more time because reasoning happens server-side
   // before any JSON is emitted.
-  const PER_CALL_MS = useHf ? 60_000 : 20_000;
+  const PER_CALL_MS = 60_000;
 
   let raw = "";
   outer: for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const perCall = AbortSignal.timeout(PER_CALL_MS);
       try {
-        const r = useHf
-          ? await callHfRouterOnce(model, userPayloadText, perCall)
-          : useOpenRouter
-          ? await callOpenRouterOnce(model, userPayloadText, perCall)
-          : await callGeminiOnce(model, geminiBody, perCall);
+        const r = await callHfRouterOnce(model, userPayloadText, perCall);
         if (r.ok) {
           raw = r.raw;
           if (raw) break outer;

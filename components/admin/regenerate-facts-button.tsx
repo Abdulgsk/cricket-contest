@@ -17,7 +17,9 @@ export function RegenerateFactsButton() {
         start(async () => {
           const r = await regenerateLatestFactsAction();
           if (r.ok) {
-            toast.success(`New facts generated for ${r.matchLabel}`);
+            toast.success(
+              `${r.written} new fact${r.written === 1 ? "" : "s"} for ${r.matchLabel}`
+            );
             router.refresh();
           } else toast.error(r.error);
         })

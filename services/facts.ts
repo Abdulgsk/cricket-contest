@@ -29,10 +29,18 @@ interface Fact {
  * verified payload, hand it to the model, and validate that every number it
  * emits came from that payload. No deterministic if/else fact branches.
  */
-export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
+export interface FactsGenerationResult {
+  facts: Fact[];
+  written: number;
+  error: string | null;
+}
+
+export async function generateFactsForMatch(
+  matchId: string
+): Promise<FactsGenerationResult> {
   await connectDB();
   const match = await Match.findById(matchId).lean();
-  if (!match) return [];
+  if (!match) return { facts: [], written: 0, error: "Match not found" };
 
   const [prevLb, currLb] = await Promise.all([
     computeLeaderboard({ excludeMatchId: matchId }),
@@ -199,6 +207,7 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
 
   // ---- Build the payload and call the AI narrator ----
   const facts: Fact[] = [];
+  let aiError: string | null = null;
   try {
     const aiInput = buildAiInput({
       match: {
@@ -258,18 +267,20 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
       });
     }
   } catch (err) {
+    aiError = err instanceof Error ? err.message : String(err);
     console.warn("[facts] AI narrator failed", err);
   }
 
   // Persist (append-only — never delete prior facts). Each generation gets
   // its own batchNumber within the match; the dashboard only shows the latest.
+  let written = 0;
   if (facts.length) {
     const prev = await DailyFact.findOne({ matchId })
       .sort({ batchNumber: -1 })
       .select("batchNumber")
       .lean();
     const nextBatch = (prev?.batchNumber ?? 0) + 1;
-    await DailyFact.insertMany(
+    const inserted = await DailyFact.insertMany(
       facts.map((f) => ({
         matchId,
         text: f.text,
@@ -279,6 +290,12 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
         batchNumber: nextBatch,
       }))
     );
+    written = inserted.length;
+  } else if (!aiError) {
+    // No throw, just an empty result — usually a 429, missing API key, or
+    // every configured model returned an empty / unparseable response. The
+    // detailed reason is in the server logs from services/facts-ai.ts.
+    aiError = "AI returned no facts (check server logs for the model error)";
   }
 
   // Refresh the dashboard so members see the new storylines on next visit.
@@ -290,7 +307,7 @@ export async function generateFactsForMatch(matchId: string): Promise<Fact[]> {
   } catch {
     // revalidation is best-effort
   }
-  return facts;
+  return { facts, written, error: aiError };
 }
 
 /** Facts from the latest generation batch of the most recently scored match,

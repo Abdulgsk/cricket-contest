@@ -17,18 +17,9 @@ export const env = {
   MY11CIRCLE_USER_AGENT:
     process.env.MY11CIRCLE_USER_AGENT ??
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
-  // Google Gemini API (used by services/facts-ai.ts to narrate verified stats)
-  GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? "",
-  GEMINI_MODEL: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
-  // OpenRouter (preferred — OpenAI-compatible). If set, used instead of Gemini.
-  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
-  // Comma-separated list of OpenRouter models to try in order on failure / 429.
-  // Faster / smaller free models first so we don't burn the budget on a slow one.
-  OPENROUTER_MODEL:
-    process.env.OPENROUTER_MODEL ??
-    "meta-llama/llama-3.3-70b-instruct:free,google/gemini-2.0-flash-exp:free,deepseek/deepseek-chat-v3.1:free",
-  // Hugging Face Inference Router (OpenAI-compatible). Preferred when HF_TOKEN
-  // is set. Comma-separated model list — try in order on failure / 429.
+  // Hugging Face Inference Router (OpenAI-compatible) — sole provider for
+  // services/facts-ai.ts. Comma-separated model list, tried in order on
+  // failure / 429.
   HF_TOKEN: process.env.HF_TOKEN ?? "",
   HF_MODEL:
     process.env.HF_MODEL ??

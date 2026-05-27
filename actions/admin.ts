@@ -1085,7 +1085,23 @@ export async function regenerateLatestFactsAction() {
   const matchId = String(latest._id);
   try {
     const { generateFactsForMatch } = await import("@/services/facts");
-    await generateFactsForMatch(matchId);
+    const result = await generateFactsForMatch(matchId);
+    if (result.written === 0) {
+      // AI returned nothing (or every model failed). Surface the reason so
+      // the operator isn't fooled by a green toast while the dashboard
+      // keeps showing the old batch.
+      return {
+        ok: false as const,
+        error:
+          result.error ??
+          "AI returned no facts — dashboard still shows the previous batch.",
+      };
+    }
+    return {
+      ok: true as const,
+      matchLabel: `${latest.teamA} vs ${latest.teamB}`,
+      written: result.written,
+    };
   } catch (err) {
     console.warn("[admin] facts regeneration failed", err);
     return {
@@ -1093,10 +1109,6 @@ export async function regenerateLatestFactsAction() {
       error: err instanceof Error ? err.message : "Generation failed",
     };
   }
-  return {
-    ok: true as const,
-    matchLabel: `${latest.teamA} vs ${latest.teamB}`,
-  };
 }
 
 /** Super-admin only. Fires a sample reminder to themselves through both
