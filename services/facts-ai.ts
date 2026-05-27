@@ -318,91 +318,37 @@ export function buildAiInput(args: {
   };
 }
 
-const SYSTEM_PROMPT = `You are the in-house statistician for "Cricket Contest", a private fantasy cricket league played by a fixed group of 13 friends across the IPL season. Each match they all submit a Dream11 team; results are entered after the real match finishes. You write the daily storyline facts shown to members after a match is scored. You are the SOLE source of these facts.
+const SYSTEM_PROMPT = `You are the statistician for a 13-friend private fantasy IPL league. After each match you write short storyline facts.
 
-==================================================
-HOW THE GAME WORKS — read this so your facts make sense
-==================================================
-- 13 friends compete across the IPL season. Every match, each player submits one Dream11 fantasy team and gets a "fantasy score" (Dream11 points).
-- Players are RANKED 1..13 within the match by fantasy score. Rank 0 = missed the match.
-- Each match a player earns "final points" = base rank points + bonuses + bounty + rivalry + civil-war + penalties. The season leaderboard sums final points.
+PAYLOAD LEGEND (compact keys — fields absent = zero/none):
+m{a,b,w,bnty} = teamA, teamB, winner, bountyTargetName
+r[]{u,rk,fp,fn,b,rv,cw,pn,ms,br} = user, rank(1-13, 0=missed), fantasyPts, finalPts, bonusPts, rivalryPts, civilWarPts, penaltyPts, missed(1), bonusReasons[]
+mt[]{u,pl,ms,caf,car,raf,rar,fd,cp,msk,t5} = user, played, missed, careerAvgFinal, careerAvgRank, recentAvgFinal, recentAvgRank, formDelta(recent-career), careerPercentile(0-100), currentMissStreak, currentTop5Streak
+lb[]{u,prev,cur,tp} = user, prevPos, currPos, totalPts (top 10 now)
+lc{pl,cl,ch} = prevLeader, currLeader, changed(1)
+preds{tot,cw,pr[]{u,p}} = totalPredictors, correctWinners, perfectRounds(all 3 picks correct)
+riv{s[]{c,o,w,p,rev},wd[]{w,o}} = settled(challenger,opponent,winner|null=tie,pts,revenge=1), withdrawn(withdrawer,opponent)
+bnty{t,b} = target, beatersCount
+nm{a,b,t3[]{u,tp}} = nextSameDayMatch teamA,teamB,topThree
+ba[]{u,t,p,e} = bonusType audit row: user,type,pts,engineExplanation(trust verbatim)
+teams[]{u,c,cp,vc,vcp,top{n,p},flop{n,p},best{n,p},gain} = user, captain, captainPts, viceCaptain, viceCaptainPts, topPick, flopPick, bestPossibleCaptain, captainGainIfBest(best.p - cp)
+pop{avg,rec} = avgTop1Top2Gap(all-time, recent10)
 
-Rank points (fixed): 1st=+10, 2nd=+8, 3rd=+6, 4th=+4, 5th=+3, 6th=+2, 7th=+1, 8th-13th=0.
+GAME CONTEXT: Rank pts: 1st+10,2nd+8,3rd+6,4th+4,5th+3,6th+2,7th+1. Miss=-2. Bonuses: consistency(top5 x3), kingSlayer(outscore pre-match #1), comeback(climb 4+), underdog(pos10-13 finish top-2), matchDomination(win by 300+ fp), topperDefendsTop(#1 stays #1), topperTopsMatch(#1 also wins match fp). Bounty=anyone above target rank gets pts. Rivalry: higher fp wins; revenge=2nd challenge bonus; withdraw=-2; tie=0. Civil war=team vs team via accepted rivalries.
 
-Penalties:
-- Missed match: -2 (and your fantasy points for that match are 0).
-- 2 consecutive misses: extra -1. 3 in a row: extra -2 more.
+ABSOLUTE RULES (any breach = failure):
+1. ONLY use numbers/names from the payload. Never invent, estimate, average, or extrapolate.
+2. Real cricketer names allowed ONLY from teams[].c/vc/top.n/flop.n/best.n, with pts from same source.
+3. Every fact verifiable from a specific field.
+4. No vague form claims without citing the number.
+5. One sentence, max ~160 chars. Casual, witty, never cruel.
+6. Diversify angles: domination/close (vs pop.rec), leader change, climbs/slips, streaks, form swings, percentile, bonus haul, perfect predictions, rivalries (esp revenge), withdrawals, bounty outcome, next-match top3.
+7. 6-9 facts when payload allows. Lead with biggest headline.
+8. Never repeat a storyline.
 
-Bonuses (capped per match — admin-tuned, but assume these defaults if needed for context, never invent values):
-- Consistency: top-5 by fantasy points in 3 matches in a row.
-- King Slayer: outscore the player who was leaderboard #1 before this match.
-- Comeback: jump 4+ places on the leaderboard after this match.
-- Underdog: pre-match position 10-13 AND finish top-2 in this match.
-- Match Domination: win the match by 300+ fantasy points over 2nd.
-- Topper Defends Top: pre-match #1 stays #1.
-- Topper Tops Match: pre-match #1 also wins this match's fantasy points.
-- Captain's team wins: every Civil War team has a "captain" (highest leaderboard player on that side). The captain who scores more fantasy points this match wins it for their whole team.
-- Leader Topper override: overall #1 outscores BOTH civil-war captains.
-
-Bounty: admins pick a bounty target per match. Anyone who finishes ABOVE the bounty target by rank gets +bounty points. The target loses nothing — surviving is just bragging rights.
-
-Rivalries (1v1):
-- A player can challenge any other player for a specific match.
-- Once a rivalry is "accepted" and the match is scored, the higher fantasy-point scorer wins → +rivalry points.
-- A "revenge" rivalry is the SECOND time you challenge the same player; winning it adds an extra revenge bonus.
-- Withdrawing an accepted rivalry before lock costs -2.
-- A "tie" rivalry awards no rivalry points.
-
-Civil War (team vs team):
-- When rivalries get accepted for a match, the players are split into Team A vs Team B (kept secret until match start). Need 2+ accepted rivalries to run.
-- Team that wins more 1v1s wins the Civil War. Tiebreaker = combined fantasy points. Decisive (both metrics) > Split (only 1v1s) > FP-tiebreak.
-- Winning team gets +civilWarPoints, losing team gets -civilWarPoints. A pure draw = 0/0.
-
-Predictions: each match every player can predict (a) match winner, (b) top batter, (c) top bowler. Each correct = a few points; getting all three right = bonus on top.
-
-Special match modes that may apply: 2x Points (doubles rank points), No Bonus (zeros bonuses), Chaos (bonuses doubled), Prediction Madness (prediction points doubled).
-
-==================================================
-HOW TO READ THE PAYLOAD
-==================================================
-- "results": THIS match. fantasyPoints = Dream11 score. finalPoints = total after all rules above. rank = 1..13 (0 if missed).
-- "metrics": per-player season-to-date snapshot.
-  - careerAvgFinal = average final points across all matches they have played (excluding misses).
-  - recentAvgFinal = same but only last 5 matches.
-  - formDelta = recentAvgFinal - careerAvgFinal (positive = trending up, negative = slumping).
-  - careerPercentile = where their careerAvgFinal sits vs the league (0=worst, 100=best).
-  - currentTop5Streak / currentMissStreak = consecutive count up to and INCLUDING this match.
-- "leaderboardChange": top 10 NOW, with their previous position. prevPosition - currPosition = places climbed.
-- "leaderChange": who was overall #1 before vs after this match.
-- "predictions.perfectRounds": players who got all 3 picks correct this match.
-- "rivalries.settled": all 1v1s decided this match. winner=null means tie. isRevenge=true means it was a revenge rematch.
-- "rivalries.withdrawn": players who bailed on a rivalry (incurred penalty).
-- "bounty": who was the target and how many beat them (beaters=0 means target survived).
-- "nextSameDayMatch": if there is another match later TODAY, this is the current top-3 — useful to set up "watch out for X" stories.
-- "bonusAuditEntries": one row per bonus actually awarded this match, with the engine's own "explanation" string. Use these to narrate WHY a bonus was awarded (e.g. "earned the King Slayer for outscoring pre-match #1 by 18 fantasy points"). Trust the explanation strings verbatim — they are the ground truth from the scoring engine.
-- "populationStats.recentTop1Top2Gap": average winning margin across the last 10 matches — use it as the bar for whether tonight's win counts as "dominant" or "tight".
-- "teams": ONLY the players who had a Dream11 team mapped for this match (some users won't appear). Each entry exposes the actual cricketer they captained, vice-captained, the top fantasy scorer in their 11, the biggest flop they picked, and what their captaincy would have been worth if they had captained their own top pick (captainGainIfBest = bestPossibleCaptain.points - captainPoints, both at 1x). Use this to narrate captaincy decisions, e.g. "Mithun's captain pick (Rohit, 28 fantasy pts) cost him 50 fantasy pts versus captaining his own top scorer Bumrah". Only the cricketer NAMES from these team entries are valid IPL-player names you may quote in facts.
-
-==================================================
-ABSOLUTE RULES — breaking any of these is failure
-==================================================
-1. You may ONLY use numbers and names that appear in the JSON payload. Do not invent, estimate, average, or extrapolate any number — even if it seems obvious.
-2. Do NOT mention real IPL players, real teams' actual cricket stats, or real-world cricket events EXCEPT when narrating a user's own Dream11 picks (captain, vice-captain, topPick, flopPick, bestPossibleCaptain) from the "teams" payload. The fantasy-player names in "teams" are the ONLY real cricketer names you may use, and you may only quote their fantasy point values from that payload.
-3. Every fact must be VERIFIABLE from a specific field. If you can't point to it, do not write it.
-4. No vague form claims like "in great form lately" without citing the supporting number (e.g. "recentAvgFinal is 25 above their career mark").
-5. Keep each fact to one sentence, max ~160 chars. Casual, witty, like a friend in the group chat — but never cruel.
-6. Diversify angles. Cover the most interesting storylines from this list when the payload supports them: match domination/closeness (vs recentTop1Top2Gap), leader change, big climbs/slips, top-5 or miss streaks, form swings, percentile milestones, biggest bonus haul, perfect prediction rounds, total correct winners, settled rivalries (esp. revenge wins), withdrawn rivalries, bounty outcome, top-3 heading into nextSameDayMatch.
-7. Aim for 6-9 facts when material allows; fewer is fine if the payload is thin. Lead with the highest-impact storyline.
-8. Never write a fact that another fact already covered.
-
-Return STRICT JSON only (no markdown fences, no commentary):
-{
-  "facts": [
-    { "text": "...", "type": "domination|close_finish|climb|slip|leader_change|streak_top5|streak_miss|form_swing|percentile|bonus|prediction|rivalry_win|rivalry_revenge|rivalry_tie|rivalry_withdraw|bounty|next_match|context|other", "score": 50-95, "username": "..." }
-  ]
-}
-
-"score" = your interest level 0-100 (higher = bigger headline). "username" optional — set it when the fact is about one player.`;
+Return STRICT JSON only (no fences, no prose, no <think>):
+{"facts":[{"text":"...","type":"domination|close_finish|climb|slip|leader_change|streak_top5|streak_miss|form_swing|percentile|bonus|prediction|rivalry_win|rivalry_revenge|rivalry_tie|rivalry_withdraw|bounty|next_match|context|other","score":50-95,"username":"..."}]}
+score=interest 0-100. username optional (set when fact is about one player).`;
 
 /** Parses the model's JSON output, tolerating ```json fences. */
 function parseModelJson(raw: string): { facts?: AiFact[] } | null {
@@ -582,6 +528,168 @@ function getGroq(): OpenAI {
   return groqClient;
 }
 
+/**
+ * Squeeze the verified AiFactInput into the compact-key shape declared in
+ * the system prompt's PAYLOAD LEGEND. Drops zero numeric fields, empty
+ * arrays, and null values so we send only signal. Trims token usage by
+ * ~60-70% vs. JSON.stringify of the raw AiFactInput. */
+function compactPayload(input: AiFactInput): Record<string, unknown> {
+  const nz = (n: number | null | undefined) =>
+    n == null || n === 0 || Number.isNaN(n) ? undefined : n;
+  const dropUndef = <T extends Record<string, unknown>>(o: T): T => {
+    for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
+    return o;
+  };
+
+  const m: Record<string, unknown> = dropUndef({
+    a: input.match.teamA,
+    b: input.match.teamB,
+    w: input.match.winner,
+    bnty: input.match.bountyUserName,
+  });
+
+  const r = input.results.map((x) =>
+    dropUndef({
+      u: x.username,
+      rk: x.rank,
+      fp: nz(x.fantasyPoints),
+      fn: nz(x.finalPoints),
+      b: nz(x.bonusPoints),
+      rv: nz(x.rivalryPoints),
+      cw: nz(x.civilWarPoints),
+      pn: nz(x.penaltyPoints),
+      ms: x.missed ? 1 : undefined,
+      br: x.bonusReasons && x.bonusReasons.length ? x.bonusReasons : undefined,
+    }),
+  );
+
+  const mt = input.metrics.map((x) =>
+    dropUndef({
+      u: x.username,
+      pl: x.played,
+      ms: nz(x.missed),
+      caf: x.careerAvgFinal,
+      car: x.careerAvgRank,
+      raf: x.recentAvgFinal,
+      rar: x.recentAvgRank,
+      fd: nz(x.formDelta ?? 0),
+      cp: x.careerPercentile ?? undefined,
+      msk: nz(x.currentMissStreak),
+      t5: nz(x.currentTop5Streak),
+    }),
+  );
+
+  const lb = input.leaderboardChange.map((x) =>
+    dropUndef({
+      u: x.username,
+      prev: x.prevPosition ?? undefined,
+      cur: x.currPosition,
+      tp: x.totalPoints,
+    }),
+  );
+
+  const lc = dropUndef({
+    pl: input.leaderChange.previousLeader ?? undefined,
+    cl: input.leaderChange.currentLeader ?? undefined,
+    ch: input.leaderChange.changed ? 1 : undefined,
+  });
+
+  const preds = dropUndef({
+    tot: nz(input.predictions.total),
+    cw: nz(input.predictions.correctWinners),
+    pr: input.predictions.perfectRounds.length
+      ? input.predictions.perfectRounds.map((p) => ({
+          u: p.username,
+          p: p.pointsAwarded,
+        }))
+      : undefined,
+  });
+
+  const riv = dropUndef({
+    s: input.rivalries.settled.length
+      ? input.rivalries.settled.map((s) =>
+          dropUndef({
+            c: s.challenger,
+            o: s.opponent,
+            w: s.winner ?? undefined,
+            p: nz(s.pointsAwarded),
+            rev: s.isRevenge ? 1 : undefined,
+          }),
+        )
+      : undefined,
+    wd: input.rivalries.withdrawn.length
+      ? input.rivalries.withdrawn.map((w) => ({ w: w.withdrawer, o: w.opponent }))
+      : undefined,
+  });
+
+  const bnty = input.bounty?.targetUsername
+    ? { t: input.bounty.targetUsername, b: input.bounty.beaters }
+    : undefined;
+
+  const nm = input.nextSameDayMatch
+    ? {
+        a: input.nextSameDayMatch.teamA,
+        b: input.nextSameDayMatch.teamB,
+        t3: input.nextSameDayMatch.topThree.map((t) => ({
+          u: t.username,
+          tp: t.totalPoints,
+        })),
+      }
+    : undefined;
+
+  const ba = input.bonusAuditEntries.length
+    ? input.bonusAuditEntries.map((b) => ({
+        u: b.username,
+        t: b.bonusType,
+        p: b.points,
+        e: b.explanation,
+      }))
+    : undefined;
+
+  const teams = input.teams.length
+    ? input.teams.map((t) =>
+        dropUndef({
+          u: t.username,
+          c: t.captain ?? undefined,
+          cp: t.captainPoints ?? undefined,
+          vc: t.viceCaptain ?? undefined,
+          vcp: t.viceCaptainPoints ?? undefined,
+          top: t.topPick ? { n: t.topPick.name, p: t.topPick.points } : undefined,
+          flop: t.flopPick
+            ? { n: t.flopPick.name, p: t.flopPick.points }
+            : undefined,
+          best: t.bestPossibleCaptain
+            ? {
+                n: t.bestPossibleCaptain.name,
+                p: t.bestPossibleCaptain.points,
+              }
+            : undefined,
+          gain: nz(t.captainGainIfBest ?? 0),
+        }),
+      )
+    : undefined;
+
+  const pop = dropUndef({
+    avg: input.populationStats.avgTop1Top2Gap ?? undefined,
+    rec: input.populationStats.recentTop1Top2Gap ?? undefined,
+  });
+
+  return dropUndef({
+    m,
+    r,
+    mt,
+    lb: lb.length ? lb : undefined,
+    lc: Object.keys(lc).length ? lc : undefined,
+    preds: Object.keys(preds).length ? preds : undefined,
+    riv: Object.keys(riv).length ? riv : undefined,
+    bnty,
+    nm,
+    ba,
+    teams,
+    pop: Object.keys(pop).length ? pop : undefined,
+  });
+}
+
 async function callGroqOnce(
   model: string,
   userPayloadText: string,
@@ -645,10 +753,8 @@ export async function generateAiFacts(input: AiFactInput): Promise<AiFact[]> {
     .map((m) => m.trim())
     .filter(Boolean);
 
-  const userPayloadText = `Match payload (the ONLY data you may use):\n\n${JSON.stringify(
-    input,
-    null,
-    2
+  const userPayloadText = `Payload (compact-key, fields absent = zero/none):\n${JSON.stringify(
+    compactPayload(input),
   )}`;
 
   // Per-call timeout so one slow model can't burn the whole budget.
