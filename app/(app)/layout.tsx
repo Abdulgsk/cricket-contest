@@ -9,6 +9,7 @@ import { WorkItem } from "@/models/WorkItem";
 import { getSettings } from "@/models/Settings";
 import { BONUSES } from "@/lib/constants";
 import { getUnseenRivalryCount } from "@/actions/rivalry";
+import { kickAutoJobs } from "@/lib/auto-jobs";
 import { headers } from "next/headers";
 import { ConfirmProvider } from "@/components/ui/use-confirm";
 import { PresenceProvider } from "@/components/presence-provider";
@@ -16,6 +17,11 @@ import { PresenceProvider } from "@/components/presence-provider";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const me = await requireUser();
   await connectDB();
+
+  // Fire-and-forget: drives the IPL fixture sync (3x/day) and pre-match
+  // reminders (30/20/10 min before start). Both are throttled & idempotent
+  // so calling on every page render is cheap.
+  kickAutoJobs();
 
   // If the user is viewing the rivalry tab right now, mark it seen BEFORE we
   // compute the unseen count so the badge clears on this same render.

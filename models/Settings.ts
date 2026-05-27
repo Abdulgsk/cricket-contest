@@ -70,6 +70,9 @@ export interface ISettings {
    * flow during a live match if anything misbehaves.
    */
   playerDirectoryEnabled?: boolean;
+  /** Throttle key for lib/auto-jobs IPL sync. Format "YYYY-MM-DD-slotN"
+   * where N is 0|1|2 for the 02:00/10:00/18:00 UTC slots. */
+  lastAutoSyncSlot?: string;
   updatedAt: Date;
 }
 
@@ -80,6 +83,7 @@ const SettingsSchema = new Schema<ISettings>(
     my11cookieExpiresAt: { type: Date },
     my11LiveRefreshSec: { type: Number, default: 30, min: 5, max: 600 },
     playerDirectoryEnabled: { type: Boolean, default: true },
+    lastAutoSyncSlot: { type: String },
     announcement: { type: String, default: "" },
     seasonName: { type: String, default: "IPL 2026" },
     bonusConfig: {

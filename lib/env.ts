@@ -10,7 +10,6 @@ export const env = {
   // Defaults to Meta's test template "hello_world" (no vars) for initial smoke testing.
   WHATSAPP_TEMPLATE_NAME: process.env.WHATSAPP_TEMPLATE_NAME ?? "hello_world",
   WHATSAPP_TEMPLATE_LANG: process.env.WHATSAPP_TEMPLATE_LANG ?? "en_US",
-  CRON_SECRET: process.env.CRON_SECRET ?? "",
   APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   IPL_SEASON: process.env.IPL_SEASON ?? String(new Date().getUTCFullYear()),
   MY11_COOKIE_SYNC_TOKEN: process.env.MY11_COOKIE_SYNC_TOKEN ?? "",
