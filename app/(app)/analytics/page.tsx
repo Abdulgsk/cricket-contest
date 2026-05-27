@@ -160,9 +160,15 @@ export default async function AnalyticsPage() {
     chartData.push({
       label,
       date: r.match?.startTime ? new Date(r.match.startTime).getTime() : 0,
-      league: r.leaguePoints,
+      // r.leaguePoints = MatchResult.finalPoints which already includes
+      // base + bonus + bounty + rivalry + civilWar + penalty. To stack
+      // contributions in the chart we split it back out.
+      rankPoints: r.base,
+      bonus: r.bonus + r.bounty,
+      rivalry: r.rivalry,
+      civilWar: r.civilWar,
       prediction: r.predPoints,
-      bonus: r.bonus,
+      customPool: 0,
       penalty: r.penalty,
       rank: r.rank,
       cumulative,
@@ -189,7 +195,12 @@ export default async function AnalyticsPage() {
   const avgPerMatch = matchesPlayed > 0 ? totalPoints / matchesPlayed : 0;
   const winRate = matchesPlayed > 0 ? (wins / matchesPlayed) * 100 : 0;
   const lastFive = chartData.slice(-5);
-  const lastFiveMax = Math.max(...lastFive.map((r) => r.league + r.prediction), 1);
+  const lastFiveMax = Math.max(
+    ...lastFive.map(
+      (r) => r.rankPoints + r.bonus + r.rivalry + r.civilWar + r.prediction + r.customPool,
+    ),
+    1,
+  );
 
   return (
     <div className="space-y-6">
@@ -292,7 +303,8 @@ export default async function AnalyticsPage() {
               {lastFive.length > 0 ? (
                 <div className="mt-3 flex h-6 items-end gap-1">
                   {lastFive.map((r, i) => {
-                    const value = r.league + r.prediction;
+                    const value =
+                      r.rankPoints + r.bonus + r.rivalry + r.civilWar + r.prediction + r.customPool;
                     const pct = Math.max((value / lastFiveMax) * 100, 8);
                     return (
                       <div

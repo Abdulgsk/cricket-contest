@@ -33,6 +33,7 @@ export default async function LeaderboardPage() {
               <th className="px-2 py-1.5 sm:px-2.5 text-right">Total</th>
               <th className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell">League</th>
               <th className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell">Predictions</th>
+              <th className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell" title="Custom pool side-bets">🎲 Pools</th>
               <th className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell">Bonus</th>
               <th className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell" title="Per-match bounty">🎯 Bounty</th>
               <th className="px-2 py-1.5 sm:px-2.5 text-right hidden lg:table-cell" title="Rivalry duels">⚔️ Rivalry</th>
@@ -83,6 +84,13 @@ export default async function LeaderboardPage() {
                   <td className="px-2 py-1.5 sm:px-2.5 text-right font-bold text-primary">{r.totalPoints}</td>
                   <td className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell">{r.leaguePoints}</td>
                   <td className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell">{r.predictionPoints}</td>
+                  <td className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell tabular-nums">
+                    {r.customPoolPoints > 0 ? (
+                      <span className="text-accent">+{r.customPoolPoints}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell text-success">+{r.bonusPoints}</td>
                   <td className="px-2 py-1.5 sm:px-2.5 text-right hidden md:table-cell tabular-nums">
                     {r.bountyPoints !== 0 ? (

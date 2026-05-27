@@ -1,6 +1,8 @@
 import { connectDB } from "@/lib/db";
+import type mongoose from "mongoose";
 import { Match } from "@/models/Match";
-import { UserMatchTeam, type IUserMatchTeam } from "@/models/UserMatchTeam";
+import { Player } from "@/models/Player";
+import { UserMatchTeam, type IUserMatchTeam, type IUserMatchTeamPlayer } from "@/models/UserMatchTeam";
 import { User } from "@/models/User";
 import { getSettings } from "@/models/Settings";
 import {
@@ -54,6 +56,58 @@ const teamCache = new Map<string, { at: number; data: IUserMatchTeam }>();
  * historical DB rows where those flags were polluted by the on-field
  * match-captain/keeper booleans from My11.
  */
+/**
+ * Side-effect: upsert each player observed in a freshly-fetched my11 team
+ * into the master Player directory. Keyed by my11's numeric `id` so impact-
+ * player swaps that arrive in subsequent refreshes simply create / touch
+ * their own Player doc — no migration required. Failures are swallowed: the
+ * directory is best-effort, the team data is what matters.
+ */
+async function upsertPlayers(
+  players: IUserMatchTeamPlayer[],
+  matchObjectId: mongoose.Types.ObjectId
+): Promise<void> {
+  if (!players?.length) return;
+  try {
+    const settings = await getSettings();
+    if (settings.playerDirectoryEnabled === false) return;
+  } catch {
+    // If settings can't be read, default to "enabled" — the directory is
+    // best-effort and the cost of a no-op upsert is negligible.
+  }
+  const now = new Date();
+  try {
+    const ops = players.map((p) => ({
+      updateOne: {
+        filter: { my11Id: p.id },
+        update: {
+          $set: {
+            name: p.name,
+            dName: p.dName ?? p.name,
+            sName: p.sName,
+            role: p.role,
+            roleName: p.roleName,
+            roleSubType: p.roleSubType,
+            teamId: p.teamId ?? null,
+            teamName: p.teamName,
+            imgURL: p.imgURL,
+            lastSeenAt: now,
+            lastMatchId: matchObjectId,
+          },
+          $setOnInsert: {
+            my11Id: p.id,
+            firstSeenAt: now,
+          },
+        },
+        upsert: true,
+      },
+    }));
+    await Player.bulkWrite(ops, { ordered: false });
+  } catch {
+    // Directory is best-effort; team persistence already succeeded.
+  }
+}
+
 export function normalizeTeamFlags(team: IUserMatchTeam): IUserMatchTeam {
   const cap = new Set<number>(team.captainIds ?? []);
   const vc = new Set<number>(team.viceCaptainIds ?? []);
@@ -151,6 +205,8 @@ export async function getRefreshedUserMatchTeam(args: {
     ).lean();
     if (updated) {
       teamCache.set(cacheKey, { at: now, data: updated });
+      // Best-effort side-effect: keep the master Player directory current.
+      void upsertPlayers(detail.players, updated.matchId);
       return { ok: true, team: normalizeTeamFlags(updated), fetchedAt: now, cached: false };
     }
     return { ok: true, team: normalizeTeamFlags(existing), fetchedAt, cached: true };

@@ -5,6 +5,7 @@ import { User } from "@/models/User";
 import { Rivalry } from "@/models/Rivalry";
 import { Card, Badge } from "@/components/ui/card";
 import { AutomationTools } from "@/components/admin/automation-tools";
+import { PlayerDirectoryPanel } from "@/components/admin/player-directory-panel";
 import { RegenerateFactsButton } from "@/components/admin/regenerate-facts-button";
 import { RivalryWithdrawalQueue } from "@/components/admin/rivalry-withdrawal-queue";
 import { My11NameChangeQueue } from "@/components/admin/my11-name-change-queue";
@@ -252,6 +253,11 @@ export default async function AdminHome() {
   const toolsTab = (
     <div className="space-y-4">
       {canRunAutomations && <AutomationTools canForceComplete={me.role === "superadmin"} />}
+      {me.role === "superadmin" && (
+        <PlayerDirectoryPanel
+          initialEnabled={settings.playerDirectoryEnabled !== false}
+        />
+      )}
       {me.role === "superadmin" && (
         <My11LiveSettingsPanel initial={settings.my11LiveRefreshSec ?? 30} />
       )}

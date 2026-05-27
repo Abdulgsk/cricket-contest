@@ -7,6 +7,7 @@ import {
   getCachedLeaderboard,
   getMy11LiveRefreshMs,
 } from "@/services/contest";
+import { getSettings } from "@/models/Settings";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,8 @@ export async function GET(
     }
     const status = match.status as "upcoming" | "live" | "completed";
     const refreshMs = await getMy11LiveRefreshMs();
+    const settings = await getSettings();
+    const playerDirectoryEnabled = settings.playerDirectoryEnabled !== false;
     const teamRes = await getRefreshedUserMatchTeam({
       matchId,
       userId,
@@ -42,6 +45,7 @@ export async function GET(
     return NextResponse.json({
       ok: true,
       refreshMs,
+      playerDirectoryEnabled,
       match: {
         id: String(match._id),
         teamA: match.teamA,

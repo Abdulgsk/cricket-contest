@@ -9,6 +9,7 @@ import { TeamLogo } from "@/components/team-logo";
 import { UserAvatar } from "@/components/user-avatar";
 import { formatDate } from "@/lib/utils";
 import { TeamPitch } from "@/components/contest/contests-view";
+import { PlayerLookupPanel } from "@/components/contest/player-lookup-panel";
 
 type Player = {
   id: number;
@@ -44,6 +45,7 @@ type TeamResponse =
   | {
       ok: true;
       refreshMs: number;
+      playerDirectoryEnabled?: boolean;
       match: {
         id: string;
         teamA: string;
@@ -351,6 +353,16 @@ export function ContestMatchView({
           </p>
         </Card>
       )}
-    </div>
+      <PlayerLookupPanel
+        matchId={matchId}
+        enabled={
+          data && data.ok ? data.playerDirectoryEnabled !== false : true
+        }
+        refreshMs={
+          data && data.ok && data.match.status === "live"
+            ? data.refreshMs
+            : undefined
+        }
+      />    </div>
   );
 }

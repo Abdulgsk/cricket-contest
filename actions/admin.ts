@@ -1136,3 +1136,142 @@ export async function sendTestReminderAction() {
     sentTo: me.whatsapp ?? null,
   };
 }
+
+// ---- Player directory (new flow) controls ----
+
+/**
+ * Toggle the master Player-directory side-effect + the contest player-lookup
+ * UI. When disabled, the contest flow reverts to the previous behaviour
+ * (no Player upserts, no lookup panel). Lets a superadmin bail out during a
+ * live match if the new flow misbehaves.
+ */
+export async function setPlayerDirectoryEnabledAction(enabled: boolean) {
+  const auth = await assertSuperadmin();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
+  const me = auth.user;
+  const value = Boolean(enabled);
+  await connectDB();
+  await Settings.updateOne(
+    {},
+    { $set: { playerDirectoryEnabled: value } },
+    { upsert: true }
+  );
+  invalidateSettingsCache();
+  await AuditLog.create({
+    actorId: me._id,
+    action: "settings.playerDirectoryEnabled",
+    meta: { value },
+  });
+  revalidatePath("/admin");
+  revalidatePath("/contests");
+  return { ok: true as const, value };
+}
+
+/**
+ * Backfill the Player collection from every UserMatchTeam.players row we
+ * already have. Idempotent — keyed by my11 numeric id, so re-runs only
+ * touch lastSeenAt. Returns counts for the operator.
+ */
+export async function backfillPlayerDirectoryAction() {
+  const auth = await assertSuperadmin();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
+  const me = auth.user;
+  await connectDB();
+
+  const { UserMatchTeam } = await import("@/models/UserMatchTeam");
+  const { Player } = await import("@/models/Player");
+
+  type Row = {
+    matchId: unknown;
+    fetchedAt?: Date;
+    players?: Array<{
+      id: number;
+      name: string;
+      dName?: string;
+      sName?: string;
+      role?: string;
+      roleName?: string;
+      roleSubType?: string;
+      teamId?: number | null;
+      teamName?: string;
+      imgURL?: string;
+    }>;
+  };
+
+  const rows = (await UserMatchTeam.find({})
+    .select("matchId fetchedAt players")
+    .lean()) as Row[];
+
+  // Collapse to one entry per my11 id, keeping the most recent observation.
+  const latest = new Map<
+    number,
+    { row: NonNullable<Row["players"]>[number]; seenAt: Date; matchId: unknown }
+  >();
+  let observed = 0;
+  for (const r of rows) {
+    const at = r.fetchedAt ? new Date(r.fetchedAt) : new Date(0);
+    for (const p of r.players ?? []) {
+      observed++;
+      const prev = latest.get(p.id);
+      if (!prev || at > prev.seenAt) {
+        latest.set(p.id, { row: p, seenAt: at, matchId: r.matchId });
+      }
+    }
+  }
+
+  if (latest.size === 0) {
+    await AuditLog.create({
+      actorId: me._id,
+      action: "players.backfill",
+      meta: { observed: 0, distinct: 0 },
+    });
+    return { ok: true as const, observed: 0, distinct: 0, upserted: 0 };
+  }
+
+  const ops = Array.from(latest.entries()).map(([my11Id, { row, seenAt, matchId }]) => ({
+    updateOne: {
+      filter: { my11Id },
+      update: {
+        $set: {
+          name: row.name,
+          dName: row.dName ?? row.name,
+          sName: row.sName,
+          role: row.role,
+          roleName: row.roleName,
+          roleSubType: row.roleSubType,
+          teamId: row.teamId ?? null,
+          teamName: row.teamName,
+          imgURL: row.imgURL,
+          lastSeenAt: seenAt,
+          lastMatchId: matchId,
+        },
+        $setOnInsert: { my11Id, firstSeenAt: seenAt },
+      },
+      upsert: true,
+    },
+  }));
+
+  // bulkWrite typings are strict — cast to satisfy the union.
+  const res = (await Player.bulkWrite(ops as unknown as never[], {
+    ordered: false,
+  })) as { upsertedCount?: number; modifiedCount?: number };
+
+  await AuditLog.create({
+    actorId: me._id,
+    action: "players.backfill",
+    meta: {
+      observed,
+      distinct: latest.size,
+      upserted: res.upsertedCount ?? 0,
+      modified: res.modifiedCount ?? 0,
+    },
+  });
+
+  return {
+    ok: true as const,
+    observed,
+    distinct: latest.size,
+    upserted: res.upsertedCount ?? 0,
+    modified: res.modifiedCount ?? 0,
+  };
+}

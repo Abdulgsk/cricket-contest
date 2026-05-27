@@ -15,7 +15,8 @@
     "migrate:rbac:dry": "node scripts/migrate-rbac.mjs --dry",
     "migrate:rbac:apply": "node scripts/migrate-rbac.mjs --apply",
     "migrate:dev-member:dry": "node scripts/migrate-dev-member.mjs --dry",
-    "migrate:dev-member:apply": "node scripts/migrate-dev-member.mjs --apply"
+    "migrate:dev-member:apply": "node scripts/migrate-dev-member.mjs --apply",
+    "backfill:players": "node scripts/backfill-player-directory.mjs"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

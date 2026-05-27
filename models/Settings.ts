@@ -63,6 +63,13 @@ export interface ISettings {
   my11sessionCookie?: string;
   my11cookieExpiresAt?: Date;
   my11LiveRefreshSec?: number;
+  /**
+   * Master kill-switch for the Player directory (`models/Player`) side-effect
+   * + the contest "Player ownership" lookup UI. Defaults to enabled. Flip
+   * off from the superadmin operations panel to fall back to the previous
+   * flow during a live match if anything misbehaves.
+   */
+  playerDirectoryEnabled?: boolean;
   updatedAt: Date;
 }
 
@@ -72,6 +79,7 @@ const SettingsSchema = new Schema<ISettings>(
     my11sessionCookie: { type: String, select: false },
     my11cookieExpiresAt: { type: Date },
     my11LiveRefreshSec: { type: Number, default: 30, min: 5, max: 600 },
+    playerDirectoryEnabled: { type: Boolean, default: true },
     announcement: { type: String, default: "" },
     seasonName: { type: String, default: "IPL 2026" },
     bonusConfig: {
