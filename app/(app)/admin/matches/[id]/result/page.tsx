@@ -157,6 +157,7 @@ export default async function AdminMatchResultPage({
       isSuperadmin={isSuperadmin}
       existingPrediction={inferred}
       existingScoreSummary={match.scoreSummary ?? ""}
+      existingWrappedEnabled={!!match.wrappedEnabled}
       pools={pools.map((p) => ({
         id: String(p._id),
         question: p.question,

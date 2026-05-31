@@ -40,6 +40,7 @@ export function ResultEntryForm({
   isSuperadmin = false,
   existingPrediction = { winner: "", topBatter: "", topBowler: "" },
   existingScoreSummary = "",
+  existingWrappedEnabled = false,
 }: {
   matchId: string;
   users: UserRow[];
@@ -52,6 +53,7 @@ export function ResultEntryForm({
   isSuperadmin?: boolean;
   existingPrediction?: { winner: string; topBatter: string; topBowler: string };
   existingScoreSummary?: string;
+  existingWrappedEnabled?: boolean;
 }) {
   const [editing, setEditing] = useState(!resultsEntered);
   const locked = resultsEntered && !editing;
@@ -59,6 +61,7 @@ export function ResultEntryForm({
   const [predBatter, setPredBatter] = useState(existingPrediction.topBatter);
   const [predBowler, setPredBowler] = useState(existingPrediction.topBowler);
   const [scoreSummary, setScoreSummary] = useState(existingScoreSummary);
+  const [wrappedEnabled, setWrappedEnabled] = useState(existingWrappedEnabled);
   const [pending, start] = useTransition();
   const [players, setPlayers] = useState<string[]>(initialPlayers);
   const [playerInfo, setPlayerInfo] = useState<Array<{ name: string; role?: string; keeper?: boolean }>>(initialPlayerInfo);
@@ -176,6 +179,7 @@ export function ResultEntryForm({
         predictionTopBatter: predBatter,
         predictionTopBowler: predBowler,
         scoreSummary: scoreSummary.trim() || undefined,
+        wrappedEnabled,
         customPoolResults,
         entries: rows.map((row) => ({
           userId: row.id,
@@ -427,6 +431,21 @@ export function ResultEntryForm({
             placeholder="e.g. RR 187/4 (20) beat GT 184/8 (20) by 6 wkts"
           />
         </div>
+        <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-border bg-muted/30 p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+            checked={wrappedEnabled}
+            onChange={(e) => setWrappedEnabled(e.target.checked)}
+          />
+          <span className="text-sm">
+            <span className="font-medium">Allow Wrapped</span>
+            <span className="block text-xs text-muted-foreground">
+              Show the GullyXI Wrapped recap on everyone&apos;s dashboard for
+              this match. Leave off to keep it hidden.
+            </span>
+          </span>
+        </label>
       </Card>
 
       {pools.length > 0 && (

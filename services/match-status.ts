@@ -2,6 +2,7 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { autoMapAllLiveMatches } from "@/services/contest-auto-map";
 import { recomputeFantasyForLiveMatches } from "@/services/fantasy-recompute";
+import { refreshMatchPlayingStatus } from "@/services/ipl-sync";
 
 /**
  * Auto-update match statuses:
@@ -20,9 +21,15 @@ import { recomputeFantasyForLiveMatches } from "@/services/fantasy-recompute";
 const STATUS_TTL_MS = 60_000;
 const MAP_TTL_MS = 5 * 60_000;
 const FANTASY_TTL_MS = 90_000;
-type Tick = { statusAt: number; mapAt: number; fantasyAt: number };
+const XI_TTL_MS = 90_000;
+// How long before a match's official start time we begin polling Cricbuzz for
+// the announced XI. The toss (and team news) typically lands ~30 min out, but
+// projected XIs can appear earlier, so poll generously.
+const XI_LOOKAHEAD_MS = 120 * 60_000;
+type Tick = { statusAt: number; mapAt: number; fantasyAt: number; xiAt: number };
 const g = global as unknown as { _matchStatusTick?: Tick };
-const tick: Tick = g._matchStatusTick ?? { statusAt: 0, mapAt: 0, fantasyAt: 0 };
+const tick: Tick =
+  g._matchStatusTick ?? { statusAt: 0, mapAt: 0, fantasyAt: 0, xiAt: 0 };
 g._matchStatusTick = tick;
 
 export async function autoUpdateMatchStatuses() {
@@ -72,6 +79,35 @@ export async function autoUpdateMatchStatuses() {
     tick.fantasyAt = now;
     try {
       await recomputeFantasyForLiveMatches();
+    } catch {
+      // ignore — next tick will retry
+    }
+  }
+
+  // Refresh the announced playing-XI / bench / impact split for matches whose
+  // toss window is open but that haven't officially started yet (status is
+  // still "upcoming" until startTime passes). Without this, post-toss player
+  // segregation only refreshes when someone opens the team builder — every
+  // other surface (fantasy list, contests) shows stale data. Live matches are
+  // already covered by recomputeFantasyForLiveMatches. Independently throttled;
+  // best-effort so a Cricbuzz hiccup never breaks page rendering.
+  if (now - tick.xiAt >= XI_TTL_MS) {
+    tick.xiAt = now;
+    try {
+      const nearStart = await Match.find({
+        status: "upcoming",
+        startTime: { $gt: nowDate, $lte: new Date(now + XI_LOOKAHEAD_MS) },
+        cricbuzzId: { $exists: true, $ne: "" },
+      })
+        .select("_id")
+        .lean();
+      for (const m of nearStart) {
+        try {
+          await refreshMatchPlayingStatus(String(m._id));
+        } catch {
+          // ignore one match — keep going
+        }
+      }
     } catch {
       // ignore — next tick will retry
     }

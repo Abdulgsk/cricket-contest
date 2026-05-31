@@ -261,7 +261,11 @@ export async function buildWrappedData(meId: string): Promise<WrappedData> {
       .sort({ fantasyPoints: -1 })
       .select("userId fantasyPoints")
       .lean(),
-    Match.findOne({ status: "completed", resultsEntered: true })
+    Match.findOne({
+      status: "completed",
+      resultsEntered: true,
+      wrappedEnabled: true,
+    })
       .sort({ startTime: -1 })
       .select(
         "teamA teamB teamAShort teamBShort matchWinner scoreSummary startTime stage",

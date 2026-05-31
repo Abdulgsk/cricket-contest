@@ -188,6 +188,7 @@ const ResultSchema = z.object({
   predictionTopBatter: z.string().min(1),
   predictionTopBowler: z.string().min(1),
   scoreSummary: z.string().max(200).optional(),
+  wrappedEnabled: z.boolean().optional(),
   customPoolResults: z
     .array(z.object({ poolId: z.string().min(1), correctOption: z.string().min(1) }))
     .optional(),
@@ -231,6 +232,15 @@ export async function submitResultsAction(payload: unknown) {
   );
   if (parsed.data.customPoolResults?.length) {
     await scoreCustomPools(parsed.data.matchId, parsed.data.customPoolResults);
+  }
+  // Persist the Wrapped opt-in so only explicitly-allowed matches feed the
+  // dashboard recap.
+  {
+    const { Match } = await import("@/models/Match");
+    await Match.updateOne(
+      { _id: parsed.data.matchId },
+      { $set: { wrappedEnabled: !!parsed.data.wrappedEnabled } },
+    );
   }
   // Fire a single broadcast notification announcing that results are in.
   try {

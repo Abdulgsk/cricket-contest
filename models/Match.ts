@@ -51,6 +51,8 @@ export interface IMatch {
   bountyReason?: string;
   predictionsLocked: boolean;
   resultsEntered: boolean;
+  /** When true, this match feeds the GullyXI Wrapped recap on the dashboard. */
+  wrappedEnabled?: boolean;
   contestUrl?: string;
   /** Pre-match reminder thresholds (minutes-before-start) already announced. */
   remindersSent?: number[];
@@ -119,6 +121,7 @@ const MatchSchema = new Schema<IMatch>(
     bountyReason: { type: String, trim: true },
     predictionsLocked: { type: Boolean, default: false },
     resultsEntered: { type: Boolean, default: false },
+    wrappedEnabled: { type: Boolean, default: false },
     contestUrl: { type: String },
     remindersSent: { type: [Number], default: [] },
     autoMapDone: { type: Boolean, default: false, index: true },
