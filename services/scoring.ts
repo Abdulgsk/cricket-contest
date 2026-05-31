@@ -8,6 +8,7 @@ import { BonusAuditLog } from "@/models/BonusAuditLog";
 import { User } from "@/models/User";
 import { getSettings } from "@/models/Settings";
 import { settleCivilWar } from "@/services/civil-war";
+import { FantasyTeam } from "@/models/FantasyTeam";
 import {
   RANK_POINTS,
   PENALTIES,
@@ -186,8 +187,32 @@ export async function processMatchResults(
   // --- Bounty points (separate bucket, not part of bonuses) ---
   await applyBountyPoints({ matchId, results: created, bountyId, bonusConfig });
 
+  // --- In-app fantasy (GullyXI) points per user for this match ---
+  // Rivalries and Civil War are settled off the per-user fantasy points on the
+  // result form. The admin presses "Fetch" to compute those from the in-app
+  // scorecard scoring, may then ADJUST any number by hand, and Submit uses the
+  // final values as-is. We deliberately do NOT recompute here, so manual edits
+  // survive — submission only applies bonuses on top of the submitted numbers.
+  // Whether a user "submitted" (for forfeit/missed logic) still depends on them
+  // having actually built an in-app XI (a FantasyTeam exists).
+  const fantasyTeams = await FantasyTeam.find({ matchId })
+    .select("userId")
+    .lean();
+  const inAppSubmitted = new Set<string>(
+    fantasyTeams.map((t) => String(t.userId))
+  );
+  const inAppFpByUser = new Map<string, number>(
+    created.map((r) => [String(r.userId), r.fantasyPoints ?? 0])
+  );
+
   // --- Rivalry points (1v1 challenges) ---
-  await settleRivalries({ matchId, results: created, bonusConfig });
+  await settleRivalries({
+    matchId,
+    results: created,
+    bonusConfig,
+    fpByUser: inAppFpByUser,
+    submitted: inAppSubmitted,
+  });
 
   // --- Civil War team scoring (depends on rivalries being settled) ---
   await applyCivilWarPoints({
@@ -196,6 +221,8 @@ export async function processMatchResults(
     prevLeaderboardOrder: prevLb.map((r) => String(r.userId)),
     captainTeamWin: bonusConfig.captainTeamWin,
     leaderTopperBonus: bonusConfig.leaderTopperBonus,
+    fpByUser: inAppFpByUser,
+    submitted: inAppSubmitted,
   });
 
   // --- Score predictions for this match ---
@@ -465,10 +492,14 @@ async function settleRivalries(args: {
   matchId: string;
   results: HydratedDocument<IMatchResult>[];
   bonusConfig: BonusRuntimeConfig;
+  /** In-app fantasy XI points per user (decides the winner). */
+  fpByUser: Map<string, number>;
+  /** Users who submitted an in-app fantasy XI for this match. */
+  submitted: Set<string>;
 }) {
   const { Rivalry } = await import("@/models/Rivalry");
   const { Notification } = await import("@/models/Notification");
-  const { matchId, results, bonusConfig } = args;
+  const { matchId, results, bonusConfig, fpByUser, submitted } = args;
   const rivalries = await Rivalry.find({ matchId, status: "accepted" });
   if (!rivalries.length) {
     // Nothing to settle, but reset any stale rivalry points on results just in case.
@@ -494,17 +525,23 @@ async function settleRivalries(args: {
     const oRes = resByUser.get(String(riv.opponentId));
     let winnerId: mongoose.Types.ObjectId | null = null;
     if (cRes && oRes) {
-      const cMissed = cRes.missed || cRes.rank === 0;
-      const oMissed = oRes.missed || oRes.rank === 0;
-      if (cMissed && oMissed) {
+      // Winner = higher in-app fantasy XI score. A player who never submitted
+      // an in-app team forfeits; if both skipped it's a draw.
+      const cId = String(riv.challengerId);
+      const oId = String(riv.opponentId);
+      const cIn = submitted.has(cId);
+      const oIn = submitted.has(oId);
+      const cFp = fpByUser.get(cId) ?? 0;
+      const oFp = fpByUser.get(oId) ?? 0;
+      if (!cIn && !oIn) {
         winnerId = null;
-      } else if (cMissed) {
+      } else if (!cIn) {
         winnerId = riv.opponentId;
-      } else if (oMissed) {
+      } else if (!oIn) {
         winnerId = riv.challengerId;
-      } else if (cRes.rank < oRes.rank) {
+      } else if (cFp > oFp) {
         winnerId = riv.challengerId;
-      } else if (oRes.rank < cRes.rank) {
+      } else if (oFp > cFp) {
         winnerId = riv.opponentId;
       } else {
         winnerId = null;
@@ -601,9 +638,13 @@ async function applyCivilWarPoints(args: {
   prevLeaderboardOrder: string[];
   captainTeamWin: number;
   leaderTopperBonus: number;
+  /** In-app fantasy XI points per user (drives team totals & captain duel). */
+  fpByUser: Map<string, number>;
+  /** Users who submitted an in-app fantasy XI for this match. */
+  submitted: Set<string>;
 }) {
   const { Rivalry } = await import("@/models/Rivalry");
-  const { matchId, results } = args;
+  const { matchId, results, fpByUser, submitted } = args;
 
   // Reset civil war points on all results first (idempotent re-runs).
   for (const r of results) {
@@ -620,8 +661,8 @@ async function applyCivilWarPoints(args: {
     matchId,
     matchResults: results.map((r) => ({
       userId: r.userId as mongoose.Types.ObjectId,
-      fantasyPoints: r.fantasyPoints,
-      missed: r.missed,
+      fantasyPoints: fpByUser.get(String(r.userId)) ?? 0,
+      missed: !submitted.has(String(r.userId)),
     })),
     rivalries: rivalries.map((r) => ({
       _id: r._id as mongoose.Types.ObjectId,

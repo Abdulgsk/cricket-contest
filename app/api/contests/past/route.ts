@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
-import { UserMatchTeam } from "@/models/UserMatchTeam";
+import { FantasyTeam } from "@/models/FantasyTeam";
 import { requireUser } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
@@ -10,9 +10,12 @@ export async function GET() {
   try {
     const me = await requireUser();
     await connectDB();
+
+    // Completed matches that have at least one in-app fantasy team.
+    const playedMatchIds = await FantasyTeam.distinct("matchId");
     const matches = await Match.find({
       status: "completed",
-      contestUrl: { $exists: true, $ne: "" },
+      _id: { $in: playedMatchIds },
     })
       .sort({ startTime: -1 })
       .limit(40)
@@ -20,15 +23,40 @@ export async function GET() {
       .lean();
 
     const ids = matches.map((m) => m._id);
-    const myTeams = await UserMatchTeam.find({
+
+    // My own score per match.
+    const myTeams = await FantasyTeam.find({
       matchId: { $in: ids },
       userId: me._id,
     })
-      .select("matchId rank score")
+      .select("matchId totalPoints")
       .lean();
-    const myMap = new Map(
-      myTeams.map((t) => [String(t.matchId), { rank: t.rank, score: t.score }])
+    const myScoreMap = new Map(
+      myTeams.map((t) => [String(t.matchId), t.totalPoints ?? 0])
     );
+
+    // Dense rank within each match (so myRank reflects the friend group).
+    const allTeams = await FantasyTeam.find({ matchId: { $in: ids } })
+      .select("matchId userId totalPoints")
+      .lean();
+    const byMatch = new Map<string, { userId: string; tp: number }[]>();
+    for (const t of allTeams) {
+      const key = String(t.matchId);
+      if (!byMatch.has(key)) byMatch.set(key, []);
+      byMatch.get(key)!.push({ userId: String(t.userId), tp: t.totalPoints ?? 0 });
+    }
+    const myRankMap = new Map<string, number>();
+    for (const [key, rows] of byMatch) {
+      rows.sort((a, b) => b.tp - a.tp);
+      let lastTp: number | null = null;
+      let lastRank = 0;
+      rows.forEach((r, i) => {
+        const rk = lastTp !== null && r.tp === lastTp ? lastRank : i + 1;
+        if (r.userId === String(me._id)) myRankMap.set(key, rk);
+        lastTp = r.tp;
+        lastRank = rk;
+      });
+    }
 
     return NextResponse.json(
       {
@@ -43,8 +71,10 @@ export async function GET() {
           venue: m.venue ?? null,
           scoreSummary: m.scoreSummary ?? null,
           matchWinner: m.matchWinner ?? null,
-          myRank: myMap.get(String(m._id))?.rank ?? null,
-          myScore: myMap.get(String(m._id))?.score ?? null,
+          myRank: myRankMap.get(String(m._id)) ?? null,
+          myScore: myScoreMap.has(String(m._id))
+            ? Math.round((myScoreMap.get(String(m._id)) ?? 0) * 100) / 100
+            : null,
         })),
       },
       {

@@ -3,30 +3,9 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { CivilWar } from "@/models/CivilWar";
 import { User } from "@/models/User";
-import {
-  fetchLeaderboardFromContestUrl,
-  My11AuthError,
-  My11NotReadyError,
-  type My11LeaderboardResult,
-} from "@/lib/my11-api";
-import { normalizeMy11circleName } from "@/lib/my11circle";
+import { FantasyTeam } from "@/models/FantasyTeam";
 
 export const dynamic = "force-dynamic";
-
-// Tiny per-process cache so a roomful of clients polling once a minute
-// doesn't hammer my11. Keyed by contestUrl.
-type CacheEntry = { at: number; data: My11LeaderboardResult };
-const CACHE_TTL_MS = 15_000;
-const lbCache = new Map<string, CacheEntry>();
-
-async function getLeaderboardCached(contestUrl: string) {
-  const hit = lbCache.get(contestUrl);
-  const now = Date.now();
-  if (hit && now - hit.at < CACHE_TTL_MS) return { data: hit.data, fetchedAt: hit.at };
-  const data = await fetchLeaderboardFromContestUrl(contestUrl);
-  lbCache.set(contestUrl, { at: now, data });
-  return { data, fetchedAt: now };
-}
 
 type LiveMember = {
   userId: string;
@@ -74,14 +53,6 @@ export async function GET(
       return Response.json({ ok: false, error: "Not a participant" }, { status: 403 });
     }
 
-    if (!match.contestUrl) {
-      return Response.json({
-        ok: true,
-        available: false,
-        reason: "no_contest",
-        matchStatus: match.status,
-      });
-    }
     if (match.status === "upcoming") {
       return Response.json({
         ok: true,
@@ -116,55 +87,33 @@ export async function GET(
 
     const memberIds = cw.members.map((m) => String(m.userId));
     const users = await User.find({ _id: { $in: memberIds } })
-      .select("username my11circleName")
+      .select("username")
       .lean();
     const userMap = new Map(
-      users.map((u) => [
-        String(u._id),
-        {
-          username: u.username,
-          my11circleName: u.my11circleName ?? "",
-        },
-      ])
+      users.map((u) => [String(u._id), { username: u.username }])
     );
 
-    let lbResult;
+    // In-app fantasy XI points per member (our own scoring, not my11). Refresh
+    // from the live Cricbuzz scorecard first — best-effort so a scrape hiccup
+    // never breaks the panel; we then read the persisted FantasyTeam totals.
+    let fetchedAt = Date.now();
     try {
-      lbResult = await getLeaderboardCached(match.contestUrl);
-    } catch (e) {
-      if (e instanceof My11AuthError) {
-        return Response.json({
-          ok: true,
-          available: false,
-          reason: "auth_expired",
-          matchStatus: match.status,
-        });
-      }
-      if (e instanceof My11NotReadyError) {
-        return Response.json({
-          ok: true,
-          available: false,
-          reason: "not_ready",
-          matchStatus: match.status,
-        });
-      }
-      const msg = e instanceof Error ? e.message : "";
-      if (/Contest URL must contain/i.test(msg)) {
-        return Response.json({
-          ok: true,
-          available: false,
-          reason: "bad_contest_url",
-          matchStatus: match.status,
-        });
-      }
-      throw e;
+      const { recomputeFantasyForMatch } = await import(
+        "@/services/fantasy-recompute"
+      );
+      await recomputeFantasyForMatch(matchId);
+      fetchedAt = Date.now();
+    } catch {
+      // ignore — fall back to whatever totals are already persisted
     }
-
-    const lbMap = new Map(
-      lbResult.data.entries.map((row) => [
-        normalizeMy11circleName(row.username),
-        row,
-      ])
+    const fantasyTeams = await FantasyTeam.find({ matchId: match._id })
+      .select("userId totalPoints")
+      .lean();
+    const fpMap = new Map(
+      fantasyTeams.map((t) => [String(t.userId), t.totalPoints ?? 0])
+    );
+    const submittedSet = new Set(
+      fantasyTeams.map((t) => String(t.userId))
     );
 
     const buildMember = (m: {
@@ -174,18 +123,14 @@ export async function GET(
       const uid = String(m.userId);
       const u = userMap.get(uid);
       const username = u?.username ?? "—";
-      const key = u?.my11circleName
-        ? normalizeMy11circleName(u.my11circleName)
-        : "";
-      const hit = key ? lbMap.get(key) : undefined;
       const isCaptain = uid === (m.side === "A" ? capA : capB);
       return {
         userId: uid,
         username,
-        fantasyPoints: hit?.totalScore ?? 0,
+        fantasyPoints: fpMap.get(uid) ?? 0,
         isCaptain,
         isMe: uid === myId,
-        matched: !!hit,
+        matched: submittedSet.has(uid),
       };
     };
 
@@ -234,9 +179,7 @@ export async function GET(
       ok: true,
       available: true,
       matchStatus: match.status,
-      lastUpdated: new Date(lbResult.fetchedAt).toISOString(),
-      contestId: lbResult.data.contestId,
-      my11MatchId: lbResult.data.matchId,
+      lastUpdated: new Date(fetchedAt).toISOString(),
       teamA,
       teamB,
       leader,

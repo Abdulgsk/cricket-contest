@@ -23,8 +23,6 @@ export type LiveAvailable = {
   available: true;
   matchStatus: string;
   lastUpdated: string;
-  contestId: number;
-  my11MatchId: number;
   teamA: LiveTeam;
   teamB: LiveTeam;
   leader: "A" | "B" | "tie";

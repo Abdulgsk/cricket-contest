@@ -3,6 +3,7 @@ import type mongoose from "mongoose";
 import { Match } from "@/models/Match";
 import { Player } from "@/models/Player";
 import { UserMatchTeam, type IUserMatchTeam, type IUserMatchTeamPlayer } from "@/models/UserMatchTeam";
+import { FantasyTeam, type IFantasyTeam } from "@/models/FantasyTeam";
 import { User } from "@/models/User";
 import { getSettings } from "@/models/Settings";
 import {
@@ -16,33 +17,24 @@ import { normalizeMy11circleName } from "@/lib/my11circle";
 
 /**
  * Resolve the contest match the Contests tab should show.
- * Priority: live (with contestUrl) → next upcoming (with contestUrl)
- * → most recent completed (with contestUrl).
- * Completed matches are surfaced separately in the "Past contests" list,
- * so the header always leans toward what's next.
+ * Priority: live → next upcoming → most recent completed.
+ * Contests are now powered by in-app GullyXI fantasy teams, so a my11
+ * contestUrl is no longer required. Completed matches are surfaced separately
+ * in the "Past contests" list, so the header always leans toward what's next.
  */
 export async function resolveCurrentContestMatch() {
   await connectDB();
-  const live = await Match.findOne({
-    status: "live",
-    contestUrl: { $exists: true, $ne: "" },
-  })
+  const live = await Match.findOne({ status: "live" })
     .sort({ startTime: -1 })
     .lean();
   if (live) return live;
 
-  const upcoming = await Match.findOne({
-    status: "upcoming",
-    contestUrl: { $exists: true, $ne: "" },
-  })
+  const upcoming = await Match.findOne({ status: "upcoming" })
     .sort({ startTime: 1 })
     .lean();
   if (upcoming) return upcoming;
 
-  const completed = await Match.findOne({
-    status: "completed",
-    contestUrl: { $exists: true, $ne: "" },
-  })
+  const completed = await Match.findOne({ status: "completed" })
     .sort({ startTime: -1 })
     .lean();
   return completed ?? null;
@@ -318,3 +310,210 @@ export async function getMy11LiveRefreshMs() {
 }
 
 export { normalizeMy11circleName };
+
+// ---------------------------------------------------------------------------
+// In-app GullyXI Fantasy contest (my11-independent)
+// ---------------------------------------------------------------------------
+// The Contests tab is now powered by the teams members build in /fantasy
+// (FantasyTeam), scored live off the Cricbuzz scorecard — NOT my11. These
+// helpers map FantasyTeam docs into the shapes the contest UI already renders.
+
+const FANTASY_ROLE_LABEL: Record<string, string> = {
+  WK: "Wicket-Keeper",
+  BAT: "Batter",
+  AR: "All-Rounder",
+  BOWL: "Bowler",
+};
+
+type FantasyViewPlayer = {
+  id: number;
+  name: string;
+  dName: string;
+  role?: string;
+  roleName?: string;
+  teamName?: string;
+  imgURL?: string;
+  points: number;
+  isCaptain: boolean;
+  isViceCaptain: boolean;
+  isWicketKeeper?: boolean;
+};
+
+export type FantasyViewTeam = {
+  _id: string;
+  matchId: string;
+  userId: string;
+  my11Username: string;
+  userTeamName?: string;
+  rank: number | null;
+  score: number | null;
+  captainName?: string;
+  viceCaptainName?: string;
+  players: FantasyViewPlayer[];
+  fetchedAt: number;
+};
+
+function mapFantasyPlayers(
+  team: Pick<IFantasyTeam, "players" | "subs">,
+  imgByKey: Map<string, string | undefined>
+): FantasyViewPlayer[] {
+  const round = (n: number | undefined) => Math.round((n ?? 0) * 100) / 100;
+  const mapOne = (
+    p: IFantasyTeam["players"][number],
+    fallbackId: number
+  ): FantasyViewPlayer => ({
+    id: p.profileId && Number(p.profileId) ? Number(p.profileId) : fallbackId,
+    name: p.name,
+    dName: p.name,
+    role: p.fantasyRole,
+    roleName: FANTASY_ROLE_LABEL[p.fantasyRole] ?? p.role,
+    teamName: p.teamShort,
+    imgURL: imgByKey.get(p.profileId ?? p.name),
+    points: round(p.points),
+    isCaptain: p.isCaptain,
+    isViceCaptain: p.isViceCaptain,
+    isWicketKeeper: p.fantasyRole === "WK",
+  });
+  // Starters that weren't subbed out, plus any active impact backups.
+  const starters = (team.players ?? [])
+    .filter((p) => !p.replacedByName)
+    .map((p, i) => mapOne(p, -(i + 1)));
+  const activeSubs = (team.subs ?? [])
+    .filter((s) => s.activeForName)
+    .map((s, i) => mapOne(s, -(100 + i)));
+  return [...starters, ...activeSubs];
+}
+
+/** Standard competition ranking (ties share the lower rank) over totals. */
+function denseRankByScore<T extends { score: number }>(rows: T[]): void {
+  let lastScore: number | null = null;
+  let lastRank = 0;
+  rows.forEach((r, i) => {
+    const rank = lastScore !== null && r.score === lastScore ? lastRank : i + 1;
+    // @ts-expect-error — caller rows carry rank/localRank fields
+    r.rank = rank;
+    // @ts-expect-error
+    r.localRank = rank;
+    lastScore = r.score;
+    lastRank = rank;
+  });
+}
+
+/**
+ * Everyone who built an in-app fantasy XI for this match, ranked by live
+ * total points. Mirrors the Holder shape used by the Positions / Compare UI.
+ */
+export async function listFantasyHolders(matchId: string) {
+  await connectDB();
+  const teams = await FantasyTeam.find({ matchId })
+    .select("userId totalPoints")
+    .lean();
+  const userIds = teams.map((t) => t.userId);
+  const users = await User.find({ _id: { $in: userIds } })
+    .select("username userId avatar avatarColor")
+    .lean();
+  const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+  const rows = teams
+    .map((t) => {
+      const u = userMap.get(String(t.userId));
+      return {
+        userId: String(t.userId),
+        username: u?.username ?? "Unknown",
+        handle: u?.userId ?? "",
+        avatar: u?.avatar ?? null,
+        avatarColor: u?.avatarColor ?? null,
+        rank: null as number | null,
+        score: Math.round((t.totalPoints ?? 0) * 100) / 100,
+        my11Username: "",
+        localRank: 0,
+      };
+    })
+    .sort((a, b) =>
+      a.score !== b.score
+        ? b.score - a.score
+        : a.username.localeCompare(b.username)
+    );
+  denseRankByScore(rows);
+  return rows;
+}
+
+/** Build a FantasyTeam-backed Team for the pitch/compare view. */
+export async function getFantasyTeamForView(
+  matchId: string,
+  userId: string
+): Promise<FantasyViewTeam | null> {
+  await connectDB();
+  const team = await FantasyTeam.findOne({ matchId, userId })
+    .select(
+      "players subs captainName viceCaptainName totalPoints pointsComputedAt"
+    )
+    .lean();
+  if (!team) return null;
+
+  // Rank this user among all teams for the match.
+  const all = await FantasyTeam.find({ matchId })
+    .select("userId totalPoints")
+    .lean();
+  const ranked = all
+    .map((t) => ({ userId: String(t.userId), tp: t.totalPoints ?? 0 }))
+    .sort((a, b) => b.tp - a.tp);
+  let rank: number | null = null;
+  let lastTp: number | null = null;
+  let lastRank = 0;
+  ranked.forEach((r, i) => {
+    const rk = lastTp !== null && r.tp === lastTp ? lastRank : i + 1;
+    if (r.userId === String(userId)) rank = rk;
+    lastTp = r.tp;
+    lastRank = rk;
+  });
+
+  // Player face images from the match roster (FantasyTeam doesn't store them).
+  const match = await Match.findById(matchId).select("players").lean();
+  const imgByKey = new Map<string, string | undefined>();
+  for (const p of match?.players ?? []) {
+    if (p.profileId) imgByKey.set(p.profileId, p.imgUrl);
+    imgByKey.set(p.name, p.imgUrl);
+  }
+
+  return {
+    _id: String(team._id),
+    matchId: String(matchId),
+    userId: String(userId),
+    my11Username: "",
+    rank,
+    score: Math.round((team.totalPoints ?? 0) * 100) / 100,
+    captainName: team.captainName,
+    viceCaptainName: team.viceCaptainName,
+    players: mapFantasyPlayers(team, imgByKey),
+    fetchedAt: team.pointsComputedAt
+      ? new Date(team.pointsComputedAt).getTime()
+      : Date.now(),
+  };
+}
+
+// Light per-match throttle so a roomful of pollers doesn't scrape Cricbuzz on
+// every request. The live recompute itself is idempotent.
+const fantasyRecomputeAt = new Map<string, number>();
+const FANTASY_RECOMPUTE_TTL_MS = 20_000;
+
+/** Best-effort live refresh of in-app fantasy points for a match. */
+export async function refreshFantasyContestIfLive(
+  matchId: string,
+  status: "upcoming" | "live" | "completed"
+): Promise<void> {
+  if (status !== "live") return;
+  const now = Date.now();
+  const last = fantasyRecomputeAt.get(matchId) ?? 0;
+  if (now - last < FANTASY_RECOMPUTE_TTL_MS) return;
+  fantasyRecomputeAt.set(matchId, now);
+  try {
+    const { recomputeFantasyForMatch } = await import(
+      "@/services/fantasy-recompute"
+    );
+    await recomputeFantasyForMatch(matchId);
+  } catch {
+    // ignore — serve whatever totals are already persisted
+  }
+}
+

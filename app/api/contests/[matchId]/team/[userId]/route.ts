@@ -3,8 +3,8 @@ import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { requireUser } from "@/lib/rbac";
 import {
-  getRefreshedUserMatchTeam,
-  getCachedLeaderboard,
+  getFantasyTeamForView,
+  refreshFantasyContestIfLive,
   getMy11LiveRefreshMs,
 } from "@/services/contest";
 import { getSettings } from "@/models/Settings";
@@ -20,7 +20,7 @@ export async function GET(
     const { matchId, userId } = await params;
     await connectDB();
     const match = await Match.findById(matchId)
-      .select("teamA teamB teamAShort teamBShort startTime status venue contestUrl scoreSummary matchWinner")
+      .select("teamA teamB teamAShort teamBShort startTime status venue scoreSummary matchWinner")
       .lean();
     if (!match) {
       return NextResponse.json({ ok: false, error: "Match not found" }, { status: 404 });
@@ -30,6 +30,19 @@ export async function GET(
     const settings = await getSettings();
     const playerDirectoryEnabled = settings.playerDirectoryEnabled !== false;
 
+    const matchPayload = {
+      id: String(match._id),
+      teamA: match.teamA,
+      teamB: match.teamB,
+      teamAShort: match.teamAShort ?? null,
+      teamBShort: match.teamBShort ?? null,
+      startTime: match.startTime,
+      status,
+      venue: match.venue ?? null,
+      scoreSummary: match.scoreSummary ?? null,
+      matchWinner: match.matchWinner ?? null,
+    };
+
     // Other members' teams stay hidden until the match is live (no peeking at
     // rivals' line-ups pre-toss). Your own team is always visible.
     const isOther = String(userId) !== String(me._id);
@@ -38,18 +51,7 @@ export async function GET(
         ok: true,
         refreshMs,
         playerDirectoryEnabled,
-        match: {
-          id: String(match._id),
-          teamA: match.teamA,
-          teamB: match.teamB,
-          teamAShort: match.teamAShort ?? null,
-          teamBShort: match.teamBShort ?? null,
-          startTime: match.startTime,
-          status,
-          venue: match.venue ?? null,
-          scoreSummary: match.scoreSummary ?? null,
-          matchWinner: match.matchWinner ?? null,
-        },
+        match: matchPayload,
         team: null,
         reason: "hidden_until_live",
         leaderboard: null,
@@ -57,48 +59,19 @@ export async function GET(
       });
     }
 
-    const teamRes = await getRefreshedUserMatchTeam({
-      matchId,
-      userId,
-      ttlMs: refreshMs,
-      matchStatus: status,
-      contestUrl: match.contestUrl ?? "",
-    });
-
-    let lb: Awaited<ReturnType<typeof getCachedLeaderboard>> | null = null;
-    if (match.contestUrl && status !== "upcoming") {
-      lb = await getCachedLeaderboard(match.contestUrl, refreshMs);
-    }
+    // Refresh in-app fantasy points while live (throttled), then read totals.
+    await refreshFantasyContestIfLive(String(match._id), status);
+    const team = await getFantasyTeamForView(String(match._id), String(userId));
 
     return NextResponse.json({
       ok: true,
       refreshMs,
       playerDirectoryEnabled,
-      match: {
-        id: String(match._id),
-        teamA: match.teamA,
-        teamB: match.teamB,
-        teamAShort: match.teamAShort ?? null,
-        teamBShort: match.teamBShort ?? null,
-        startTime: match.startTime,
-        status,
-        venue: match.venue ?? null,
-        scoreSummary: match.scoreSummary ?? null,
-        matchWinner: match.matchWinner ?? null,
-      },
-      team: teamRes.ok
-        ? {
-            ...teamRes.team,
-            _id: String(teamRes.team._id),
-            matchId: String(teamRes.team.matchId),
-            userId: String(teamRes.team.userId),
-            fetchedAt: teamRes.fetchedAt,
-            cached: teamRes.cached,
-          }
-        : null,
-      reason: teamRes.ok ? null : teamRes.error,
-      leaderboard: lb && "data" in lb && lb.data ? lb.data.entries : null,
-      leaderboardError: lb && "error" in lb ? lb.error : null,
+      match: matchPayload,
+      team,
+      reason: team ? null : "team_not_mapped",
+      leaderboard: null,
+      leaderboardError: null,
     });
   } catch (err) {
     return NextResponse.json(

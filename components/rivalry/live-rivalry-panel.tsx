@@ -205,7 +205,7 @@ export function LiveRivalryPanel({
               </div>
               {meHit && !meHit.matched && (
                 <div className="text-[9px] text-muted-foreground/70 mt-0.5">
-                  my11 not linked
+                  no team
                 </div>
               )}
             </div>
@@ -256,7 +256,7 @@ export function LiveRivalryPanel({
               </div>
               {oppHit && !oppHit.matched && (
                 <div className="text-[9px] text-muted-foreground/70 mt-0.5">
-                  my11 not linked
+                  no team
                 </div>
               )}
             </div>

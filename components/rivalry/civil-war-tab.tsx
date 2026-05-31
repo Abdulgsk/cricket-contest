@@ -386,7 +386,7 @@ function TeamPanel({
                       className={`text-xs font-bold tabular-nums ${
                         mem.isCaptain ? "text-amber-600 dark:text-amber-300" : ""
                       }`}
-                      title="Live fantasy points (My11)"
+                      title="Live fantasy points (GullyXI)"
                     >
                       {live.fp}
                     </span>

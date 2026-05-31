@@ -326,7 +326,7 @@ function CaptainCell({
           {member.fantasyPoints}
           {!member.matched && (
             <span className="ml-1 text-[9px] font-medium text-muted-foreground/70">
-              unlinked
+              no team
             </span>
           )}
         </div>

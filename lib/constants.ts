@@ -84,8 +84,8 @@ export const FANTASY_TEAM_RULES = {
 export const FANTASY_T20 = {
   batting: {
     run: 1,
-    boundaryBonus: 4, // per four
-    sixBonus: 6, // per six
+    boundaryBonus: 4, // four = 4 runs + 4 bonus = 8 total
+    sixBonus: 6, // six = 6 runs + 6 bonus = 12 total
     duck: -2, // batter/WK/AR dismissed for 0 (bowlers exempt)
     /** Highest single milestone reached is awarded (not cumulative). */
     milestones: [

@@ -347,7 +347,7 @@ function MatchHeader({
               </div>
             </>
           ) : (
-            <div className="text-[11px] text-muted-foreground">No team mapped yet</div>
+            <div className="text-[11px] text-muted-foreground">No team yet</div>
           )}
           {match.status === "live" && lastUpdated && (
             <div className="mt-1 text-[10px] text-muted-foreground">
@@ -684,10 +684,10 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
       <Card>
         <div className="space-y-2 text-center py-6">
           <div className="text-2xl">🏏</div>
-          <h2 className="text-base font-semibold">No contest linked</h2>
+          <h2 className="text-base font-semibold">No contest right now</h2>
           <p className="text-sm text-muted-foreground">
-            The admin hasn&apos;t linked a My11 contest yet. Once a match has a contest URL
-            and the admin fetches teams, your team will show up here.
+            There&apos;s no current match. When the next match is added, you can
+            build your GullyXI team and it&apos;ll show up here.
           </p>
         </div>
       </Card>
@@ -712,15 +712,7 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
         lastUpdated={lastUpdated}
       />
 
-      {!match.contestLinked && (
-        <Card className="border-amber-500/40 bg-amber-500/5">
-          <p className="text-sm">
-            ⏳ Match is set, but the admin hasn&apos;t added the My11 contest URL yet.
-          </p>
-        </Card>
-      )}
-
-      {match.contestLinked && !myTeam && myTeamReason === "team_not_mapped" && (
+      {!myTeam && myTeamReason === "team_not_mapped" && (
         myFantasy.hasTeam ? (
           <Card className="border-primary/30 bg-primary/5">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -755,14 +747,6 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
             </div>
           </Card>
         )
-      )}
-
-      {match.contestLinked && myTeamReason === "auth_expired" && (
-        <Card className="border-danger/40 bg-danger/5">
-          <p className="text-sm">
-            ⚠️ My11 session has expired. Ask the admin to re-sync the cookie.
-          </p>
-        </Card>
       )}
 
       {holders.length > 0 && (
