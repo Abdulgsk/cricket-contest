@@ -70,7 +70,7 @@ export function toFantasyRole(role?: string | null): FantasyRole {
 /** Squad composition limits for a valid 11-player fantasy team. */
 export const FANTASY_TEAM_RULES = {
   TEAM_SIZE: 11,
-  MIN: { WK: 1, BAT: 3, AR: 1, BOWL: 3 } as Record<FantasyRole, number>,
+  MIN: { WK: 1, BAT: 3, AR: 1, BOWL: 1 } as Record<FantasyRole, number>,
   MAX: { WK: 4, BAT: 6, AR: 4, BOWL: 6 } as Record<FantasyRole, number>,
   /** Dream11 caps how many players you may pick from a single real team. */
   MAX_PER_TEAM: 7,
