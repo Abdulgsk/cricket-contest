@@ -163,7 +163,7 @@ export async function processMatchResults(
         bonuses: [],
         finalPoints: base + penaltyTotal,
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true }
     );
     created.push(upsert!);
   }

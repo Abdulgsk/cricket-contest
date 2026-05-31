@@ -34,6 +34,7 @@ const GROUP_BLURB: Record<FeatureGroup, string> = {
   Tools: "Maintenance and automations.",
   Content: "Narratives and AI-generated content.",
   Developer: "Dev workspace: bugs, work items, diagnostics, audit log.",
+  Integrations: "External integrations like My11Circle session capture.",
 };
 
 export function PermissionEditor({

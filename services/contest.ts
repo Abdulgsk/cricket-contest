@@ -16,8 +16,10 @@ import { normalizeMy11circleName } from "@/lib/my11circle";
 
 /**
  * Resolve the contest match the Contests tab should show.
- * Priority: live (with contestUrl) → most recent completed (with contestUrl)
- * → next upcoming (with contestUrl).
+ * Priority: live (with contestUrl) → next upcoming (with contestUrl)
+ * → most recent completed (with contestUrl).
+ * Completed matches are surfaced separately in the "Past contests" list,
+ * so the header always leans toward what's next.
  */
 export async function resolveCurrentContestMatch() {
   await connectDB();
@@ -29,21 +31,21 @@ export async function resolveCurrentContestMatch() {
     .lean();
   if (live) return live;
 
-  const completed = await Match.findOne({
-    status: "completed",
-    contestUrl: { $exists: true, $ne: "" },
-  })
-    .sort({ startTime: -1 })
-    .lean();
-  if (completed) return completed;
-
   const upcoming = await Match.findOne({
     status: "upcoming",
     contestUrl: { $exists: true, $ne: "" },
   })
     .sort({ startTime: 1 })
     .lean();
-  return upcoming ?? null;
+  if (upcoming) return upcoming;
+
+  const completed = await Match.findOne({
+    status: "completed",
+    contestUrl: { $exists: true, $ne: "" },
+  })
+    .sort({ startTime: -1 })
+    .lean();
+  return completed ?? null;
 }
 
 // Module-level cache so concurrent client polls don't hammer my11.
@@ -201,7 +203,7 @@ export async function getRefreshedUserMatchTeam(args: {
           sourceUpdatedAt: detail.updatedAt ? new Date(detail.updatedAt) : null,
         },
       },
-      { new: true }
+      { returnDocument: "after" }
     ).lean();
     if (updated) {
       teamCache.set(cacheKey, { at: now, data: updated });

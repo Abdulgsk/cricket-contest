@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/rbac";
+import { FantasyTeam } from "@/models/FantasyTeam";
 import {
   resolveCurrentContestMatch,
   getCachedLeaderboard,
@@ -52,6 +53,24 @@ export async function GET() {
       lb = await getCachedLeaderboard(contestUrl, refreshMs);
     }
 
+    // The user's in-app GullyXI Fantasy team for this match (independent of
+    // my11). Used to surface their XI / a "create team" CTA instead of an
+    // "admin hasn't fetched" wait message.
+    const fantasy = await FantasyTeam.findOne({ matchId, userId: me._id })
+      .select("players subs captainName viceCaptainName totalPoints pointsComputedAt")
+      .lean();
+    const myFantasy = fantasy
+      ? {
+          hasTeam: true,
+          captainName: fantasy.captainName,
+          viceCaptainName: fantasy.viceCaptainName,
+          totalPoints: Math.round((fantasy.totalPoints ?? 0) * 100) / 100,
+          playerCount: fantasy.players?.length ?? 0,
+          subCount: fantasy.subs?.length ?? 0,
+          scored: !!fantasy.pointsComputedAt,
+        }
+      : { hasTeam: false };
+
     return NextResponse.json({
       ok: true,
       available: true,
@@ -81,6 +100,7 @@ export async function GET() {
           }
         : null,
       myTeamReason: myTeamRes.ok ? null : myTeamRes.error,
+      myFantasy,
       holders,
       leaderboard: lb && "data" in lb && lb.data ? lb.data.entries : null,
       leaderboardError: lb && "error" in lb ? lb.error : null,

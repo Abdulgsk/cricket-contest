@@ -8,6 +8,13 @@ export interface IMatchPlayer {
   captain?: boolean;
   keeper?: boolean;
   overseas?: boolean;
+  profileId?: string;
+  imgUrl?: string;
+  /** Post-toss XI status: "playing" = in the announced XI, "bench" = impact/bench
+   * pool, "" = not yet announced. */
+  playingStatus?: "playing" | "bench" | "";
+  /** "IN" once this player has come on as the live Impact Player. */
+  playingXIChange?: "IN" | "";
 }
 
 export interface IMatch {
@@ -89,6 +96,10 @@ const MatchSchema = new Schema<IMatch>(
             captain: { type: Boolean, default: false },
             keeper: { type: Boolean, default: false },
             overseas: { type: Boolean, default: false },
+            profileId: { type: String },
+            imgUrl: { type: String },
+            playingStatus: { type: String, enum: ["playing", "bench", ""], default: "" },
+            playingXIChange: { type: String, enum: ["IN", ""], default: "" },
           },
           { _id: false }
         ),

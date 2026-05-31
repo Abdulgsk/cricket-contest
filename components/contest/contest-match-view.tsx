@@ -271,33 +271,39 @@ export function ContestMatchView({
         </div>
       </Card>
 
-      {/* Compare picker */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant={isMe ? "default" : "outline"}
-          onClick={() => setViewUserId(meId)}
-        >
-          {meUsername} (you)
-        </Button>
-        {holders.filter((h) => h.userId !== meId).length > 0 && (
+      {/* Compare picker — other players' teams are hidden until the match is live */}
+      {match.status === "upcoming" ? (
+        <p className="text-xs text-muted-foreground">
+          🔒 Other players&apos; teams unlock once the match goes live.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            variant="outline"
-            onClick={() => setPickerOpen((v) => !v)}
+            variant={isMe ? "default" : "outline"}
+            onClick={() => setViewUserId(meId)}
           >
-            {pickerOpen ? "Close compare" : "🆚 Compare with another player"}
+            {meUsername} (you)
           </Button>
-        )}
-        {!isMe && viewedHolder && (
-          <Link
-            href={`/contests/${matchId}/compare/${viewUserId}`}
-            className="ml-auto text-xs text-primary underline-offset-2 hover:underline"
-          >
-            Open full comparison →
-          </Link>
-        )}
-      </div>
+          {holders.filter((h) => h.userId !== meId).length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPickerOpen((v) => !v)}
+            >
+              {pickerOpen ? "Close compare" : "🆚 Compare with another player"}
+            </Button>
+          )}
+          {!isMe && viewedHolder && (
+            <Link
+              href={`/contests/${matchId}/compare/${viewUserId}`}
+              className="ml-auto text-xs text-primary underline-offset-2 hover:underline"
+            >
+              Open full comparison →
+            </Link>
+          )}
+        </div>
+      )}
 
       {pickerOpen && (
         <Card className="!p-2 max-h-72 overflow-auto">
@@ -345,7 +351,9 @@ export function ContestMatchView({
       ) : (
         <Card className="border-amber-500/40 bg-amber-500/5">
           <p className="text-sm">
-            {reason === "team_not_mapped"
+            {reason === "hidden_until_live"
+              ? "🔒 This player's team is hidden until the match goes live."
+              : reason === "team_not_mapped"
               ? "No team was captured for this player on this match."
               : reason === "auth_expired"
               ? "My11 cookie expired — admin must refresh."
@@ -356,7 +364,8 @@ export function ContestMatchView({
       <PlayerLookupPanel
         matchId={matchId}
         enabled={
-          data && data.ok ? data.playerDirectoryEnabled !== false : true
+          match.status !== "upcoming" &&
+          (data && data.ok ? data.playerDirectoryEnabled !== false : true)
         }
         refreshMs={
           data && data.ok && data.match.status === "live"

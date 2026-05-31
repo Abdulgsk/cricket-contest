@@ -16,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ matchId: string; userId: string }> }
 ) {
   try {
-    await requireUser();
+    const me = await requireUser();
     const { matchId, userId } = await params;
     await connectDB();
     const match = await Match.findById(matchId)
@@ -29,6 +29,34 @@ export async function GET(
     const refreshMs = await getMy11LiveRefreshMs();
     const settings = await getSettings();
     const playerDirectoryEnabled = settings.playerDirectoryEnabled !== false;
+
+    // Other members' teams stay hidden until the match is live (no peeking at
+    // rivals' line-ups pre-toss). Your own team is always visible.
+    const isOther = String(userId) !== String(me._id);
+    if (isOther && status === "upcoming") {
+      return NextResponse.json({
+        ok: true,
+        refreshMs,
+        playerDirectoryEnabled,
+        match: {
+          id: String(match._id),
+          teamA: match.teamA,
+          teamB: match.teamB,
+          teamAShort: match.teamAShort ?? null,
+          teamBShort: match.teamBShort ?? null,
+          startTime: match.startTime,
+          status,
+          venue: match.venue ?? null,
+          scoreSummary: match.scoreSummary ?? null,
+          matchWinner: match.matchWinner ?? null,
+        },
+        team: null,
+        reason: "hidden_until_live",
+        leaderboard: null,
+        leaderboardError: null,
+      });
+    }
+
     const teamRes = await getRefreshedUserMatchTeam({
       matchId,
       userId,

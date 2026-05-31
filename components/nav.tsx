@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ChevronDown, Bug, Wrench, Activity, ScrollText } from "lucide-react";
+import { ChevronDown, Bug, Wrench, Activity, ScrollText, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";
@@ -13,6 +13,7 @@ const NAV = [
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/analytics", label: "Analytics" },
   { href: "/matches", label: "Matches" },
+  { href: "/fantasy", label: "Fantasy XI" },
   { href: "/predictions", label: "Predictions" },
   { href: "/rivalry", label: "Challenges" },
   { href: "/contests", label: "Contests" },
@@ -30,12 +31,14 @@ export function Nav({
   role,
   hasAdminAccess = false,
   hasDeveloperAccess = false,
+  hasSettingsAccess = false,
   rivalryUnseen = 0,
   assignedBugs = 0,
 }: {
   role: "user" | "admin" | "superadmin";
   hasAdminAccess?: boolean;
   hasDeveloperAccess?: boolean;
+  hasSettingsAccess?: boolean;
   rivalryUnseen?: number;
   assignedBugs?: number;
 }) {
@@ -46,6 +49,7 @@ export function Nav({
   const [showMenuButton, setShowMenuButton] = useState(true);
   const showAdmin = role === "superadmin" || hasAdminAccess;
   const showDeveloper = role === "superadmin" || hasDeveloperAccess;
+  const showSettings = role === "superadmin" || hasSettingsAccess;
   const showDeveloperNav = showDeveloper || assignedBugs > 0;
   const items: NavItem[] = [
     ...NAV,
@@ -201,8 +205,22 @@ export function Nav({
           <BrandLogo size="md" />
         </Link>
         {renderLinks()}
-        <div className="mt-auto pt-4">
+        <div className="mt-auto pt-4 flex items-center gap-2">
           <ThemeToggle />
+          {showSettings ? (
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              className={cn(
+                "inline-flex items-center justify-center h-9 w-9 rounded-lg border border-border transition",
+                path.startsWith("/settings")
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <Settings className="h-4 w-4" />
+            </Link>
+          ) : null}
         </div>
         <div className="pt-2">
           <BugReportButton />
@@ -260,7 +278,19 @@ export function Nav({
             {renderLinks(() => setOpen(false))}
           </nav>
           <div className="shrink-0 border-t border-border/60 bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),12px)] flex flex-col gap-2">
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              {showSettings ? (
+                <Link
+                  href="/settings"
+                  onClick={() => setOpen(false)}
+                  aria-label="Settings"
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <Settings className="h-4 w-4" />
+                </Link>
+              ) : null}
+            </div>
             <BugReportButton />
           </div>
         </aside>

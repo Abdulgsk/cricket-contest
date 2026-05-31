@@ -1,6 +1,7 @@
 import { connectDB } from "@/lib/db";
 import { Match } from "@/models/Match";
 import { autoMapAllLiveMatches } from "@/services/contest-auto-map";
+import { recomputeFantasyForLiveMatches } from "@/services/fantasy-recompute";
 
 /**
  * Auto-update match statuses:
@@ -18,9 +19,10 @@ import { autoMapAllLiveMatches } from "@/services/contest-auto-map";
  */
 const STATUS_TTL_MS = 60_000;
 const MAP_TTL_MS = 5 * 60_000;
-type Tick = { statusAt: number; mapAt: number };
+const FANTASY_TTL_MS = 90_000;
+type Tick = { statusAt: number; mapAt: number; fantasyAt: number };
 const g = global as unknown as { _matchStatusTick?: Tick };
-const tick: Tick = g._matchStatusTick ?? { statusAt: 0, mapAt: 0 };
+const tick: Tick = g._matchStatusTick ?? { statusAt: 0, mapAt: 0, fantasyAt: 0 };
 g._matchStatusTick = tick;
 
 export async function autoUpdateMatchStatuses() {
@@ -58,6 +60,18 @@ export async function autoUpdateMatchStatuses() {
     tick.mapAt = now;
     try {
       await autoMapAllLiveMatches();
+    } catch {
+      // ignore — next tick will retry
+    }
+  }
+
+  // Recompute in-app fantasy points for live matches off the Cricbuzz
+  // scorecard. Independently throttled (network calls); idempotent so a
+  // missed beat is harmless.
+  if (now - tick.fantasyAt >= FANTASY_TTL_MS) {
+    tick.fantasyAt = now;
+    try {
+      await recomputeFantasyForLiveMatches();
     } catch {
       // ignore — next tick will retry
     }

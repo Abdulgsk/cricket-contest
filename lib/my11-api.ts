@@ -541,3 +541,270 @@ export async function getSessionCookieMeta(): Promise<{
 
 // Re-export getSettings to discourage direct imports elsewhere
 export { getSettings };
+
+// ---------- OTP login flow ----------
+//
+// Server-side capture of my11circle session cookies via phone + OTP.
+//
+// The real my11 web client (mecPaj.bundle.js) uses two distinct flows:
+//   - Login (existing user): /api/fl/auth/v2/getLogin -> /api/fl/auth/v2/login
+//   - Register (new user):   /api/fl/auth/v3/getOtp   -> /api/fl/auth/v3/authenticate
+// We try the login flow first; if my11 says the user doesn't exist we fall
+// back to the register flow.
+//
+// IMPORTANT — KNOWN BLOCKER:
+// my11 returns `{"error":"Channel blocked","channel_blocked":true}` for these
+// endpoints when called from non-residential IPs (Vercel, AWS, most clouds).
+// Pasting cookies manually is the only thing that works from such hosts today.
+// Set MY11_PROXY_URL to route through a residential proxy if you have one.
+
+const OTP_LOGIN_GET_PATH = process.env.MY11_OTP_LOGIN_GET_PATH || "/api/fl/auth/v2/getLogin";
+const OTP_LOGIN_VERIFY_PATH = process.env.MY11_OTP_LOGIN_VERIFY_PATH || "/api/fl/auth/v2/login";
+const OTP_REG_GET_PATH = process.env.MY11_OTP_REG_GET_PATH || "/api/fl/auth/v3/getOtp";
+const OTP_REG_VERIFY_PATH = process.env.MY11_OTP_REG_VERIFY_PATH || "/api/fl/auth/v3/authenticate";
+
+const REQUIRED_COOKIE_NAMES = ["SSID", "SSIDuser", "NA_VISITOR", "sameSiteNoneSupported", "device.info.cookie"];
+
+function makeDeviceId(): string {
+  // Matches the my11 web client's UUIDv4 generator output shape.
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => {
+    const n = Number(c);
+    return (n ^ (16 * Math.random()) >> (n / 4)).toString(16);
+  });
+}
+
+function parseSetCookies(headerValue: string | null): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!headerValue) return out;
+  // Node merges multi-value Set-Cookie into one string separated by commas,
+  // but commas can also appear inside Expires=. Split on `, ` only when the
+  // next chunk looks like `name=`.
+  const parts = headerValue.split(/,(?=\s*[A-Za-z0-9_.-]+=)/);
+  for (const part of parts) {
+    const [pair] = part.split(";");
+    const eq = pair.indexOf("=");
+    if (eq <= 0) continue;
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1).trim();
+    if (name && value) out.set(name, value);
+  }
+  return out;
+}
+
+function mergeCookieHeader(existing: string, fresh: Map<string, string>): string {
+  const merged = new Map<string, string>();
+  // Start with anything already in the header.
+  for (const pair of existing.split(/;\s*/)) {
+    const eq = pair.indexOf("=");
+    if (eq > 0) merged.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+  }
+  for (const [k, v] of fresh) merged.set(k, v);
+  return Array.from(merged.entries()).map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
+async function rawPost(
+  path: string,
+  body: unknown,
+  initialCookie: string,
+): Promise<{ status: number; data: unknown; cookies: Map<string, string>; raw: string }> {
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: {
+        ...COMMON_HEADERS,
+        ...(initialCookie ? { cookie: initialCookie } : {}),
+        referer: `${BASE}/mecspa/loginsignup/`,
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+      cache: "no-store",
+    });
+    const raw = await res.text();
+    let data: unknown = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = raw;
+    }
+    const cookies = parseSetCookies(res.headers.get("set-cookie"));
+    return { status: res.status, data, cookies, raw };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export interface My11OtpSendResult {
+  ok: boolean;
+  status: number;
+  /** "login" if my11 recognised the user, "register" if we fell back to the
+   * new-user flow. Tells verifyOtp which endpoint + body shape to use. */
+  flow: "login" | "register";
+  /** Stable per-session id. Persisted alongside the sendOtp cookies so the
+   * verify call can replay it. */
+  deviceId: string;
+  /** Reg flow returns this and expects it back on /authenticate. */
+  uniqueIdentifier: string | null;
+  cookieHeader: string;
+  raw: unknown;
+}
+
+function isChannelBlocked(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  return d.channel_blocked === true || d.error === "Channel blocked";
+}
+
+/**
+ * Step 1: ask my11 to send an OTP. Tries the login flow first; if that says
+ * the user doesn't exist (`USER_NOT_FOUND`-style), falls back to register.
+ * Captures Set-Cookie so the matching verify call can be made against the
+ * same anonymous session.
+ */
+export async function my11SendOtp(opts: {
+  phone: string;
+}): Promise<My11OtpSendResult> {
+  const phone = opts.phone.replace(/\D/g, "");
+  if (!phone) throw new Error("phone required");
+  const deviceId = makeDeviceId();
+
+  // 1. Try the existing-user flow.
+  const loginRes = await rawPost(OTP_LOGIN_GET_PATH, { loginid: phone, deviceId }, "");
+  if (isChannelBlocked(loginRes.data)) {
+    return {
+      ok: false,
+      status: loginRes.status,
+      flow: "login",
+      deviceId,
+      uniqueIdentifier: null,
+      cookieHeader: "",
+      raw: loginRes.data,
+    };
+  }
+  const loginData = (loginRes.data ?? {}) as Record<string, unknown>;
+  const loginErr = pickStr(loginData, "ErrorMessage", "errorMessage", "error");
+  const userNotFound =
+    /user.*(not|n[o]t).*found|no.*user|not.*registered/i.test(loginErr) ||
+    loginData.userExists === false ||
+    loginData.isRegistered === false;
+  const loginOk = loginRes.status >= 200 && loginRes.status < 300 && !loginErr;
+
+  if (loginOk) {
+    const cookieHeader = Array.from(loginRes.cookies.entries())
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+    return {
+      ok: true,
+      status: loginRes.status,
+      flow: "login",
+      deviceId,
+      uniqueIdentifier: null,
+      cookieHeader,
+      raw: loginRes.data,
+    };
+  }
+
+  if (!userNotFound) {
+    return {
+      ok: false,
+      status: loginRes.status,
+      flow: "login",
+      deviceId,
+      uniqueIdentifier: null,
+      cookieHeader: "",
+      raw: loginRes.data,
+    };
+  }
+
+  // 2. Fall back to the register flow.
+  const regRes = await rawPost(
+    OTP_REG_GET_PATH,
+    { mobile: phone, deviceId, deviceName: "", refCode: "", isPlaycircle: false },
+    "",
+  );
+  const regData = (regRes.data ?? {}) as Record<string, unknown>;
+  const uniqueIdentifier =
+    pickStr(regData, "uniqueIdentifier", "uniqId", "transactionId") || null;
+  const cookieHeader = Array.from(regRes.cookies.entries())
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+  const regOk = regRes.status >= 200 && regRes.status < 300 && regData.success !== false;
+  return {
+    ok: regOk,
+    status: regRes.status,
+    flow: "register",
+    deviceId,
+    uniqueIdentifier,
+    cookieHeader,
+    raw: regRes.data,
+  };
+}
+
+export interface My11OtpVerifyResult {
+  ok: boolean;
+  status: number;
+  loggedIn: boolean;
+  capturedCookies: string[];
+  raw: unknown;
+}
+
+/**
+ * Step 2: verify the OTP using the same flow + cookies + deviceId that
+ * sendOtp used. On success, captures the my11 session cookies and persists
+ * them via `saveSessionCookie()`.
+ */
+export async function my11VerifyOtp(opts: {
+  phone: string;
+  otp: string;
+  flow: "login" | "register";
+  deviceId: string;
+  uniqueIdentifier?: string | null;
+  priorCookies?: string;
+}): Promise<My11OtpVerifyResult> {
+  const phone = opts.phone.replace(/\D/g, "");
+  const otp = opts.otp.replace(/\D/g, "");
+  if (!phone) throw new Error("phone required");
+  if (!otp) throw new Error("otp required");
+
+  let path: string;
+  let body: Record<string, unknown>;
+  if (opts.flow === "login") {
+    path = OTP_LOGIN_VERIFY_PATH;
+    body = {
+      loginid: phone,
+      otp,
+      reasonCode: 1,
+      challenge: "",
+      deviceId: opts.deviceId,
+      deviceName: "",
+    };
+  } else {
+    path = OTP_REG_VERIFY_PATH;
+    body = {
+      mobile: phone,
+      otp,
+      uniqueIdentifier: opts.uniqueIdentifier ?? "",
+    };
+  }
+
+  const res = await rawPost(path, body, opts.priorCookies ?? "");
+  const data = (res.data ?? {}) as Record<string, unknown>;
+  const httpOk = res.status >= 200 && res.status < 300;
+  const bodyErr = pickStr(data, "ErrorMessage", "errorMessage", "error");
+  const ok = httpOk && !bodyErr;
+  const merged = mergeCookieHeader(opts.priorCookies ?? "", res.cookies);
+  const capturedNames = Array.from(res.cookies.keys());
+  const haveSsid = /(?:^|;\s*)SSID=/.test(merged);
+  let loggedIn = false;
+  if (ok && haveSsid) {
+    const filtered = merged
+      .split(/;\s*/)
+      .filter((p) => REQUIRED_COOKIE_NAMES.includes(p.split("=")[0]))
+      .join("; ");
+    await saveSessionCookie(filtered);
+    const probe = await checkLogin().catch(() => ({ loggedIn: false }));
+    loggedIn = probe.loggedIn;
+  }
+  return { ok, status: res.status, loggedIn, capturedCookies: capturedNames, raw: res.data };
+}

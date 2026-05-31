@@ -1,18 +1,15 @@
 "use client";
-import { useState, useTransition, useEffect, useCallback, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { PlayerCombobox } from "@/components/ui/player-combobox";
+import { submitResultsAction } from "@/actions/admin";
 import {
-  submitResultsAction,
-  checkMy11SessionAction,
-  listMy11MatchesAction,
-  listMy11ContestsAction,
-  setMatchContestUrlAction,
-} from "@/actions/admin";
+  recomputeFantasyAction,
+  loadFantasyLeaderboardAction,
+} from "@/actions/fantasy-team";
 import { loadMatchPlayersAction } from "@/actions/predictions";
 
 interface UserRow {
@@ -39,7 +36,6 @@ export function ResultEntryForm({
   teamB,
   players: initialPlayers = [],
   playerInfo: initialPlayerInfo = [],
-  contestLinked = false,
   resultsEntered = false,
   isSuperadmin = false,
   existingPrediction = { winner: "", topBatter: "", topBowler: "" },
@@ -52,7 +48,6 @@ export function ResultEntryForm({
   teamB: string;
   players?: string[];
   playerInfo?: Array<{ name: string; role?: string; keeper?: boolean }>;
-  contestLinked?: boolean;
   resultsEntered?: boolean;
   isSuperadmin?: boolean;
   existingPrediction?: { winner: string; topBatter: string; topBowler: string };
@@ -65,49 +60,12 @@ export function ResultEntryForm({
   const [predBowler, setPredBowler] = useState(existingPrediction.topBowler);
   const [scoreSummary, setScoreSummary] = useState(existingScoreSummary);
   const [pending, start] = useTransition();
-  const router = useRouter();
   const [players, setPlayers] = useState<string[]>(initialPlayers);
   const [playerInfo, setPlayerInfo] = useState<Array<{ name: string; role?: string; keeper?: boolean }>>(initialPlayerInfo);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [fetchingContestPoints, setFetchingContestPoints] = useState(false);
   const [fetchContestStatus, setFetchContestStatus] = useState<string | null>(null);
-  const [fetchingTeamDetails, setFetchingTeamDetails] = useState(false);
-  const [fetchTeamStatus, setFetchTeamStatus] = useState<string | null>(null);
-  const [my11Session, setMy11Session] = useState<{
-    hasCookie: boolean;
-    loggedIn: boolean;
-    expiresAt: string | null;
-  } | null>(null);
-
-  // My11 contest picker
-  type My11MatchOpt = {
-    matchId: number;
-    team1: string;
-    team1Short: string;
-    team2: string;
-    team2Short: string;
-    displayName: string;
-    startTime: number | null;
-    status: number | null;
-    statusLabel: string;
-    isJoined: boolean;
-    seriesName: string;
-  };
-  type My11ContestOpt = {
-    contestId: number;
-    contestName: string;
-    prizePool: number | null;
-    joinedTeams: number | null;
-    totalTeams: number | null;
-  };
-  const [my11Matches, setMy11Matches] = useState<My11MatchOpt[]>([]);
-  const [my11Contests, setMy11Contests] = useState<My11ContestOpt[]>([]);
-  const [pickedMatchId, setPickedMatchId] = useState<number | null>(null);
-  const [pickedContestId, setPickedContestId] = useState<number | null>(null);
-  const [loadingMy11Matches, setLoadingMy11Matches] = useState(false);
-  const [loadingMy11Contests, setLoadingMy11Contests] = useState(false);
-  const [savingContestUrl, setSavingContestUrl] = useState(false);
 
   const fetchPlayers = useCallback(async () => {
     setLoadingPlayers(true);
@@ -230,201 +188,55 @@ export function ResultEntryForm({
     });
   };
 
+  // Pull fresh GullyXI fantasy points (computed in-app from the live
+  // scorecard) and fill the per-player rows. No My11 mapping involved.
   const fetchContestPoints = async () => {
     setFetchingContestPoints(true);
-    setFetchContestStatus("Connecting to My11...");
+    setFetchContestStatus("Computing fantasy points from the scorecard…");
     try {
-      const response = await fetch("/api/admin/fetch-my11-automation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId }),
-      });
+      const recompute = await recomputeFantasyAction(matchId);
+      if (!recompute.ok) {
+        toast.error(recompute.error ?? "Could not compute points");
+        setFetchContestStatus(recompute.error ?? "Failed");
+        return;
+      }
+      if (!recompute.hasData) {
+        toast.error("No scorecard data yet — try again once the match is scored.");
+        setFetchContestStatus("No scorecard data yet");
+        return;
+      }
 
-      setFetchContestStatus("Processing contest leaderboard...");
-
-      const data = (await response.json()) as {
-        ok: boolean;
-        error?: string;
-        needsLogin?: boolean;
-        entries?: Array<{
-          userId: string;
-          fantasyPoints: number;
-          found: boolean;
-        }>;
-        usedCachedCookie?: boolean;
-      };
-
-      if (!response.ok) {
-        if (data.needsLogin || response.status === 401) {
-          toast.error(data.error || "Login required. Complete My11 login and retry.");
-          return;
-        }
-        toast.error(data.error || "Failed to fetch");
+      setFetchContestStatus("Loading the fantasy leaderboard…");
+      const board = await loadFantasyLeaderboardAction(matchId);
+      if (!board.ok) {
+        toast.error(board.error ?? "Could not load leaderboard");
+        setFetchContestStatus(board.error ?? "Failed");
         return;
       }
 
       const pointMap = new Map(
-        (data.entries ?? []).map((entry) => [entry.userId, entry.fantasyPoints])
+        board.rows.map((r) => [r.userId, r.totalPoints]),
       );
-      const foundCount = (data.entries ?? []).filter((entry) => entry.found).length;
-
+      let matched = 0;
       setRows((currentRows) =>
-        currentRows.map((row) => ({
-          ...row,
-          fp: pointMap.get(row.id) ?? 0,
-        }))
+        currentRows.map((row) => {
+          const pts = pointMap.get(row.id);
+          if (pts != null) matched += 1;
+          return { ...row, fp: pts != null ? Math.round(pts) : row.fp };
+        }),
       );
 
-      const cacheMsg = data.usedCachedCookie ? " (used cached session)" : " (new login)";
       toast.success(
-        `Contest points loaded · matched ${foundCount}/${data.entries?.length ?? 0} players${cacheMsg}`
+        `Points loaded · matched ${matched}/${board.rows.length} teams`,
       );
-      setFetchContestStatus(`Matched ${foundCount}/${data.entries?.length ?? 0} players`);
+      setFetchContestStatus(`Matched ${matched}/${board.rows.length} teams`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to fetch contest points";
+      const msg = e instanceof Error ? e.message : "Failed to fetch points";
       toast.error(msg);
       setFetchContestStatus(msg);
     } finally {
       setFetchingContestPoints(false);
       window.setTimeout(() => setFetchContestStatus(null), 2500);
-    }
-  };
-
-  const fetchTeamDetails = async () => {
-    setFetchingTeamDetails(true);
-    setFetchTeamStatus("Fetching My11 teams for all mapped users...");
-    try {
-      const response = await fetch("/api/admin/fetch-my11-team-details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        const msg = data.error || `Request failed (${response.status})`;
-        toast.error(msg);
-        setFetchTeamStatus(msg);
-        return;
-      }
-      const fetched = data.fetched ?? 0;
-      const total = data.totalUsers ?? 0;
-      const skipped = data.skipped ?? 0;
-      toast.success(`Stored ${fetched}/${total} teams${skipped ? ` (${skipped} skipped)` : ""}`);
-      setFetchTeamStatus(`Stored ${fetched}/${total} teams${skipped ? ` · ${skipped} skipped` : ""}`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to fetch team details";
-      toast.error(msg);
-      setFetchTeamStatus(msg);
-    } finally {
-      setFetchingTeamDetails(false);
-      window.setTimeout(() => setFetchTeamStatus(null), 4000);
-    }
-  };
-
-  const checkMy11Status = useCallback(async () => {
-    try {
-      const res = await checkMy11SessionAction();
-      if (res.ok) {
-        setMy11Session({
-          hasCookie: res.hasCookie,
-          loggedIn: res.loggedIn,
-          expiresAt: res.expiresAt,
-        });
-      } else {
-        setMy11Session(null);
-      }
-    } finally {
-      // no-op
-    }
-  }, []);
-
-  useEffect(() => {
-    void checkMy11Status();
-  }, [checkMy11Status]);
-
-  const loadMy11Matches = async () => {
-    setLoadingMy11Matches(true);
-    try {
-      const res = await listMy11MatchesAction();
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      // Show IPL matches only (seriesId 3629 / tour name contains "Premier League")
-      const iplOnly = res.matches.filter(
-        (m) =>
-          /indian t20 league|indian premier league/i.test(m.seriesName) ||
-          /indian premier league/i.test(
-            (m as unknown as { tourName?: string }).tourName ?? ""
-          )
-      );
-      setMy11Matches(iplOnly.length ? iplOnly : res.matches);
-      // Try to auto-select a match by team-name (full or short) match
-      const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
-      const a = norm(teamA);
-      const b = norm(teamB);
-      const matches = (n1: string, n2: string) => {
-        const x = norm(n1);
-        const y = norm(n2);
-        const ax = a && x && (x.includes(a) || a.includes(x));
-        const by = b && y && (y.includes(b) || b.includes(y));
-        return ax && by;
-      };
-      const candidates = iplOnly.length ? iplOnly : res.matches;
-      const auto = candidates.find(
-        (m) =>
-          matches(m.team1, m.team2) ||
-          matches(m.team2, m.team1) ||
-          matches(m.team1Short, m.team2Short) ||
-          matches(m.team2Short, m.team1Short)
-      );
-      if (auto) {
-        setPickedMatchId(auto.matchId);
-        await loadMy11Contests(auto.matchId);
-      } else {
-        toast.success(`Loaded ${candidates.length} My11 matches`);
-      }
-    } finally {
-      setLoadingMy11Matches(false);
-    }
-  };
-
-  const loadMy11Contests = async (my11MatchId: number) => {
-    setLoadingMy11Contests(true);
-    setMy11Contests([]);
-    setPickedContestId(null);
-    try {
-      const res = await listMy11ContestsAction(my11MatchId);
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      setMy11Contests(res.contests);
-      if (!res.contests.length) {
-        toast.error("No joined contests found for this match");
-      }
-    } finally {
-      setLoadingMy11Contests(false);
-    }
-  };
-
-  const saveContestSelection = async () => {
-    if (pickedMatchId == null || pickedContestId == null) {
-      toast.error("Pick a match and contest first");
-      return;
-    }
-    setSavingContestUrl(true);
-    try {
-      const url = `https://www.my11circle.com/lobby/contests/leaderboard/${pickedMatchId}/${pickedContestId}`;
-      const res = await setMatchContestUrlAction(matchId, url);
-      if (!res.ok) {
-        toast.error("Failed to save contest URL");
-        return;
-      }
-      toast.success("Contest URL saved. Now click Fetch My11 Points.");
-      router.refresh();
-    } finally {
-      setSavingContestUrl(false);
     }
   };
 
@@ -667,129 +479,15 @@ export function ResultEntryForm({
               size="sm"
               onClick={fetchContestPoints}
               loading={fetchingContestPoints}
-              disabled={!contestLinked}
             >
-              {fetchingContestPoints ? "Fetching My11 points..." : "🔄 Fetch My11 Points"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchTeamDetails}
-              loading={fetchingTeamDetails}
-              disabled={!contestLinked}
-            >
-              {fetchingTeamDetails ? "Fetching teams..." : "👥 Fetch My11 Teams"}
+              {fetchingContestPoints ? "Fetching points…" : "🔄 Fetch Points"}
             </Button>
           </div>
         </div>
         {fetchContestStatus && (
           <p className="mb-3 text-xs text-muted-foreground">{fetchContestStatus}</p>
         )}
-        {fetchTeamStatus && (
-          <p className="mb-3 text-xs text-muted-foreground">{fetchTeamStatus}</p>
-        )}
-        {!contestLinked && (
-          <p className="mb-3 text-xs text-muted-foreground">
-            No contest linked yet. Use the picker below or add a contest URL on the match.
-          </p>
-        )}
 
-        <div className="mb-3 rounded-xl border border-border/50 p-3 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label className="text-xs">My11 Contest Picker</Label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void loadMy11Matches()}
-              loading={loadingMy11Matches}
-            >
-              {my11Matches.length ? "Reload My11 matches" : "Load My11 matches"}
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Pick a match (auto-matched by team names) → pick a contest you joined → save.
-            {!isSuperadmin && (
-              <> Uses the shared My11 cookie synced by the superadmin&apos;s extension.</>
-            )}
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <select
-              className="h-9 w-full rounded-lg border border-border bg-card px-2 text-sm"
-              value={pickedMatchId ?? ""}
-              onChange={(e) => {
-                const v = e.target.value ? Number(e.target.value) : null;
-                setPickedMatchId(v);
-                if (v != null) void loadMy11Contests(v);
-                else setMy11Contests([]);
-              }}
-              disabled={!my11Matches.length}
-            >
-              <option value="">— pick My11 match —</option>
-              {my11Matches.map((m) => (
-                <option key={m.matchId} value={m.matchId}>
-                  {m.displayName || `${m.team1Short || m.team1} vs ${m.team2Short || m.team2}`}
-                  {m.statusLabel ? ` (${m.statusLabel})` : ""}
-                  {m.isJoined ? " ★" : ""} · #{m.matchId}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-9 w-full rounded-lg border border-border bg-card px-2 text-sm"
-              value={pickedContestId ?? ""}
-              onChange={(e) =>
-                setPickedContestId(e.target.value ? Number(e.target.value) : null)
-              }
-              disabled={loadingMy11Contests || !my11Contests.length}
-            >
-              <option value="">
-                {loadingMy11Contests
-                  ? "loading contests…"
-                  : my11Contests.length
-                    ? "— pick contest —"
-                    : "— pick a match first —"}
-              </option>
-              {my11Contests.map((c) => (
-                <option key={c.contestId} value={c.contestId}>
-                  {c.contestName || `Contest #${c.contestId}`}
-                  {c.joinedTeams != null && c.totalTeams != null
-                    ? ` · ${c.joinedTeams}/${c.totalTeams}`
-                    : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void saveContestSelection()}
-            loading={savingContestUrl}
-            disabled={pickedMatchId == null || pickedContestId == null}
-          >
-            Save selection as contest URL
-          </Button>
-        </div>
-
-        {contestLinked && (
-          <div className="mb-3 rounded-xl bg-blue-500/10 border border-blue-500/30 p-3 space-y-1.5">
-            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">ℹ️ Direct My11 API</p>
-            <p className="text-[11px] text-blue-600/80 dark:text-blue-400/80">
-              Sync your My11 cookie via the browser extension first, then click Fetch Points.
-            </p>
-            <p className="text-[11px] text-blue-600/80 dark:text-blue-400/80">
-              My11 session:{" "}
-              {!my11Session
-                ? "unknown"
-                : !my11Session.hasCookie
-                  ? "no cookie synced"
-                  : my11Session.loggedIn
-                    ? "active"
-                    : "expired / logged out"}
-              {my11Session?.expiresAt
-                ? ` · expires ${new Date(my11Session.expiresAt).toLocaleString()}`
-                : ""}
-            </p>
-          </div>
-        )}
         <table className="w-full text-sm">
           <thead className="text-xs uppercase text-muted-foreground">
             <tr className="text-left">
@@ -815,9 +513,6 @@ export function ResultEntryForm({
                   <td className="p-2">
                     <div className="font-medium">{r.username}</div>
                     <div className="text-xs text-muted-foreground">@{r.handle}</div>
-                    {r.my11circleName ? (
-                      <div className="text-[11px] text-muted-foreground">My11Circle: {r.my11circleName}</div>
-                    ) : null}
                   </td>
                   <td className="p-2">
                     <Input

@@ -4,7 +4,7 @@ import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { Match } from "@/models/Match";
 import { computeLeaderboard } from "@/services/scoring";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,12 @@ export default async function ComparePage({
 
   const match = await Match.findById(matchId).select("teamA teamB startTime status").lean();
   if (!match) notFound();
+
+  // Comparing against another player is blocked until the match is live — no
+  // peeking at rivals' line-ups pre-toss.
+  if (match.status === "upcoming" && String(userId) !== String(me._id)) {
+    redirect(`/contests/${matchId}`);
+  }
 
   const otherUser = await User.findById(userId)
     .select("username userId avatar avatarColor")

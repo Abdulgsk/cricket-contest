@@ -4,6 +4,7 @@ import { scrapeSchedule, scrapeSquad } from "@/lib/scrapers/sportskeeda";
 import {
   scrapeCricbuzzListings,
   scrapeCricbuzzMatchSquad,
+  resolveSquadImages,
 } from "@/lib/scrapers/cricbuzz-match";
 
 const SEASON = process.env.IPL_SEASON || String(new Date().getUTCFullYear());
@@ -139,11 +140,64 @@ export async function refreshMatchPlayers(matchId: string) {
   }
 
   if (!players.length) throw new Error("Cricbuzz returned no players for this match");
+  // Best-effort: resolve face-image URLs (per-player profile fetch, cached).
+  try {
+    await resolveSquadImages(players);
+  } catch {
+    // ignore — images are optional, UI falls back to initials
+  }
   const m = await Match.findById(matchId);
   if (!m) throw new Error("Match not found");
   m.players = players;
   m.playersFetchedAt = new Date();
   await m.save();
   return { players: players.length, fetchedAt: m.playersFetchedAt, names: players.map((p) => p.name) };
+}
+
+/**
+ * Refresh ONLY the live XI status (playing / bench / impact-in) of a match's
+ * stored roster, without touching names, images or roles. Cheap enough to run
+ * around toss time and repeatedly while a match is live so impact-player
+ * substitutions are reflected as players come on and off.
+ *
+ * Best-effort: returns `{ changed: false }` (and leaves the roster untouched) if
+ * the squad can't be fetched or the XI hasn't been announced yet.
+ */
+export async function refreshMatchPlayingStatus(
+  matchId: string
+): Promise<{ changed: boolean; announced: boolean }> {
+  await connectDB();
+  const m = await Match.findById(matchId).select(
+    "cricbuzzId cricbuzzSlug players"
+  );
+  if (!m || !m.cricbuzzId || !m.cricbuzzSlug || !m.players?.length) {
+    return { changed: false, announced: false };
+  }
+
+  let fresh;
+  try {
+    fresh = await scrapeCricbuzzMatchSquad(m.cricbuzzId, m.cricbuzzSlug);
+  } catch {
+    return { changed: false, announced: false };
+  }
+  const announced = fresh.some((p) => p.playingStatus);
+  if (!fresh.length || !announced) return { changed: false, announced };
+
+  const byId = new Map(fresh.map((p) => [p.profileId, p]));
+  const byName = new Map(fresh.map((p) => [p.name, p]));
+  let changed = false;
+  for (const p of m.players) {
+    const f = (p.profileId ? byId.get(p.profileId) : undefined) ?? byName.get(p.name);
+    if (!f) continue;
+    const ps = f.playingStatus ?? "";
+    const xi = f.playingXIChange ?? "";
+    if (p.playingStatus !== ps || p.playingXIChange !== xi) {
+      p.playingStatus = ps;
+      p.playingXIChange = xi;
+      changed = true;
+    }
+  }
+  if (changed) await m.save();
+  return { changed, announced };
 }
 

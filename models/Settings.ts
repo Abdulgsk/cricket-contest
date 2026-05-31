@@ -63,6 +63,17 @@ export interface ISettings {
   my11sessionCookie?: string;
   my11cookieExpiresAt?: Date;
   my11LiveRefreshSec?: number;
+  /** Transient state for the OTP-based my11 login flow (sendOtp → verifyOtp). */
+  my11OtpState?: {
+    phone: string;
+    countryCode: string;
+    cookies?: string;
+    verificationId?: string;
+    flow?: "login" | "register";
+    deviceId?: string;
+    uniqueIdentifier?: string;
+    requestedAt: Date;
+  } | null;
   /**
    * Master kill-switch for the Player directory (`models/Player`) side-effect
    * + the contest "Player ownership" lookup UI. Defaults to enabled. Flip
@@ -82,6 +93,20 @@ const SettingsSchema = new Schema<ISettings>(
     my11sessionCookie: { type: String, select: false },
     my11cookieExpiresAt: { type: Date },
     my11LiveRefreshSec: { type: Number, default: 30, min: 5, max: 600 },
+    my11OtpState: {
+      type: {
+        phone: { type: String },
+        countryCode: { type: String, default: "91" },
+        cookies: { type: String },
+        verificationId: { type: String },
+        flow: { type: String, enum: ["login", "register"] },
+        deviceId: { type: String },
+        uniqueIdentifier: { type: String },
+        requestedAt: { type: Date },
+      },
+      select: false,
+      default: null,
+    },
     playerDirectoryEnabled: { type: Boolean, default: true },
     lastAutoSyncSlot: { type: String },
     announcement: { type: String, default: "" },

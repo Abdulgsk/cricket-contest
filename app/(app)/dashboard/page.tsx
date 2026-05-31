@@ -10,6 +10,8 @@ import { TeamLogo } from "@/components/team-logo";
 import { formatDate, ordinal } from "@/lib/utils";
 import { autoUpdateMatchStatuses } from "@/services/match-status";
 import { NotificationBell } from "@/components/notification-bell";
+import { buildWrappedData } from "@/services/wrapped";
+import { WrappedLauncher } from "@/components/wrapped/wrapped-launcher";
 
 export default async function Dashboard() {
   const me = await requireUser();
@@ -28,6 +30,10 @@ export default async function Dashboard() {
   ]);
   const myRow = lb.find((r) => String(r.userId) === String(me._id)) ?? null;
 
+  // GullyXI Wrapped (Spotify-style recap), anchored to the latest submitted
+  // match. Shown once a match has been completed + results entered.
+  const wrapped = await buildWrappedData(String(me._id));
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3">
@@ -39,6 +45,8 @@ export default async function Dashboard() {
           <NotificationBell />
         </div>
       </header>
+
+      {wrapped.todayMatch && <WrappedLauncher data={wrapped} />}
 
       <div className="grid md:grid-cols-3 gap-4">
         <Card className="md:col-span-1 glow">

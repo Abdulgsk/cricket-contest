@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/rbac";
+import { connectDB } from "@/lib/db";
+import { Match } from "@/models/Match";
 import { getPlayerOwnership } from "@/services/player-ownership";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +20,16 @@ export async function GET(
       return NextResponse.json(
         { ok: false, error: "my11Id required" },
         { status: 400 }
+      );
+    }
+    // Player ownership reveals what others picked — locked until the match is
+    // live so nobody can copy line-ups pre-toss.
+    await connectDB();
+    const match = await Match.findById(matchId).select("status").lean();
+    if (match && match.status === "upcoming") {
+      return NextResponse.json(
+        { ok: false, error: "hidden_until_live" },
+        { status: 403 }
       );
     }
     const result = await getPlayerOwnership({ matchId, my11Id });

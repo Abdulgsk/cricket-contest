@@ -12,7 +12,8 @@ export type FeatureGroup =
   | "Users"
   | "Tools"
   | "Content"
-  | "Developer";
+  | "Developer"
+  | "Integrations";
 
 export type FeatureDef = {
   key: string;
@@ -164,6 +165,14 @@ export const FEATURE_DEFS = [
       "Eligible to be assigned bugs and work items. Sees all reported bugs and work items, can comment freely, but can only act on items assigned to them.",
     group: "Developer",
   },
+  {
+    key: "my11.cookie.capture",
+    label: "Capture My11 session",
+    description:
+      "Open the Settings panel to log into My11Circle by phone + OTP and refresh the shared session cookie used by all contest features.",
+    group: "Integrations",
+    sensitive: true,
+  },
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURE_DEFS)[number]["key"];
@@ -187,6 +196,7 @@ export const FEATURE_BY_KEY = Object.fromEntries(
 ) as Record<FeatureKey, FeatureDef>;
 
 export const FEATURE_GROUPS: FeatureGroup[] = [
+  "Integrations",
   "Matches",
   "Results",
   "Bonuses",

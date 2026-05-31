@@ -430,7 +430,7 @@ export async function updateRoleAction(payload: unknown) {
       },
       $unset: { features: 1 },
     },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (!updated) return { ok: false as const, error: "Role not found" };
 

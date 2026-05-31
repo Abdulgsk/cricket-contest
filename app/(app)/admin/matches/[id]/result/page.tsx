@@ -153,7 +153,6 @@ export default async function AdminMatchResultPage({
         role: p.role,
         keeper: p.keeper,
       }))}
-      contestLinked={!!match.contestUrl}
       resultsEntered={!!match.resultsEntered}
       isSuperadmin={isSuperadmin}
       existingPrediction={inferred}

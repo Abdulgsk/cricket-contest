@@ -57,7 +57,7 @@ async function runIplSyncIfDue(): Promise<void> {
   const claim = await Settings.findOneAndUpdate(
     { lastAutoSyncSlot: { $ne: slotKey } },
     { $set: { lastAutoSyncSlot: slotKey } },
-    { new: false },
+    { returnDocument: "before" },
   );
   if (!claim) return; // another request already claimed this slot
 

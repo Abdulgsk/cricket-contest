@@ -66,6 +66,18 @@ type LbRow = {
   teamId?: number | null;
 };
 
+type MyFantasy =
+  | { hasTeam: false }
+  | {
+      hasTeam: true;
+      captainName?: string;
+      viceCaptainName?: string;
+      totalPoints: number;
+      playerCount: number;
+      subCount: number;
+      scored: boolean;
+    };
+
 type CurrentResponse =
   | { ok: true; available: false; reason: string }
   | {
@@ -88,6 +100,7 @@ type CurrentResponse =
       myUserId: string;
       myTeam: Team | null;
       myTeamReason: string | null;
+      myFantasy?: MyFantasy;
       holders: Holder[];
       leaderboard: LbRow[] | null;
       leaderboardError: string | null;
@@ -682,6 +695,7 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
   }
 
   const { match, myTeam, myTeamReason, holders } = data;
+  const myFantasy: MyFantasy = data.myFantasy ?? { hasTeam: false };
   const lastUpdated = myTeam?.fetchedAt ?? null;
 
   const viewingMe = viewUserId === meId;
@@ -707,13 +721,40 @@ export function ContestsView({ meId, meUsername }: { meId: string; meUsername: s
       )}
 
       {match.contestLinked && !myTeam && myTeamReason === "team_not_mapped" && (
-        <Card className="border-amber-500/40 bg-amber-500/5">
-          <p className="text-sm">
-            ⏳ The admin hasn&apos;t fetched your team for this contest yet.
-            Once they hit <strong>👥 Fetch My11 Teams</strong>, your team and live points
-            will appear here.
-          </p>
-        </Card>
+        myFantasy.hasTeam ? (
+          <Card className="border-primary/30 bg-primary/5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">Your GullyXI Fantasy team</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {myFantasy.playerCount} players
+                  {myFantasy.captainName ? ` · C ${myFantasy.captainName}` : ""}
+                  {myFantasy.viceCaptainName ? ` · VC ${myFantasy.viceCaptainName}` : ""}
+                  {myFantasy.subCount > 0 ? ` · ${myFantasy.subCount} backups` : ""}
+                  {myFantasy.scored ? ` · ${myFantasy.totalPoints} pts` : ""}
+                </p>
+              </div>
+              <Link href={`/fantasy/${match.id}`}>
+                <Button size="sm" className="shrink-0">View your team →</Button>
+              </Link>
+            </div>
+          </Card>
+        ) : (
+          <Card className="border-amber-500/40 bg-amber-500/5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">No team for this match yet</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Build your GullyXI Fantasy XI — pick 11 players, a captain,
+                  vice-captain and backups. Points score live from the match.
+                </p>
+              </div>
+              <Link href={`/fantasy/${match.id}`}>
+                <Button size="sm" className="shrink-0">Create your team →</Button>
+              </Link>
+            </div>
+          </Card>
+        )
       )}
 
       {match.contestLinked && myTeamReason === "auth_expired" && (

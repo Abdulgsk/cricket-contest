@@ -10,6 +10,14 @@ export interface CricbuzzPlayer {
   captain?: boolean;
   keeper?: boolean;
   overseas?: boolean;
+  /** Cricbuzz player profile id (from /profiles/<id>/...). */
+  profileId?: string;
+  /** Resolved face-image URL (filled in by resolveSquadImages). */
+  imgUrl?: string;
+  /** Post-toss XI status: "playing" (announced XI), "bench" (impact pool), "" (unknown). */
+  playingStatus?: "playing" | "bench" | "";
+  /** "IN" once this player has come on as the live Impact Player. */
+  playingXIChange?: "IN" | "";
 }
 
 const PLAYER_ROLES = [
@@ -44,6 +52,9 @@ export async function scrapeCricbuzzMatchSquad(
   const url = `https://www.cricbuzz.com/cricket-match-squads/${cricbuzzId}/${slug}`;
   const html = await fetchHtml(url);
 
+  // Post-toss playing-XI / bench / impact status (from the flight payload).
+  const status = parseSquadStatus(html);
+
   // Find all <a href="/profiles/<id>/<slug>">...text...</a> with their text content
   const anchorRe =
     /<a[^>]*href="\/profiles\/(\d+)\/[a-z0-9-]+"[^>]*>([\s\S]*?)<\/a>/g;
@@ -75,9 +86,102 @@ export async function scrapeCricbuzzMatchSquad(
     if (!name) continue;
 
     seen.add(id);
-    out.push({ name, role, captain, keeper });
+    const st = status.byId.get(id);
+    out.push({
+      name,
+      role,
+      captain,
+      keeper,
+      profileId: id,
+      playingStatus: status.announced ? st?.status ?? "bench" : "",
+      playingXIChange: st?.impactIn ? "IN" : "",
+    });
   }
   return out;
+}
+
+/**
+ * Parse the announced playing-XI / bench / impact-player status from the squads
+ * page flight payload. Cricbuzz groups players under
+ *   players":{"playing XI":[...],"bench":[...]}
+ * and tags each with `"substitute":true|false` (true = bench/impact pool) and
+ * `"playingXIChange":"IN"` once an impact sub has actually come on.
+ *
+ * Returns `announced=false` (and an empty map) until the XI is published, so the
+ * picker can show a flat list pre-toss and grouped lists post-toss.
+ */
+function parseSquadStatus(html: string): {
+  announced: boolean;
+  byId: Map<string, { status: "playing" | "bench"; impactIn: boolean }>;
+} {
+  const byId = new Map<string, { status: "playing" | "bench"; impactIn: boolean }>();
+  const flight = decodeFlight(html);
+  if (!flight) return { announced: false, byId };
+  // The grouping key only exists once an XI is announced.
+  const announced = flight.includes('"playing XI"');
+  if (!announced) return { announced: false, byId };
+
+  // id + substitute flag (fields appear in this fixed order before imageDetails).
+  const reSub =
+    /"id":(\d+),"name":"(?:[^"\\]|\\.)*?","fullName":"(?:[^"\\]|\\.)*?","nickName":"(?:[^"\\]|\\.)*?","captain":(?:true|false),"role":"[^"]*","keeper":(?:true|false),"substitute":(true|false)/g;
+  let m: RegExpExecArray | null;
+  while ((m = reSub.exec(flight))) {
+    byId.set(m[1], { status: m[2] === "true" ? "bench" : "playing", impactIn: false });
+  }
+  // Impact players who have come on: "playingXIChange":"IN" keyed by profileUrl id.
+  const reIn = /"profileUrl":"\/profiles\/(\d+)\/[^"]*","playingXIChange":"IN"/g;
+  while ((m = reIn.exec(flight))) {
+    const cur = byId.get(m[1]);
+    if (cur) cur.impactIn = true;
+    else byId.set(m[1], { status: "playing", impactIn: true });
+  }
+  return { announced, byId };
+}
+
+/**
+ * Resolve face-image URLs for a squad. Cricbuzz only exposes a player's
+ * `faceImageId` on their individual profile page, so we fetch each profile
+ * once (concurrency-limited, best-effort) and build the static CDN URL:
+ *   https://static.cricbuzz.com/a/img/v1/144x144/i1/c<faceImageId>/i.jpg
+ * The filename slug is ignored by the CDN, so only the id matters.
+ *
+ * Mutates `players` in place, adding `imgUrl` where resolvable. Never throws —
+ * a missing image just leaves `imgUrl` undefined (UI falls back to initials).
+ */
+const FACE_ID_RE = /faceImageId\\?":\s*(\d+)/;
+const faceIdCache = new Map<string, string | null>();
+
+export async function resolveSquadImages(
+  players: CricbuzzPlayer[],
+  concurrency = 5
+): Promise<void> {
+  const targets = players.filter((p) => p.profileId && !p.imgUrl);
+  let i = 0;
+  async function worker() {
+    while (i < targets.length) {
+      const p = targets[i++];
+      const pid = p.profileId!;
+      try {
+        let faceId = faceIdCache.get(pid);
+        if (faceId === undefined) {
+          const html = await fetchHtml(
+            `https://www.cricbuzz.com/profiles/${pid}/x`
+          );
+          const m = html.match(FACE_ID_RE);
+          faceId = m ? m[1] : null;
+          faceIdCache.set(pid, faceId);
+        }
+        if (faceId) {
+          p.imgUrl = `https://static.cricbuzz.com/a/img/v1/144x144/i1/c${faceId}/i.jpg`;
+        }
+      } catch {
+        // best-effort; leave imgUrl undefined
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, targets.length) }, worker)
+  );
 }
 
 /**
